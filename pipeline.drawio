@@ -1,0 +1,59 @@
+<mxfile host="65bd71144e" scale="1" border="10">
+    <diagram id="-F-XDpJMVS1qC_b4tnjM" name="Page-1">
+        <mxGraphModel dx="1511" dy="978" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" background="#ffffff" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="32" value="" style="edgeStyle=none;html=1;rounded=1;fillColor=#a20025;strokeColor=#000000;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="2" target="38" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="100" y="180" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="2" value="&lt;font color=&quot;#000000&quot;&gt;Original RSS Feed&lt;/font&gt;" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#fad7ac;strokeWidth=2;strokeColor=#b46504;" parent="1" vertex="1">
+                    <mxGeometry x="80" y="90" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="12" value="" style="edgeStyle=none;html=1;rounded=1;fillColor=#a20025;strokeColor=#000000;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="40" target="41" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="370" y="250" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="4" value="Podcast Provider&lt;br&gt;(Overcast, Spotify, Apple Podcasts)" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#fad7ac;strokeColor=#b46504;fontColor=#000000;strokeWidth=2;" parent="1" vertex="1">
+                    <mxGeometry x="390" y="200" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="33" value="" style="edgeStyle=none;html=1;rounded=1;fillColor=#a20025;strokeColor=#000000;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="42" target="4" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="720" y="370" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="8" value="" style="edgeStyle=none;html=1;rounded=1;fillColor=#a20025;strokeColor=#000000;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="7" target="40" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="384.6153846153845" y="180" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="7" value="Speech-to-Text" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#FFFFFF;fontColor=#000000;strokeColor=#000000;strokeWidth=2;" parent="1" vertex="1">
+                    <mxGeometry x="235" y="50" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="31" value="" style="edgeStyle=none;html=1;rounded=1;fillColor=#a20025;strokeColor=#000000;exitX=0.75;exitY=0;exitDx=0;exitDy=0;" parent="1" source="38" target="7" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="140" y="180" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="38" value="&lt;font color=&quot;#000000&quot;&gt;Retrieve Audio&lt;/font&gt;" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#FFFFFF;strokeWidth=2;strokeColor=#000000;" vertex="1" parent="1">
+                    <mxGeometry x="80" y="200" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="40" value="&lt;font color=&quot;#000000&quot;&gt;Transcript Processor&lt;/font&gt;" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#FFFFFF;strokeWidth=2;strokeColor=#000000;" vertex="1" parent="1">
+                    <mxGeometry x="235" y="140" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="80" style="edgeStyle=none;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#000000;fontColor=#000000;" edge="1" parent="1" source="41" target="42">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="41" value="&lt;font color=&quot;#000000&quot;&gt;Audio Processor&lt;/font&gt;" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#FFFFFF;strokeWidth=2;strokeColor=#000000;" vertex="1" parent="1">
+                    <mxGeometry x="235" y="230" width="120" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="42" value="&lt;font color=&quot;#000000&quot;&gt;Post&amp;nbsp; to private &lt;br&gt;RSS Feed&lt;/font&gt;" style="whiteSpace=wrap;html=1;rounded=1;fillColor=#FFFFFF;strokeWidth=2;strokeColor=#000000;" vertex="1" parent="1">
+                    <mxGeometry x="390" y="90" width="120" height="60" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
