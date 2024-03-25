@@ -4,7 +4,15 @@ import os
 import hashlib
 import pandas as pd
 
-def _feed_has_updates(feed):
+def _feed_has_updates(feed : feedparser.FeedParserDict): # I might just be able to look at feed.updated instead?
+    """Checks if the feed has been updated since the last time it was parsed.
+
+    Args:
+        feed (feedparser.FeedParserDict): The feed to check for updates.
+
+    Returns:
+        bool: True if the feed has been updated, False otherwise.
+    """
     hash_df = df = pd.read_csv('rss_data/updates.csv', index_col='podcast')
     feed_hash = hashlib.md5(str(feed.entries).encode('utf8')).hexdigest()
     pod_name = feed.feed.title
@@ -14,7 +22,15 @@ def _feed_has_updates(feed):
         hash_df.to_csv('rss_data/updates.csv')
     return updated
 
-def fetch_podcast_data(url):
+def fetch_podcast_updates(url):
+    """Fetches podcast data from the given URL and saves it to a CSV file.
+
+    Args:
+        url (str): The URL of the podcast feed.
+
+    Returns:
+        feedparser.FeedParserDict: The parsed feed data.
+    """
     fields=['title', 'link', 'link_type', 'published', 'summary']
     feed = feedparser.parse(url)
     updated = _feed_has_updates(feed)
@@ -38,8 +54,3 @@ def fetch_podcast_data(url):
                 )
             # writer.writerow(dict((field, entry.get(value, '')) for field, value in fields.items()))
     return feed
-
-phil_this_url = "https://feeds.megaphone.fm/QCD6036500916"
-
-fetch_podcast_data(phil_this_url)
-print('Done!')
