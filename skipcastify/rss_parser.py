@@ -18,6 +18,7 @@ def _feed_has_updates(feed : feedparser.FeedParserDict): # I might just be able 
     pod_name = feed.feed.title
     updated = pod_name in hash_df.index and feed_hash == hash_df.loc[pod_name, 'last_hash']
     if not updated:
+        hash_df.loc[pod_name, 'last_updated'] = feed.updated
         hash_df.loc[pod_name, 'last_hash'] = feed_hash
         hash_df.to_csv('rss_data/updates.csv')
     return updated
