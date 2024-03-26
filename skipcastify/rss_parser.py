@@ -13,12 +13,12 @@ def _feed_has_updates(feed : feedparser.FeedParserDict): # I might just be able 
     Returns:
         bool: True if the feed has been updated, False otherwise.
     """
-    hash_df = df = pd.read_csv('rss_data/updates.csv', index_col='podcast')
+    hash_df = pd.read_csv('rss_data/updates.csv', index_col='podcast')
     feed_hash = hashlib.md5(str(feed.entries).encode('utf8')).hexdigest()
     pod_name = feed.feed.title
     updated = pod_name in hash_df.index and feed_hash == hash_df.loc[pod_name, 'last_hash']
     if not updated:
-        hash_df.loc[pod_name, 'last_updated'] = feed.updated
+        hash_df.loc[pod_name, 'last_updated'] = feed.get('updated', '')
         hash_df.loc[pod_name, 'last_hash'] = feed_hash
         hash_df.to_csv('rss_data/updates.csv')
     return updated
@@ -39,7 +39,7 @@ def fetch_podcast_updates(url):
         print("No updates found for ", feed.feed.title)
         return feed
     print("Parsing RSS feed for: ", feed.feed.title)
-    with open(os.path.join('rss_data', feed.feed.title + '.csv'), mode='w', newline='', encoding='utf-8') as csv_file:
+    with open(os.path.join('rss_data', feed.feed.title.replace(':', '-') + '.csv'), mode='w', newline='', encoding='utf-8') as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=fields)
         writer.writeheader()
         # Iterate through entries and write to the CSV file
@@ -53,5 +53,4 @@ def fetch_podcast_updates(url):
                     'published': entry.published, 
                     'summary': entry.summary}
                 )
-            # writer.writerow(dict((field, entry.get(value, '')) for field, value in fields.items()))
     return feed
