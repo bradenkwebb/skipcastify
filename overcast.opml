@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<opml version="1.0">
+  <head><title>Overcast Podcast Subscriptions</title></head>
+  <body>
+    <outline text="feeds">
+
+      <outline type="rss" overcastId="86084" text="The Dialogue Journal" title="The Dialogue Journal" xmlUrl="https://www.dialoguejournal.com/feed/podcast/" htmlUrl="https://www.dialoguejournal.com/" overcastAddedDate="Tue, 03 Oct 2023 20:31:09 +0000"/>
+      <outline type="rss" overcastId="567237" text="Global News Podcast" title="Global News Podcast" xmlUrl="https://podcasts.files.bbci.co.uk/p02nq0gn.rss" htmlUrl="http://www.bbc.co.uk/programmes/p02nq0gn" overcastAddedDate="Mon, 02 Oct 2023 16:10:20 +0000"/>
+      <outline type="rss" overcastId="724408" text="Lingthusiasm - A podcast that's enthusiastic about linguistics" title="Lingthusiasm - A podcast that's enthusiastic about linguistics" xmlUrl="https://feeds.soundcloud.com/users/soundcloud:users:237055046/sounds.rss" htmlUrl="https://lingthusiasm.com/" overcastAddedDate="Mon, 02 Oct 2023 16:19:19 +0000"/>
+      <outline type="rss" overcastId="870325" text="V&#x161;esvet podcast" title="V&#x161;esvet podcast" xmlUrl="https://feed.podbean.com/vsesvet/feed.xml" htmlUrl="http://vsesvet.podbean.com/" overcastAddedDate="Mon, 02 Oct 2023 16:12:50 +0000"/>
+      <outline type="rss" overcastId="900827" text="Practical AI: Machine Learning, Data Science" title="Practical AI: Machine Learning, Data Science" xmlUrl="https://changelog.com/practicalai/feed" htmlUrl="https://changelog.com/practicalai" overcastAddedDate="Mon, 02 Oct 2023 16:19:33 +0000"/>
+      <outline type="rss" overcastId="984115" text="Philosophy Bites" title="Philosophy Bites" xmlUrl="https://philosophybites.libsyn.com/rss" htmlUrl="http://www.philosophybites.com/" overcastAddedDate="Mon, 02 Oct 2023 16:10:40 +0000"/>
+      <outline type="rss" overcastId="986888" text="The Take" title="The Take" xmlUrl="https://www.omnycontent.com/d/playlist/9c074afa-3313-47e8-b802-a9f900789975/09af2160-238f-48b2-b20b-ad4b00ebd8e7/b86dddc1-67a5-41c2-a13c-ad4b00ebd8f5/podcast.rss" htmlUrl="https://www.aljazeera.com/podcasts/the-take/" overcastAddedDate="Fri, 19 Jan 2024 16:58:52 +0000"/>
+      <outline type="rss" overcastId="1125353" text="Hermitix" title="Hermitix" xmlUrl="https://anchor.fm/s/63e62734/podcast/rss" htmlUrl="https://hermitix.net/" overcastAddedDate="Tue, 03 Oct 2023 20:31:09 +0000"/>
+      <outline type="rss" overcastId="1245113" text="Sean Carroll's Mindscape: Science, Society, Philosophy, Culture, Arts, and Ideas" title="Sean Carroll's Mindscape: Science, Society, Philosophy, Culture, Arts, and Ideas" xmlUrl="https://rss.art19.com/sean-carrolls-mindscape" htmlUrl="https://www.preposterousuniverse.com/podcast/" overcastAddedDate="Mon, 02 Oct 2023 16:14:44 +0000"/>
+      <outline type="rss" overcastId="1468593" text="Freakonomics Radio" title="Freakonomics Radio" xmlUrl="https://feeds.simplecast.com/Y8lFbOT4" htmlUrl="https://freakonomics.com/" overcastAddedDate="Tue, 03 Oct 2023 20:31:09 +0000"/>
+      <outline type="rss" overcastId="1524501" text="The Ear Training Podcast" title="The Ear Training Podcast" xmlUrl="https://feeds.buzzsprout.com/832021.rss" htmlUrl="https://www.buzzsprout.com/832021" overcastAddedDate="Mon, 02 Oct 2023 16:14:14 +0000"/>
+      <outline type="rss" overcastId="1604808" text="&#x17D;i&#x17E;ek And So On" title="&#x17D;i&#x17E;ek And So On" xmlUrl="https://anchor.fm/s/1363ff34/podcast/rss" htmlUrl="https://www.zizekandsoon.com/" overcastAddedDate="Sun, 25 Feb 2024 18:28:13 +0000"/>
+      <outline type="rss" overcastId="1618617" text="The NPR Politics Podcast" title="The NPR Politics Podcast" xmlUrl="https://feeds.npr.org/510310/podcast.xml" htmlUrl="https://www.npr.org/podcasts/510310/npr-politics-podcast" overcastAddedDate="Mon, 02 Oct 2023 16:11:36 +0000"/>
+      <outline type="rss" overcastId="1949836" text="FiveThirtyEight Politics" title="FiveThirtyEight Politics" xmlUrl="https://feeds.megaphone.fm/ESP8794877317" htmlUrl="https://fivethirtyeight.com/podcasts/" overcastAddedDate="Thu, 11 Jan 2024 01:32:44 +0000"/>
+      <outline type="rss" overcastId="1992480" text="Lex Fridman Podcast" title="Lex Fridman Podcast" xmlUrl="https://lexfridman.com/feed/podcast/" htmlUrl="https://lexfridman.com/" overcastAddedDate="Mon, 02 Oct 2023 16:16:59 +0000"/>
+      <outline type="rss" overcastId="3767357" text="Pod Save the World" title="Pod Save the World" xmlUrl="https://feeds.simplecast.com/AeLYwXNc" htmlUrl="https://crooked.com/" overcastAddedDate="Mon, 02 Oct 2023 16:12:12 +0000"/>
+      <outline type="rss" overcastId="4535911" text="Philosophize This!" title="Philosophize This!" xmlUrl="https://feeds.megaphone.fm/QCD6036500916" htmlUrl="http://www.philosophizethis.org/" overcastAddedDate="Mon, 02 Oct 2023 16:08:06 +0000"/>
+
+    </outline>
+  </body>
+</opml>
