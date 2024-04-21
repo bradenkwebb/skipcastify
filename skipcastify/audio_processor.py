@@ -21,7 +21,12 @@ f_10_min.export(f_path, format='wav')
 
 import subprocess
 # this at least runs in the background now, so I can do other things...
-process = subprocess.Popen(['buzz', 'add', '--task', 'transcribe', '--srt', '--vtt', '--txt', f_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+process = subprocess.Popen(
+    ['buzz', 'add', '--task', 'transcribe', '--srt', '--vtt', '--txt', f_path], 
+    stdout=subprocess.PIPE, 
+    stderr=subprocess.PIPE,
+    
+)
 
 # Fix this!! Very hacky
 while process.poll() is None:
@@ -35,3 +40,33 @@ while process.poll() is None:
     time.sleep(1)  # Adjust the sleep duration as needed
 
 print("Done!")
+
+
+class AudioProcessor():
+    def __init__(self, channel_url):
+        self.channel_url = channel_url
+        self.podcast = fetch_podcast_updates(channel_url)
+        self.audio = None
+
+    def play(self):
+        play(self.audio)
+
+    def process(self):
+        self.audio = AudioSegment.from_mp3('temp.mp3')
+        f_10_min = self.audio[:10 * 60 * 1000]
+        f_path = 'data/intro.wav'
+        f_10_min.export(f_path, format='wav')
+        process = subprocess.Popen(
+            ['buzz', 'add', '--task', 'transcribe', '--srt', '--vtt', '--txt', f_path], 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE,
+        )
+        while process.poll() is None:
+            if os.path.exists(f_path):
+                try:
+                    os.rename(f_path, f_path)
+                    print('Access on file "' + f_path +'" is available!')
+                except OSError as e:
+                    print('Access-error on file "' + f_path + '"! \n' + str(e))
+            time.sleep(1)  # Adjust the sleep duration as needed
+        print("Done!")

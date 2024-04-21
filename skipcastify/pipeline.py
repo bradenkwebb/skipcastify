@@ -4,10 +4,11 @@ import xml.etree.ElementTree as ET
 from rss_parser import fetch_podcast_updates
 import requests
 import sys
+from audio_processor import AudioProcessor
+from rss_parser import RSSParser
+from transcript_processor import TranscriptProcessor
 
 # phil_this_url = "https://feeds.megaphone.fm/QCD6036500916"
-
-
 
 # pod_data['published'] = pd.to_datetime(pod_data['published'])
 # title, link, publish_date = pod_data[pod_data['link_type'] == 'audio/mpeg'].sort_values(by='published', ascending=False).iloc[0][['title', 'link', 'published']]
@@ -20,12 +21,14 @@ import sys
 #     sys.exit('Error: Content is not an audio file')
 
 
-
-
 def pipeline():
     # Parse the OPML file
     tree = ET.parse('overcast.opml')
     root = tree.getroot()
+
+    rss_parser = RSSParser()
+    audio_processor = AudioProcessor()
+    transcript_processor = TranscriptProcessor()
 
     # Iterate through outline elements
     for outline in root.findall('.//outline'):
