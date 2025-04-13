@@ -1,3 +1,5 @@
 .venv/
 .vscode/
+data/
+rss_data/
 skipcastify/__pycache__/
