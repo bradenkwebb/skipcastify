@@ -11,3 +11,8 @@ dependencies = [
     "pyaml>=25.1.0",
     "python-dotenv>=1.0.1",
 ]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+]
