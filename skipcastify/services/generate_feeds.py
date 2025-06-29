@@ -37,7 +37,7 @@ class FeedManager:
                 logger.warning(f"Episode '{entry.title}' of {title} has no webview link.")
             try:
                 fe.enclosure(
-                    url=f"http://{server_ip}/podcasts/{slug}/{ep_filename}",
+                    url=f"http://{self.server_ip}/podcasts/{slug}/{ep_filename}",
                     type="audio/mpeg",
                     length=entry.enclosures[0]["length"],
                 )
