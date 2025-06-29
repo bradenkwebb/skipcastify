@@ -2,6 +2,29 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
+COLORS = {
+    'DEBUG': '\033[36m',    # Cyan
+    'INFO': '\033[32m',     # Green
+    'WARNING': '\033[33m',  # Yellow
+    'ERROR': '\033[31m',    # Red
+    'CRITICAL': '\033[41m', # Red background
+    'RESET': '\033[0m'      # Reset
+}
+
+class ColorFormatter(logging.Formatter):
+    """Custom formatter that adds colors to console output"""
+    def format(self, record):
+        # Save original levelname
+        original_levelname = record.levelname
+        # Add color to levelname
+        record.levelname = (f"{COLORS.get(record.levelname, '')}"
+                          f"{record.levelname}{COLORS['RESET']}")
+        # Get formatted string
+        result = super().format(record)
+        # Restore original levelname
+        record.levelname = original_levelname
+        return result
+
 def setup_logging(data_dir: str):
     """Configure logging with both file and console handlers"""
     log_dir = os.path.join(data_dir, 'logs')
@@ -11,7 +34,7 @@ def setup_logging(data_dir: str):
     file_formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
-    console_formatter = logging.Formatter(
+    console_formatter = ColorFormatter(
         '%(levelname)s: %(message)s'
     )
     
