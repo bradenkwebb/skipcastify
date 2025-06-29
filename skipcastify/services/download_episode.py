@@ -9,58 +9,6 @@ import logging
 from utils.utils import safe_filename, slugify
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO)
-
-load_dotenv()
-# data_dir = os.environ.get("DATA_DIR")
-# subscriptions_file = os.environ.get("SUBSCRIPTIONS")
-
-# def get_audio_url(entry):
-#     # Try standard RSS enclosure
-#     if hasattr(entry, "enclosures") and entry.enclosures:
-#         return entry.enclosures[0].get("href")
-
-#     # Fallback: Atom-style link with rel='enclosure'
-#     for link in entry.get("links", []):
-#         if link.get("rel") == "enclosure":
-#             return link.get("href")
-#     return None
-
-# with open(subscriptions_file) as f:
-#     config = yaml.safe_load(f)
-
-# for subscription_url in config["subscriptions"]:
-#     feed = feedparser.parse(subscription_url)
-#     podcast_title = feed.feed.title
-#     slug = slugify(podcast_title)
-#     podcast_dir = Path(data_dir) / "podcasts" / slug
-#     podcast_dir.mkdir(parents=True, exist_ok=True)
-
-#     logger.info(f"Checking podcast: {podcast_title}")
-
-#     for entry in feed.entries[:10]:
-#         audio_url = get_audio_url(entry)
-#         if not audio_url:
-#             logger.warning(f"No audio URL found for episode '{entry.title}'")
-#             continue
-
-#         filename = safe_filename(entry.title, slug)
-#         target_path = podcast_dir / filename
-
-#         if target_path.exists():
-#             logger.info(f"Skipping already-downloaded episode: {filename}")
-#             continue
-
-#         try:
-#             logger.info(f"Downloading: {entry.title}")
-#             with requests.get(audio_url, stream=True, timeout=10) as r:
-#                 r.raise_for_status()
-#                 with open(target_path, "wb") as f:
-#                     for chunk in r.iter_content(chunk_size=8192):
-#                         f.write(chunk)
-#             logger.info(f"Saved to: {target_path}")
-#         except Exception as e:
-#             logger.error(f"Failed to download episode '{entry.title}': {e}")
 
 # Re-write in OOP style
 class EpisodeDownloader:
