@@ -1,19 +1,17 @@
 import logging
 from dotenv import load_dotenv
 # import pandas as pd
-import xml.etree.ElementTree as ET
-import requests
 import yaml
 # from services.audio_processor import AudioProcessor
-from services.download_episode import EpisodeDownloader
-from services.generate_feeds import FeedManager
-from services.rss_parser import RSSParser
+from skipcastify.services.download_episode import EpisodeDownloader
+from skipcastify.services.generate_feeds import FeedManager
+from skipcastify.services.rss_parser import RSSParser
 import sys
 # from services.transcript_processor import TranscriptProcessor
 import os
 
 from skipcastify.services.state_manager import StateManager
-from utils.logger import setup_logging
+from skipcastify.utils.logger import setup_logging
 
 logger = logging.getLogger(__name__)
 class Pipeline:
@@ -21,7 +19,7 @@ class Pipeline:
         self.config_path = config_path
         self.data_dir = data_dir
 
-        self.feed_manager = FeedManager(os.getenv("SERVER_IP"), self.data_dir)
+        self.feed_manager = FeedManager(os.environ["SERVER_IP"], self.data_dir)
         self.downloader = EpisodeDownloader(config_path, self.data_dir)
         # self.processor = AudioProcessor()
     
@@ -87,8 +85,10 @@ def main():
     try:
         load_dotenv()
         data_dir = os.getenv("DATA_DIR")
+        if not data_dir:
+            raise EnvironmentError("DATA_DIR is not defined")
         setup_logging(data_dir)
-        pipeline = Pipeline(os.getenv("SUBSCRIPTIONS"), data_dir)
+        pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir)
         pipeline.run()
         return 0
     except Exception as e:

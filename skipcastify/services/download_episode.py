@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import logging
 
-from utils.utils import safe_filename, slugify
+from skipcastify.utils.utils import safe_filename, slugify
 
 logger = logging.getLogger(__name__)
 

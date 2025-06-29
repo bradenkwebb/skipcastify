@@ -6,7 +6,7 @@ import re
 from dotenv import load_dotenv
 import logging
 
-from utils.utils import slugify
+from skipcastify.utils.utils import slugify
 
 logger = logging.getLogger(__name__)
 

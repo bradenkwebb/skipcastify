@@ -1,3 +1,3 @@
 @echo off
-cd c:\Users\bkweb\projects\skipcastify\skipcastify
+cd c:\Users\bkweb\projects\skipcastify
 uv run pipeline.py
