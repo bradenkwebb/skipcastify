@@ -37,15 +37,16 @@ class EpisodeDownloader:
             return None
 
         slug = slugify(podcast_title)
-        podcast_dir = Path(self.data_dir) / "podcasts" / slug
+        podcast_dir = Path(self.data_dir) / "podcasts" / "raw" / slug
         podcast_dir.mkdir(parents=True, exist_ok=True)
 
         filename = safe_filename(entry.title, slug)
         target_path = podcast_dir / filename
-
-        if target_path.exists():
+        
+        processed_path = Path(self.data_dir) / "podcasts" / "processed" / slug / filename
+        if target_path.exists() or processed_path.exists():
             logger.info(f"Skipping already-downloaded episode: {filename}")
-            return target_path
+            return target_path if target_path.exists() else processed_path
 
         try:
             logger.info(f"Downloading: {entry.title}")

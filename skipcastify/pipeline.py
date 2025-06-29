@@ -12,6 +12,7 @@ import sys
 # from services.transcript_processor import TranscriptProcessor
 import os
 
+from skipcastify.services.state_manager import StateManager
 from utils.logger import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -27,13 +28,21 @@ class Pipeline:
     def run(self):
         logger.info("Starting Skipcastify pipeline...")
         try:
-
+            logger.info("Starting episode downloads")
             self.downloader.download_latest()
 
             # TODO: Process audio (placeholder for now)
+            state_manager = StateManager(self.data_dir)
+            print("Unprocessed episodes:")
+            for episode in state_manager.get_processed_episodes():
+                print(episode)
+            print("Processed episodes:")
+            for episode in state_manager.get_unprocessed_episodes():
+                print(episode)
 
             with open(self.config_path) as f:
                 config = yaml.safe_load(f)
+                logger.info("Generating RSS feeds")
                 for subscription in config['subscriptions']:
                     self.feed_manager.generate_feed(subscription)
         except Exception as e:
