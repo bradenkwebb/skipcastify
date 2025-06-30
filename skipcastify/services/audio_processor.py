@@ -1,5 +1,5 @@
-from pydub import AudioSegment
-from pydub.playback import play
+# from pydub import AudioSegment
+# from pydub.playback import play
 import sys
 from skipcastify.services.rss_parser import RSSParser
 import logging
@@ -8,11 +8,9 @@ import time
 import subprocess
 import datetime
 
-logger = logging.getLogger("pydub.converter")
-logger.setLevel(logging.WARN)
-logger.addHandler(logging.StreamHandler())
+from skipcastify.services.state_manager import StateManager
 
-channel_url = "https://lexfridman.com/feed/podcast/"
+logger = logging.getLogger(__name__)
 
 # aud = AudioSegment.from_mp3('temp.mp3')
 # # f_10_sec = aud[10 * 1000:20 * 1000]
@@ -45,14 +43,8 @@ channel_url = "https://lexfridman.com/feed/podcast/"
 
 
 class AudioProcessor:
-    def __init__(self):
-        # self.channel_url = channel_url
-        # self.podcast = fetch_podcast_updates(channel_url)
-        self.audio = None
-        self.episode_path = None
-
-    def play(self):
-        play(self.audio)
+    def __init__(self, data_dir: str) -> None:
+        self.data_dir = data_dir
 
     def save_http_bytes(self, bytes, ep_path):
         self.episode_path = ep_path
@@ -64,8 +56,8 @@ class AudioProcessor:
             f.write(bytes)
         self.load_audio(og_aud_path)
 
-    def load_audio(self, audio_path):
-        self.audio = AudioSegment.from_mp3(audio_path)
+    # def load_audio(self, audio_path):
+    #     self.audio = AudioSegment.from_mp3(audio_path)
 
     def save_audio(self, audio_save_path, format="mp3"):
         self.audio.export(audio_save_path, format=format)
@@ -96,3 +88,6 @@ class AudioProcessor:
                     print('Access-error on file "' + f_path + '"! \n' + str(e))
             time.sleep(1)  # Adjust the sleep duration as needed
         print("Done!")
+    
+    def process(self, episode_file_path: str, state_manager: StateManager):
+        pass
