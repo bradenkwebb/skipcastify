@@ -61,7 +61,7 @@ class AudioProcessor:
         return transcripts_dir
 
     def _export_audio_to_wav(self, audio: AudioSegment, output_path: str) -> None:
-        """Export audio to WAV format for Buzz transcription."""
+        """Export audio to WAV format for transcription."""
         try:
             audio.export(output_path, format="wav")
             logger.info(f"Exported audio to WAV: {output_path}")
