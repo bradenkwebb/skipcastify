@@ -1,4 +1,4 @@
-# from pydub import AudioSegment
+from pydub import AudioSegment
 # from pydub.playback import play
 import sys
 from skipcastify.services.rss_parser import RSSParser
@@ -41,16 +41,41 @@ logger = logging.getLogger(__name__)
 
 # print("Done!")
 
+# Considerations for refactoring:
+# - Avoid loading large audio files fully into memory unless necessary.
+# - Use lazy loading or chunked processing for long files.
+# - Store only metadata/state in the class, not the full audio unless needed.
+# - Use context managers or generators for chunked processing.
+# - Track state (e.g., file path, duration, processed segments) as class attributes.
+# - Only load audio into memory for short operations, then release.
 
+# Example: Instead of self.audio = AudioSegment.from_mp3(...), store self.audio_path and load as needed.
+# For chunked processing, use AudioSegment's slicing or ffmpeg subprocesses for large files.
 class AudioProcessor:
     def __init__(self, data_dir: str) -> None:
         self.data_dir = data_dir
+
+    def load_and_validate_audio_file(self, file_path: str) -> AudioSegment:
+        """
+        Validates that the file exists and is a readable audio file.
+        Loads and returns the audio object, or raises an exception if invalid.
+        """
+        if not os.path.isfile(file_path):
+            logger.error(f"File does not exist: {file_path}")
+            raise FileNotFoundError(f"Audio file not found: {file_path}")
+        try:
+            audio = AudioSegment.from_file(file_path)
+            logger.info(f"Validated audio file: {file_path} (duration: {audio.duration_seconds:.2f}s)")
+            return audio
+        except Exception as e:
+            logger.error(f"Invalid audio file: {file_path} ({e})")
+            raise ValueError(f"Invalid audio file: {file_path}") from e
 
     def save_http_bytes(self, bytes, ep_path):
         self.episode_path = ep_path
         og_aud_path = os.path.join(ep_path, "original.mp3")
         if not os.path.exists(ep_path):
-            logger.warn(f"Creating directory {ep_path}")
+            logger.warning(f"Creating directory {ep_path}")
             os.makedirs(ep_path)
         with open(og_aud_path, "wb") as f:
             f.write(bytes)
@@ -90,4 +115,17 @@ class AudioProcessor:
         print("Done!")
     
     def process(self, episode_file_path: str, state_manager: StateManager):
-        pass
+        """
+        Main entry point: validate, transcribe, and (future) classify/cut/stitch audio.
+        """
+        logger.info(f"Processing episode: {episode_file_path}")
+        try:
+            audio = self.load_and_validate_audio_file(episode_file_path)
+            # TODO: Load audio, transcribe, classify, cut/stitch, save output
+            logger.info(f"Stub: would transcribe {episode_file_path} here.")
+            # transcript = self.transcribe(audio)
+            # intro, ads, content = self.partition(transcript)
+            # state_manager.save_processed_audio(audio, episode_file_path)
+        except (FileNotFoundError, ValueError) as e:
+            logger.error(f"Skipping invalid audio file: {episode_file_path} - {e}")
+            return
