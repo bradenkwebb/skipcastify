@@ -9,8 +9,10 @@ dependencies = [
     "feedparser>=6.0.11",
     "flask>=3.0.3",
     "pyaml>=25.1.0",
+    "pydub>=0.25.1",
     "python-dotenv>=1.0.1",
     "requests>=2.32.4",
+    "openai-whisper>=20231117",
 ]
 
 [dependency-groups]
