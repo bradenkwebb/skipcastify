@@ -21,7 +21,6 @@ class Segment:
     start: int  # milliseconds
     end: int    # milliseconds
     text: str
-    translation: str = ""
 
 class AudioProcessor:
     def __init__(self, data_dir: str) -> None:
