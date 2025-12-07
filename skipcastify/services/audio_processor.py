@@ -85,10 +85,6 @@ class AudioProcessor:
             
         Returns:
             List of Segment objects with transcription and timing
-            
-        Raises:
-            FileNotFoundError: If audio file doesn't exist
-            Exception: If transcription fails
         """
         if not os.path.isfile(audio_path):
             logger.error(f"Audio file not found for transcription: {audio_path}")
@@ -97,31 +93,26 @@ class AudioProcessor:
         logger.info(f"Starting Whisper transcription: {audio_path}")
         logger.info(f"Model size: {model_size}")
         
-        try:
-            # Load Whisper model (downloads on first use)
-            logger.info(f"Loading Whisper model ({model_size})...")
-            model = whisper.load_model(model_size)
-            
-            # Transcribe audio
-            logger.info("Transcribing audio...")
-            result = model.transcribe(audio_path, verbose=False, language="en")
-            
-            # Convert Whisper segments to our Segment format
-            segments = []
-            for seg in result["segments"]:
-                segment = Segment(
-                    start=int(seg["start"] * 1000),  # Convert seconds to ms
-                    end=int(seg["end"] * 1000),      # Convert seconds to ms
-                    text=seg["text"].strip()
-                )
-                segments.append(segment)
-            
-            logger.info(f"Transcription complete: {len(segments)} segments")
-            return segments
-            
-        except Exception as e:
-            logger.error(f"Transcription failed: {e}")
-            raise
+        # Load Whisper model (downloads on first use)
+        logger.info(f"Loading Whisper model ({model_size})...")
+        model = whisper.load_model(model_size)
+        
+        # Transcribe audio
+        logger.info("Transcribing audio...")
+        result = model.transcribe(audio_path, verbose=False, language="en")
+        
+        # Convert Whisper segments to our Segment format
+        segments = []
+        for seg in result["segments"]:
+            segment = Segment(
+                start=int(seg["start"] * 1000),  # Convert seconds to ms
+                end=int(seg["end"] * 1000),      # Convert seconds to ms
+                text=seg["text"].strip()
+            )
+            segments.append(segment)
+        
+        logger.info(f"Transcription complete: {len(segments)} segments")
+        return segments
     
     def cut_and_stitch_audio(
         self, 
@@ -201,32 +192,25 @@ class AudioProcessor:
         logger.info(f"Processing episode: {episode_file_path}")
         
         try:
-            # Validate and load audio
             audio = self.load_and_validate_audio_file(episode_file_path)
             
-            # Get working and transcript directories
             working_dir = self._get_episode_working_dir(episode_file_path)
             transcripts_dir = self._get_episode_transcripts_dir(episode_file_path)
             
-            # Export audio to WAV for Whisper (handles various input formats reliably)
             wav_path = os.path.join(working_dir, "audio_for_transcription.wav")
             self._export_audio_to_wav(audio, wav_path)
             
-            # Transcribe with Whisper
             logger.info("Starting transcription with Whisper...")
             segments = self.transcribe_with_whisper(wav_path, model_size="base")
             logger.info(f"Transcribed {len(segments)} segments")
             
-            # Classify segments
             logger.info("Classifying segments...")
             classifier = SegmentClassifier(use_ollama=True)
             classified_segments = classifier.classify_segments(segments)
             
-            # Aggregate segments
             logger.info("Aggregating segments...")
             aggregated_segments = classifier.aggregate_segments(classified_segments)
             
-            # Log segment breakdown
             segment_counts = {}
             for agg_seg in aggregated_segments:
                 content_type = agg_seg.content_type.value
@@ -234,11 +218,9 @@ class AudioProcessor:
             
             logger.info(f"Segment breakdown: {segment_counts}")
             
-            # Cut and stitch audio
             logger.info("Cutting and stitching audio...")
             processed_audio = self.cut_and_stitch_audio(audio, aggregated_segments)
             
-            # Save processed audio
             episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
             processed_audio_path = os.path.join(
                 self.data_dir, 

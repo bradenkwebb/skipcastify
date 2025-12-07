@@ -127,9 +127,6 @@ class SegmentClassifier:
     def _classify_single_segment(self, text: str) -> tuple[ContentType, float]:
         """
         Classify a single segment text.
-        
-        Returns:
-            Tuple of (ContentType, confidence_score)
         """
         text_lower = text.lower()
         
