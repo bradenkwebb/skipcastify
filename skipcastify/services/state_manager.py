@@ -2,6 +2,8 @@ import logging
 from pathlib import Path
 from typing import List
 
+from skipcastify.models.content import AudioSegment
+
 
 logger = logging.getLogger(__name__)
 
@@ -32,3 +34,9 @@ class StateManager:
                 for episode in podcast_dir.glob("*.mp3"):
                     episodes.append(episode)
         return episodes
+
+    def save_processed_audio(self, audio: AudioSegment, raw_episode: str) -> None:
+        processed_episode = self.processed_dir / Path(raw_episode).name
+        audio.export(processed_episode, format="mp3")
+        logger.info(f"Saved processed audio to {processed_episode}")
+        return

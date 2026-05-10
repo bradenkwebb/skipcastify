@@ -19,7 +19,7 @@ class EpisodeDownloader:
             self.subscriptions = yaml.safe_load(f)
     
     @staticmethod
-    def get_audio_url(entry: dict):
+    def get_audio_url(entry):
         # Try standard RSS enclosure
         if hasattr(entry, "enclosures") and entry.enclosures:
             return entry.enclosures[0].get("href")
@@ -30,7 +30,7 @@ class EpisodeDownloader:
                 return link.get("href")
         raise ValueError("No audio URL found for the episode")
     
-    def download_episode(self, entry: dict, podcast_title: str):
+    def download_episode(self, entry, podcast_title: str):
         audio_url = self.get_audio_url(entry)
         if not audio_url:
             logger.warning(f"No audio URL found for episode '{entry.title}'")
