@@ -2,14 +2,17 @@
 
 import json
 import logging
+import os
 import re
 import requests
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
 
-def call_ollama_generate(prompt: str, model: str = "gemma3:1b", timeout: int = 300) -> str:
+
+def call_ollama_generate(prompt: str, model: str = DEFAULT_OLLAMA_MODEL, timeout: int = 300) -> str:
     """Call local Ollama's generate endpoint and return raw text.
 
     Expects Ollama to be available at http://localhost:11434/api/generate

@@ -1,4 +1,5 @@
 import logging
+import socket
 from dotenv import load_dotenv
 import yaml
 from skipcastify.services.audio_processor import AudioProcessor
@@ -16,7 +17,9 @@ class Pipeline:
         self.config_path = config_path
         self.data_dir = data_dir
 
-        self.feed_manager = FeedManager(os.environ["SERVER_IP"], self.data_dir)
+        server_base_url = os.environ.get("SERVER_BASE_URL") or f"http://{socket.getfqdn()}:5000"
+        episode_token = os.environ.get("EPISODE_TOKEN", "")
+        self.feed_manager = FeedManager(server_base_url, self.data_dir, episode_token=episode_token)
         self.downloader = EpisodeDownloader(config_path, self.data_dir)
         self.processor = AudioProcessor(self.data_dir)
     

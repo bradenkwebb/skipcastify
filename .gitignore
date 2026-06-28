@@ -4,3 +4,4 @@ data/
 rss_data/
 skipcastify/**.cpython-310.pyc**/
 **__pycache__**/
+.env
