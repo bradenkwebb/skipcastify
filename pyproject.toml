@@ -19,6 +19,7 @@ dependencies = [
     "requests>=2.32.4",
     "openai-whisper>=20231117",
     "pillow>=10.4.0",
+    "mutagen>=1.47.0",
 ]
 
 [dependency-groups]
