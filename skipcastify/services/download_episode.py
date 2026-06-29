@@ -110,10 +110,32 @@ class EpisodeDownloader:
                 logger.info(f"New feed '{podcast_title}': marked {len(feed_seen)} existing episodes as seen, will download future episodes only")
                 continue
 
-            new_entries = [
+            unseen = [
                 entry for entry in feed.entries
                 if self._entry_id(entry) not in feed_seen
-            ][:self.episode_limit]
+            ]
+
+            # Guard against feed-platform migrations (e.g. Art19 → Libsyn) that
+            # rewrite every <guid>. When that happens the entire backlog suddenly
+            # looks "new" and we would re-download it a few episodes per run. If a
+            # large fraction of the feed diverges at once, treat it as an ID-scheme
+            # change and re-baseline the seen set instead of downloading everything.
+            if (feed_seen and len(unseen) > self.episode_limit
+                    and len(unseen) >= 0.5 * len(feed.entries)):
+                logger.warning(
+                    f"{podcast_title}: {len(unseen)}/{len(feed.entries)} entries appear new — "
+                    "likely a GUID change from a feed migration. Re-baselining seen set, "
+                    "downloading nothing this run."
+                )
+                for entry in feed.entries:
+                    try:
+                        feed_seen.add(self._entry_id(entry))
+                    except Exception as e:
+                        logger.warning(f"Could not derive ID for entry in '{podcast_title}': {e}")
+                seen[subscription_url] = feed_seen
+                continue
+
+            new_entries = unseen[:self.episode_limit]
 
             for entry in new_entries:
                 result = self.download_episode(entry, podcast_title)
