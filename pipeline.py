@@ -1,7 +1,7 @@
 import logging
 import socket
 from dotenv import load_dotenv
-import yaml
+from urllib.parse import urlparse
 from skipcastify.services.audio_processor import AudioProcessor
 from skipcastify.services.download_episode import EpisodeDownloader
 from skipcastify.services.generate_feeds import FeedManager
@@ -12,17 +12,20 @@ from skipcastify.services.state_manager import StateManager
 from skipcastify.utils.logger import setup_logging
 
 logger = logging.getLogger(__name__)
+
+
 class Pipeline:
     def __init__(self, config_path: str, data_dir: str) -> None:
-        self.config_path = config_path
         self.data_dir = data_dir
 
         server_base_url = os.environ.get("SERVER_BASE_URL") or f"http://{socket.getfqdn()}:5000"
         episode_token = os.environ.get("EPISODE_TOKEN", "")
+        exclude_host = urlparse(server_base_url).hostname
+
         self.feed_manager = FeedManager(server_base_url, self.data_dir, episode_token)
-        self.downloader = EpisodeDownloader(config_path, self.data_dir)
+        self.downloader = EpisodeDownloader(config_path, self.data_dir, exclude_host)
         self.processor = AudioProcessor(self.data_dir)
-    
+
     def run(self):
         logger.info("Starting Skipcastify pipeline...")
         try:
@@ -35,11 +38,9 @@ class Pipeline:
             for episode_fpath in state_manager.get_unprocessed_episodes():
                 self.processor.process(episode_fpath, state_manager)
 
-            with open(self.config_path) as f:
-                config = yaml.safe_load(f)
-                logger.info("Generating RSS feeds")
-                for subscription in config['subscriptions']:
-                    self.feed_manager.generate_feed(subscription)
+            logger.info("Generating RSS feeds")
+            for url in self.downloader.subscription_urls:
+                self.feed_manager.generate_feed(url)
         except Exception as e:
             logger.error(f"Pipeline failed: {e}", exc_info=True)
             raise

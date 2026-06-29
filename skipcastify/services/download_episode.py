@@ -1,22 +1,18 @@
 import os
-import yaml
 import feedparser
 import requests
-from dotenv import load_dotenv
 from pathlib import Path
 import logging
 
-from skipcastify.utils.utils import safe_filename, slugify
+from skipcastify.utils.utils import safe_filename, slugify, load_subscriptions
 
 logger = logging.getLogger(__name__)
 
-# Re-write in OOP style
+
 class EpisodeDownloader:
-    def __init__(self, config_path: str, data_dir: str):
+    def __init__(self, config_path: str, data_dir: str, exclude_host: str = None):
         self.data_dir = data_dir
-        self.config_path = config_path
-        with open(config_path) as f:
-            self.subscriptions = yaml.safe_load(f)
+        self.subscription_urls = load_subscriptions(config_path, exclude_host)
     
     @staticmethod
     def get_audio_url(entry):
@@ -62,7 +58,7 @@ class EpisodeDownloader:
             return None
 
     def download_latest(self):
-        for subscription_url in self.subscriptions["subscriptions"]:
+        for subscription_url in self.subscription_urls:
             feed = feedparser.parse(subscription_url)
             podcast_title = feed.feed.title
             logger.info(f"Checking podcast: {podcast_title}")

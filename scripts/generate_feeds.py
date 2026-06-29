@@ -4,18 +4,15 @@
 Usage:
     uv run python scripts/generate_feeds.py
 """
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 from dotenv import load_dotenv
 load_dotenv()
 
 import os
-import yaml
-from skipcastify.services.generate_feeds import FeedManager
+import sys
 import logging
+from urllib.parse import urlparse
+from skipcastify.services.generate_feeds import FeedManager
+from skipcastify.utils.utils import load_subscriptions
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -33,11 +30,11 @@ if not subscriptions_path:
     print("ERROR: SUBSCRIPTIONS not set in .env")
     sys.exit(1)
 
-with open(subscriptions_path) as f:
-    config = yaml.safe_load(f)
+exclude_host = urlparse(server_base_url).hostname
+urls = load_subscriptions(subscriptions_path, exclude_host)
 
 episode_token = os.environ.get("EPISODE_TOKEN", "")
 fm = FeedManager(server_base_url, data_dir, episode_token)
-for url in config['subscriptions']:
+for url in urls:
     path = fm.generate_feed(url)
     print(f"Generated: {path}")

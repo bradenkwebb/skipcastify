@@ -1,4 +1,32 @@
 import re
+import xml.etree.ElementTree as ET
+import yaml
+from urllib.parse import urlparse
+
+
+def load_subscriptions(path: str, exclude_host: str = None) -> list:
+    """Load feed URLs from a YAML subscriptions file or an Overcast OPML export.
+
+    When exclude_host is provided (the hostname of this server), feeds pointing
+    at our own server are filtered out so we don't re-process our own output.
+    """
+    if path.lower().endswith('.opml'):
+        tree = ET.parse(path)
+        urls = []
+        for outline in tree.getroot().iter('outline'):
+            if outline.get('type') != 'rss':
+                continue
+            url = outline.get('xmlUrl', '').strip()
+            if not url:
+                continue
+            if exclude_host and urlparse(url).hostname == exclude_host:
+                continue
+            urls.append(url)
+        return urls
+    else:
+        with open(path) as f:
+            return yaml.safe_load(f)['subscriptions']
+
 
 def slugify(title: str) -> str:
     """
