@@ -1,9 +1,5 @@
 import pytest
-import sys
 import os
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # Set env vars before importing server, which reads them at module level
 os.environ.update({

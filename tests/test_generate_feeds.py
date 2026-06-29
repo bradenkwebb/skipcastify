@@ -4,11 +4,8 @@ All tests use mocked feedparser data — no network calls.
 """
 
 import pytest
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from skipcastify.services.generate_feeds import FeedManager
 
