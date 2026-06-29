@@ -256,12 +256,14 @@ class AudioProcessor:
             logger.info("Cutting and stitching audio...")
             processed_audio = self.cut_and_stitch_audio(audio, aggregated_segments)
             
-            episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
+            episode_filename = os.path.basename(episode_file_path)
+            podcast_slug = os.path.basename(os.path.dirname(episode_file_path))
             processed_audio_path = os.path.join(
-                self.data_dir, 
-                "podcasts", 
-                "processed", 
-                f"{episode_name}_processed.mp3"
+                self.data_dir,
+                "podcasts",
+                "processed",
+                podcast_slug,
+                episode_filename,
             )
             os.makedirs(os.path.dirname(processed_audio_path), exist_ok=True)
             
