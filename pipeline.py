@@ -1,7 +1,9 @@
+import fcntl
 import logging
 import socket
 import sys
 import os
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 from dotenv import load_dotenv
@@ -46,23 +48,15 @@ class Pipeline:
         """Storage-based retention: delete oldest audio files when usage exceeds
         the high-water mark, stopping once we're back under the low-water mark.
 
-        Deletion order:
-          1. Raw files that already have a processed counterpart (always safe to drop)
-          2. Oldest raw files (by mtime) under storage pressure
+        Deletion order (only when over the high-water mark):
+          1. Raw files that already have a processed counterpart (safe to drop first)
+          2. Oldest remaining raw files by mtime
           3. Oldest processed files only as a last resort
 
         Only .mp3 files are ever deleted — transcripts and other metadata are kept.
         """
         raw_base = Path(self.data_dir) / 'podcasts' / 'raw'
         processed_base = Path(self.data_dir) / 'podcasts' / 'processed'
-
-        # Step 1: always drop raw files that have a processed counterpart.
-        if raw_base.exists():
-            for raw_file in raw_base.rglob('*.mp3'):
-                counterpart = processed_base / raw_file.parent.name / raw_file.name
-                if counterpart.exists():
-                    raw_file.unlink()
-                    logger.info(f"Deleted raw (processed exists): {raw_file.name}")
 
         total = self._audio_size()
         if total <= self.storage_high_water:
@@ -71,8 +65,20 @@ class Pipeline:
 
         logger.info(f"Audio storage at {total / 1024**3:.1f}GB, trimming to {self.storage_low_water / 1024**3:.0f}GB")
 
-        # Step 2: delete oldest raw files until under low-water mark.
+        # Step 1: drop raw files that have a processed counterpart (cheapest to remove).
         if raw_base.exists():
+            for raw_file in sorted(raw_base.rglob('*.mp3'), key=lambda f: f.stat().st_mtime):
+                if total <= self.storage_low_water:
+                    break
+                counterpart = processed_base / raw_file.parent.name / raw_file.name
+                if counterpart.exists():
+                    size = raw_file.stat().st_size
+                    raw_file.unlink()
+                    total -= size
+                    logger.info(f"Deleted raw (processed exists): {raw_file.name} ({size / 1024**2:.1f}MB)")
+
+        # Step 2: delete oldest remaining raw files.
+        if total > self.storage_low_water and raw_base.exists():
             for f in sorted(raw_base.rglob('*.mp3'), key=lambda f: f.stat().st_mtime):
                 if total <= self.storage_low_water:
                     break
@@ -99,12 +105,18 @@ class Pipeline:
 
             if self.processing_enabled:
                 state_manager = StateManager(self.data_dir)
+                cooldown_s = int(os.environ.get("EPISODE_COOLDOWN_S", "120"))
                 logger.info("Processing episodes")
+                first = True
                 for episode_fpath in state_manager.get_unprocessed_episodes():
                     slug = Path(episode_fpath).parent.name
                     if self.process_slugs and slug not in self.process_slugs:
                         logger.debug(f"Skipping {slug} (not in PROCESS_SLUGS)")
                         continue
+                    if not first and cooldown_s > 0:
+                        logger.info(f"Cooling down {cooldown_s}s before next episode")
+                        time.sleep(cooldown_s)
+                    first = False
                     self.processor.process(episode_fpath, state_manager)
             else:
                 logger.info("Audio processing disabled (ENABLE_PROCESSING=false)")
@@ -129,8 +141,22 @@ def main():
         if not data_dir:
             raise EnvironmentError("DATA_DIR is not defined")
         setup_logging(data_dir)
-        pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir)
-        pipeline.run()
+
+        lock_path = Path(data_dir) / "pipeline.lock"
+        lock_file = open(lock_path, "w")
+        try:
+            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            logging.info("Another pipeline instance is already running — exiting.")
+            return 0
+
+        try:
+            pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir)
+            pipeline.run()
+        finally:
+            fcntl.flock(lock_file, fcntl.LOCK_UN)
+            lock_file.close()
+
         return 0
     except Exception as e:
         logging.error(f"Pipeline execution failed: {e}", exc_info=True)
