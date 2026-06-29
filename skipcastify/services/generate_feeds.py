@@ -92,6 +92,13 @@ class FeedManager:
             if hasattr(entry, "link"):
                 fe.link(href=entry.link)
 
+            # Pass through per-episode artwork (e.g. BBC Global News). We use the
+            # original image URL directly rather than re-framing each one, which
+            # would mean downloading every episode image on every feed-gen cycle.
+            ep_image = entry.get('image', {}).get('href')
+            if ep_image:
+                fe.podcast.itunes_image(ep_image)
+
             ep_filename = safe_filename(entry.title, slug)
             local_path = self._local_episode_path(slug, ep_filename)
 
