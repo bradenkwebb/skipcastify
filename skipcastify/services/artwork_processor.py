@@ -1,4 +1,4 @@
-"""Download and process podcast artwork to add a green gradient frame."""
+"""Download and process podcast artwork to add a branded gradient frame."""
 
 import hashlib
 import logging
@@ -12,13 +12,57 @@ from PIL import Image, ImageDraw
 logger = logging.getLogger(__name__)
 
 _GREEN = (39, 174, 96)
+_WHITE = (245, 245, 245)
+
+# Fraction of the artwork's edge band that must sit close to the green frame
+# colour before we judge the green frame too low-contrast and fall back to white.
+_LOW_CONTRAST_NEAR = 70.0   # RGB distance counted as "close to" the frame colour
+_LOW_CONTRAST_FRACTION = 0.35
+
+
+def _color_distance(c1, c2) -> float:
+    return sum((a - b) ** 2 for a, b in zip(c1, c2)) ** 0.5
+
+
+def _edge_blend_fraction(img: Image.Image, border: int, ref) -> float:
+    """Fraction of perimeter-band pixels that are within _LOW_CONTRAST_NEAR of ref.
+
+    A high value means the artwork's edge is the same colour as the frame, so the
+    frame would blend in (e.g. a green cover under the green frame).
+    """
+    rgb = img.convert("RGB")
+    w, h = rgb.size
+    px = rgb.load()
+    step = max(1, min(w, h) // 200)  # subsample for speed on large art
+    near = total = 0
+    for x in range(0, w, step):
+        for y in list(range(0, border, step)) + list(range(h - border, h, step)):
+            total += 1
+            if _color_distance(px[x, y], ref) <= _LOW_CONTRAST_NEAR:
+                near += 1
+    for y in range(0, h, step):
+        for x in list(range(0, border, step)) + list(range(w - border, w, step)):
+            total += 1
+            if _color_distance(px[x, y], ref) <= _LOW_CONTRAST_NEAR:
+                near += 1
+    return near / total if total else 0.0
+
+
+def _frame_color(img: Image.Image, border: int):
+    """Use the green brand frame unless it would blend into the artwork's edge,
+    in which case fall back to white (e.g. Lingthusiasm's green cover)."""
+    blend = _edge_blend_fraction(img, border, _GREEN)
+    if blend >= _LOW_CONTRAST_FRACTION:
+        logger.info("Green frame low-contrast (%.0f%% of edge near green) — using white frame", blend * 100)
+        return _WHITE
+    return _GREEN
 
 
 def _add_frame(img: Image.Image, border_fraction: float = 0.06) -> Image.Image:
     img = img.convert("RGBA")
     w, h = img.size
     border = max(int(min(w, h) * border_fraction), 12)
-    r, g, b = _GREEN
+    r, g, b = _frame_color(img, border)
 
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
