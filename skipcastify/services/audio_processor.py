@@ -26,6 +26,22 @@ from skipcastify.utils.thermal import wait_for_cool_cpu
 logger = logging.getLogger(__name__)
 
 
+def _source_bitrate(path: str, default: str = "128k") -> str:
+    """Return the source MP3's bitrate as a pydub export string (e.g. '128k').
+
+    Re-encoding the processed output at a higher bitrate than the source only
+    inflates file size with no quality gain, so we match the original.
+    """
+    try:
+        from mutagen.mp3 import MP3
+        bps = MP3(path).info.bitrate
+        if bps:
+            return f"{round(bps / 1000)}k"
+    except Exception as e:
+        logger.debug("Could not read source bitrate from %s: %s", path, e)
+    return default
+
+
 @dataclass
 class Segment:
     """Represents a transcript segment with timing and text."""
@@ -315,7 +331,7 @@ class AudioProcessor:
             os.makedirs(os.path.dirname(processed_audio_path), exist_ok=True)
             
             logger.info(f"Saving processed audio to: {processed_audio_path}")
-            processed_audio.export(processed_audio_path, format="mp3", bitrate="192k")
+            processed_audio.export(processed_audio_path, format="mp3", bitrate=_source_bitrate(episode_file_path))
             logger.info(f"Successfully saved processed audio")
 
             original_s = audio.duration_seconds
@@ -745,7 +761,7 @@ class AudioProcessor:
         preview_audio = self.cut_and_stitch_audio(audio, aggregated_segments)
 
         os.makedirs(os.path.dirname(preview_output_path), exist_ok=True)
-        preview_audio.export(preview_output_path, format="mp3", bitrate="192k")
+        preview_audio.export(preview_output_path, format="mp3", bitrate=_source_bitrate(episode_file_path))
         logger.info(f"Saved preview audio to: {preview_output_path}")
 
         transcript_path = preview_output_path.replace('.mp3', '_transcript.txt')
@@ -854,7 +870,7 @@ class AudioProcessor:
         preview_audio = self.cut_and_stitch_audio(audio, aggregated_segments)
 
         os.makedirs(os.path.dirname(preview_output_path), exist_ok=True)
-        preview_audio.export(preview_output_path, format="mp3", bitrate="192k")
+        preview_audio.export(preview_output_path, format="mp3", bitrate=_source_bitrate(episode_file_path))
         logger.info(f"Saved preview audio to: {preview_output_path}")
 
         transcript_path = preview_output_path.replace('.mp3', '_transcript.txt')
