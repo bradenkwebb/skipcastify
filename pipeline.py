@@ -22,32 +22,71 @@ class Pipeline:
         server_base_url = os.environ.get("SERVER_BASE_URL") or f"http://{socket.getfqdn()}:5000"
         episode_token = os.environ.get("EPISODE_TOKEN", "")
         episode_limit = int(os.environ.get("EPISODE_LIMIT", "5"))
-        self.retention_count = int(os.environ.get("EPISODE_RETENTION", "20"))
+        self.storage_high_water = int(os.environ.get("STORAGE_HIGH_WATER_GB", "75")) * 1024 ** 3
+        self.storage_low_water = int(os.environ.get("STORAGE_LOW_WATER_GB", "50")) * 1024 ** 3
 
         exclude_host = urlparse(server_base_url).hostname
         self.feed_manager = FeedManager(server_base_url, data_dir, episode_token)
         self.downloader = EpisodeDownloader(config_path, data_dir, exclude_host, episode_limit)
         self.processor = AudioProcessor(data_dir)
 
+    def _audio_size(self) -> int:
+        """Total bytes used by raw and processed audio files (.mp3 only)."""
+        total = 0
+        for subdir in ('raw', 'processed'):
+            base = Path(self.data_dir) / 'podcasts' / subdir
+            if base.exists():
+                total += sum(f.stat().st_size for f in base.rglob('*.mp3'))
+        return total
+
     def _cleanup_old_episodes(self):
-        """Delete raw files that have a processed counterpart, and trim oldest raw
-        files beyond self.retention_count per podcast. Currently a no-op in
-        pass-through mode since no processed files exist yet."""
+        """Storage-based retention: delete oldest audio files when usage exceeds
+        the high-water mark, stopping once we're back under the low-water mark.
+
+        Deletion order:
+          1. Raw files that already have a processed counterpart (always safe to drop)
+          2. Oldest raw files (by mtime) under storage pressure
+          3. Oldest processed files only as a last resort
+
+        Only .mp3 files are ever deleted — transcripts and other metadata are kept.
+        """
         raw_base = Path(self.data_dir) / 'podcasts' / 'raw'
-        if not raw_base.exists():
-            return
-        for podcast_dir in raw_base.iterdir():
-            if not podcast_dir.is_dir():
-                continue
-            files = sorted(podcast_dir.glob('*.mp3'), key=lambda f: f.stat().st_mtime, reverse=True)
-            for i, raw_file in enumerate(files):
-                processed = Path(self.data_dir) / 'podcasts' / 'processed' / podcast_dir.name / raw_file.name
-                if processed.exists():
+        processed_base = Path(self.data_dir) / 'podcasts' / 'processed'
+
+        # Step 1: always drop raw files that have a processed counterpart.
+        if raw_base.exists():
+            for raw_file in raw_base.rglob('*.mp3'):
+                counterpart = processed_base / raw_file.parent.name / raw_file.name
+                if counterpart.exists():
                     raw_file.unlink()
                     logger.info(f"Deleted raw (processed exists): {raw_file.name}")
-                elif i >= self.retention_count:
-                    raw_file.unlink()
-                    logger.info(f"Deleted raw (beyond retention limit): {raw_file.name}")
+
+        total = self._audio_size()
+        if total <= self.storage_high_water:
+            logger.debug(f"Audio storage at {total / 1024**3:.1f}GB, under high-water mark")
+            return
+
+        logger.info(f"Audio storage at {total / 1024**3:.1f}GB, trimming to {self.storage_low_water / 1024**3:.0f}GB")
+
+        # Step 2: delete oldest raw files until under low-water mark.
+        if raw_base.exists():
+            for f in sorted(raw_base.rglob('*.mp3'), key=lambda f: f.stat().st_mtime):
+                if total <= self.storage_low_water:
+                    break
+                size = f.stat().st_size
+                f.unlink()
+                total -= size
+                logger.info(f"Deleted raw {f.name} ({size / 1024**2:.1f}MB)")
+
+        # Step 3: delete oldest processed files only if still over the low-water mark.
+        if total > self.storage_low_water and processed_base.exists():
+            for f in sorted(processed_base.rglob('*.mp3'), key=lambda f: f.stat().st_mtime):
+                if total <= self.storage_low_water:
+                    break
+                size = f.stat().st_size
+                f.unlink()
+                total -= size
+                logger.info(f"Deleted processed {f.name} ({size / 1024**2:.1f}MB)")
 
     def run(self):
         logger.info("Starting Skipcastify pipeline...")
