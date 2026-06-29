@@ -43,7 +43,7 @@ class FeedManager:
         fg.load_extension('podcast')
         fg.title(title)
         fg.link(href=subscription_url)
-        fg.description(feed.feed.get("description", ""))
+        fg.description(feed.feed.get("description") or feed.feed.get("subtitle") or title)
 
         image_url = feed.feed.get('image', {}).get('href')
         if image_url:
