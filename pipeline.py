@@ -109,14 +109,14 @@ class Pipeline:
             else:
                 logger.info("Audio processing disabled (ENABLE_PROCESSING=false)")
 
+            self._cleanup_old_episodes()
+
             logger.info("Generating RSS feeds")
             for url in self.downloader.subscription_urls:
                 try:
                     self.feed_manager.generate_feed(url)
                 except Exception as e:
                     logger.warning(f"Skipping feed generation for {url}: {e}")
-
-            self._cleanup_old_episodes()
         except Exception as e:
             logger.error(f"Pipeline failed: {e}", exc_info=True)
             raise

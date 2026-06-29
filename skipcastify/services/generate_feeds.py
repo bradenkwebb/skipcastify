@@ -58,6 +58,27 @@ class FeedManager:
                 fg.image(url=image_url, title=title, link=subscription_url)
                 fg.podcast.itunes_image(image_url)
 
+        author = (feed.feed.get('author_detail', {}).get('name')
+                  or feed.feed.get('author')
+                  or feed.feed.get('itunes_author'))
+        if author:
+            fg.podcast.itunes_author(author)
+
+        if feed.feed.get('language'):
+            fg.language(feed.feed.language)
+
+        explicit_raw = feed.feed.get('itunes_explicit')
+        if explicit_raw in (True, 'yes', 'true', 'explicit'):
+            fg.podcast.itunes_explicit('yes')
+        elif explicit_raw in (False, 'no', 'false', 'clean'):
+            fg.podcast.itunes_explicit('no')
+
+        tags = feed.feed.get('tags', [])
+        if tags:
+            primary = tags[0].get('term', '')
+            if primary:
+                fg.podcast.itunes_category(primary)
+
         for entry in feed.entries:
             fe = fg.add_entry()
             fe.title(entry.title)
@@ -97,6 +118,21 @@ class FeedManager:
                 duration = entry.get('itunes_duration')
             if duration:
                 fe.podcast.itunes_duration(duration)
+
+            ep_author = entry.get('author')
+            if ep_author:
+                fe.podcast.itunes_author(ep_author)
+
+            if entry.get('itunes_episode'):
+                fe.podcast.itunes_episode(str(entry.itunes_episode))
+            if entry.get('itunes_season'):
+                fe.podcast.itunes_season(str(entry.itunes_season))
+
+            ep_explicit_raw = entry.get('itunes_explicit')
+            if ep_explicit_raw in (True, 'yes', 'true', 'explicit'):
+                fe.podcast.itunes_explicit('yes')
+            elif ep_explicit_raw in (False, 'no', 'false', 'clean'):
+                fe.podcast.itunes_explicit('no')
 
         feed_path = os.path.join(self.data_dir, 'feeds', f'{slug}.xml')
         os.makedirs(os.path.dirname(feed_path), exist_ok=True)

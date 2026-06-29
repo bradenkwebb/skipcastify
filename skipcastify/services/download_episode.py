@@ -32,14 +32,14 @@ class EpisodeDownloader:
             json.dump({k: sorted(v) for k, v in seen.items()}, f, indent=2)
 
     def _entry_id(self, entry) -> str:
-        """Return a stable identifier for a feed entry."""
+        """Return a stable identifier for a feed entry (guid preferred, audio URL as fallback)."""
         eid = entry.get("id") or entry.get("guid")
         if eid:
             return eid
         try:
             return self.get_audio_url(entry)
         except ValueError:
-            return entry.get("title", "")
+            raise ValueError(f"Cannot derive stable ID for entry: {entry.get('title', '<untitled>')!r}")
     
     @staticmethod
     def get_audio_url(entry):
@@ -104,16 +104,16 @@ class EpisodeDownloader:
                 for entry in feed.entries:
                     try:
                         feed_seen.add(self._entry_id(entry))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Could not derive ID for entry in '{podcast_title}': {e}")
                 seen[subscription_url] = feed_seen
                 logger.info(f"New feed '{podcast_title}': marked {len(feed_seen)} existing episodes as seen, will download future episodes only")
                 continue
 
             new_entries = [
-                entry for entry in feed.entries[:self.episode_limit]
+                entry for entry in feed.entries
                 if self._entry_id(entry) not in feed_seen
-            ]
+            ][:self.episode_limit]
 
             for entry in new_entries:
                 result = self.download_episode(entry, podcast_title)
