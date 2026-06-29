@@ -10,8 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class EpisodeDownloader:
-    def __init__(self, config_path: str, data_dir: str, exclude_host: str = None):
+    def __init__(self, config_path: str, data_dir: str, exclude_host: str = None, episode_limit: int = 5):
         self.data_dir = data_dir
+        self.episode_limit = episode_limit
         self.subscription_urls = load_subscriptions(config_path, exclude_host)
     
     @staticmethod
@@ -63,6 +64,6 @@ class EpisodeDownloader:
             podcast_title = feed.feed.title
             logger.info(f"Checking podcast: {podcast_title}")
 
-            for entry in feed.entries[:10]:
+            for entry in feed.entries[:self.episode_limit]:
                 self.download_episode(entry, podcast_title)
 
