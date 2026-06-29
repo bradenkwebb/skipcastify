@@ -3,6 +3,7 @@ from feedgen.feed import FeedGenerator
 import os
 from datetime import datetime, timezone
 import logging
+from mutagen.mp3 import MP3
 
 from skipcastify.utils.utils import slugify, safe_filename
 from skipcastify.services.artwork_processor import process_artwork
@@ -85,7 +86,15 @@ class FeedManager:
                 except Exception as e:
                     logger.warning(f"No usable enclosure for '{entry.title}' from {title}: {e}")
 
-            duration = entry.get('itunes_duration')
+            if local_path:
+                try:
+                    seconds = int(MP3(local_path).info.length)
+                    duration = f"{seconds // 3600:02}:{(seconds % 3600) // 60:02}:{seconds % 60:02}"
+                except Exception as e:
+                    logger.warning(f"Could not read duration from {local_path}: {e}")
+                    duration = entry.get('itunes_duration')
+            else:
+                duration = entry.get('itunes_duration')
             if duration:
                 fe.podcast.itunes_duration(duration)
 
