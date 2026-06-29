@@ -25,6 +25,8 @@ class Pipeline:
         self.storage_high_water = int(os.environ.get("STORAGE_HIGH_WATER_GB", "75")) * 1024 ** 3
         self.storage_low_water = int(os.environ.get("STORAGE_LOW_WATER_GB", "50")) * 1024 ** 3
         self.processing_enabled = os.environ.get("ENABLE_PROCESSING", "false").lower() == "true"
+        slugs_env = os.environ.get("PROCESS_SLUGS", "")
+        self.process_slugs = {s.strip() for s in slugs_env.split(",") if s.strip()}
 
         exclude_host = urlparse(server_base_url).hostname
         self.feed_manager = FeedManager(server_base_url, data_dir, episode_token)
@@ -99,6 +101,10 @@ class Pipeline:
                 state_manager = StateManager(self.data_dir)
                 logger.info("Processing episodes")
                 for episode_fpath in state_manager.get_unprocessed_episodes():
+                    slug = Path(episode_fpath).parent.name
+                    if self.process_slugs and slug not in self.process_slugs:
+                        logger.debug(f"Skipping {slug} (not in PROCESS_SLUGS)")
+                        continue
                     self.processor.process(episode_fpath, state_manager)
             else:
                 logger.info("Audio processing disabled (ENABLE_PROCESSING=false)")
