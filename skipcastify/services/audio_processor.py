@@ -104,7 +104,12 @@ class AudioProcessor:
         
         # Transcribe audio
         logger.info("Transcribing audio...")
-        result = model.transcribe(audio_path, verbose=False, language="en")
+        result = model.transcribe(
+            audio_path,
+            verbose=False,
+            language="en",
+            initial_prompt="This podcast may contain advertisements and sponsor messages.",
+        )
         
         # Convert Whisper segments to our Segment format
         segments = []
