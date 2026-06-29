@@ -119,7 +119,12 @@ class FeedManager:
             if duration:
                 fe.podcast.itunes_duration(duration)
 
-            ep_author = entry.get('author')
+            # Only propagate an episode-level itunes:author when the original
+            # had one explicitly. feedparser's generic entry.author falls back
+            # to <dc:creator>/<author> (e.g. the hosts' names), which podcast
+            # apps display in place of the feed-level author — diverging from
+            # how the original feed appeared.
+            ep_author = entry.get('itunes_author')
             if ep_author:
                 fe.podcast.itunes_author(ep_author)
 
