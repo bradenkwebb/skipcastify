@@ -1,0 +1,15 @@
+[Unit]
+Description=Skipcastify RSS Feed Server
+After=network.target
+
+[Service]
+Type=simple
+User=bwebb
+WorkingDirectory=/home/bwebb/skipcastify
+EnvironmentFile=/home/bwebb/skipcastify/.env
+ExecStart=/home/bwebb/skipcastify/.venv/bin/python server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

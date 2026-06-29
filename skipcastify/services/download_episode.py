@@ -1,25 +1,22 @@
 import os
-import yaml
 import feedparser
 import requests
-from dotenv import load_dotenv
 from pathlib import Path
 import logging
 
-from skipcastify.utils.utils import safe_filename, slugify
+from skipcastify.utils.utils import safe_filename, slugify, load_subscriptions
 
 logger = logging.getLogger(__name__)
 
-# Re-write in OOP style
+
 class EpisodeDownloader:
-    def __init__(self, config_path: str, data_dir: str):
+    def __init__(self, config_path: str, data_dir: str, exclude_host: str = None, episode_limit: int = 5):
         self.data_dir = data_dir
-        self.config_path = config_path
-        with open(config_path) as f:
-            self.subscriptions = yaml.safe_load(f)
+        self.episode_limit = episode_limit
+        self.subscription_urls = load_subscriptions(config_path, exclude_host)
     
     @staticmethod
-    def get_audio_url(entry: dict):
+    def get_audio_url(entry):
         # Try standard RSS enclosure
         if hasattr(entry, "enclosures") and entry.enclosures:
             return entry.enclosures[0].get("href")
@@ -30,7 +27,7 @@ class EpisodeDownloader:
                 return link.get("href")
         raise ValueError("No audio URL found for the episode")
     
-    def download_episode(self, entry: dict, podcast_title: str):
+    def download_episode(self, entry, podcast_title: str):
         audio_url = self.get_audio_url(entry)
         if not audio_url:
             logger.warning(f"No audio URL found for episode '{entry.title}'")
@@ -50,7 +47,8 @@ class EpisodeDownloader:
 
         try:
             logger.info(f"Downloading: {entry.title}")
-            with requests.get(audio_url, stream=True, timeout=10) as r:
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; Skipcastify/1.0)"}
+            with requests.get(audio_url, stream=True, timeout=10, headers=headers) as r:
                 r.raise_for_status()
                 with open(target_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
@@ -62,11 +60,14 @@ class EpisodeDownloader:
             return None
 
     def download_latest(self):
-        for subscription_url in self.subscriptions["subscriptions"]:
-            feed = feedparser.parse(subscription_url)
-            podcast_title = feed.feed.title
+        for subscription_url in self.subscription_urls:
+            try:
+                feed = feedparser.parse(subscription_url)
+                podcast_title = feed.feed.title
+            except Exception as e:
+                logger.warning(f"Skipping feed {subscription_url}: {e}")
+                continue
             logger.info(f"Checking podcast: {podcast_title}")
-
-            for entry in feed.entries[:10]:
+            for entry in feed.entries[:self.episode_limit]:
                 self.download_episode(entry, podcast_title)
 
