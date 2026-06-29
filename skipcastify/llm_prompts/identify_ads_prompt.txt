@@ -25,10 +25,21 @@ Task:
     "label": "ADVERTISEMENT"|"SPONSOR"|"PROMOTION"|"OTHER_AD",
     "rationale": "<brief one-sentence explanation>"
   }
-- The start/end must be times inside the provided transcript. If boundaries are uncertain, choose the conservative span that fully contains the ad (expand outward).
+- The start/end must be times inside the provided transcript. If boundaries are uncertain, choose the conservative span that fully contains the ad (expand outward, not inward).
 - Return JSON only. No extra text outside the JSON array.
 - If uncertain, return an empty array rather than hallucinate.
-- Keep temperature low (0.0-0.2) and deterministic output.
+
+---
+
+WHAT TO FLAG:
+
+1. Standard ads and sponsor reads: product pitches, promo codes, CTAs ("visit X.com", "use code Y").
+
+2. Sponsored content inserts: a clip promoting another podcast, service, or show that is explicitly paid for. Signs include a different voice reading promotional copy, phrases like "an original podcast from [company]", "listen at [brand].com", or a sponsor sign-off that follows immediately after. A brief 5-second transition line is fine to keep; flag content inserts that run 15 seconds or longer.
+
+3. Ad breaks: when two ad spans appear within roughly 2 minutes of each other, treat any content between them as part of the same ad break — unless it is clearly substantive editorial content (e.g., a full interview answer, a news report). A short clip promoting another podcast or product that sits sandwiched between two ad spans is almost certainly part of that break.
+
+4. Boundary completeness: if the text of a segment clearly continues from or leads into an identified ad (same product language, same voice, same campaign), expand the span to include it even if it starts a few seconds before the obvious "ad" opening.
 
 ---
 
@@ -42,10 +53,10 @@ Transcript snippet:
 Expected JSON response:
 [
   {
-    "start_ms": 156000,
+    "start_ms": 150000,
     "end_ms": 170000,
     "label": "ADVERTISEMENT",
-    "rationale": "Explicit sponsor language ('brought to you by') and a promo code + CTA."
+    "rationale": "Transition line plus explicit sponsor language, promo code, and CTA."
   }
 ]
 
@@ -58,7 +69,7 @@ Transcript snippet:
 Expected JSON response:
 [
   {
-    "start_ms": 905000,
+    "start_ms": 900000,
     "end_ms": 920000,
     "label": "SPONSOR",
     "rationale": "Host-read promotion with explicit code and CTA indicating sponsor read."
@@ -73,9 +84,38 @@ Transcript snippet:
 Expected JSON response:
 []
 
+Example E - Editorial mention of another show (false positive):
+Transcript snippet:
+[1880000 - 1892000] For more on the World Cup, listen to the BBC World Service Sports Podcast — more than the score. Available wherever you get your podcasts.
+[1892000 - 1900000] And that's all from us for now.
+
+Expected JSON response:
+[]
+
+Note: a host mentioning a sibling show from the same network in passing is editorial, not a paid promotion. Compare to Example D, where a different voice reads a scripted promo clip for an external podcast and a sponsor sign-off follows immediately.
+
+Example D - Sponsored content insert sandwiched between ads:
+Transcript snippet:
+[1080000 - 1095000] Get maximum performance even when unplugged. SnapDrive. That's how.
+[1095000 - 1100000] Hey, I'm Jane from TrueStory Podcast. In our new series we cover the biggest fraud cases.
+[1100000 - 1115000] This week: Enron. Listen on iHeartRadio or wherever you get your podcasts.
+[1115000 - 1122000] This has been brought to you by SnapDrive. Listen to TrueStory wherever you get podcasts.
+[1122000 - 1145000] Is inflation back? Washington Watch is a podcast from Goldman Sachs exploring today's markets.
+[1145000 - 1155000] Listen at goldmansachs.com/washington-watch.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 1080000,
+    "end_ms": 1155000,
+    "label": "ADVERTISEMENT",
+    "rationale": "Full ad break: product ad followed by two sponsored podcast promos, all within ~75 seconds."
+  }
+]
+
 ---
 
 Notes:
 - Keep responses strictly JSON. The client will parse JSON and validate spans against section bounds.
-- Some ads can be *quite* lengthy as the host goes off an a tangent relating to their personal experiences with the brand; all of that should be removed.
-- Be conservative if you're not sure; it's better to leave ads in than to remove core podcast content (such as when the actual subject matter of the podcast is economics or corporate America).
+- Some ads can be *quite* lengthy as the host goes off on a tangent relating to their personal experiences with the brand; all of that should be removed.
+- Be conservative if you're not sure about standalone content; it's better to leave ambiguous content in than to remove genuine editorial. But within a clear ad break, capture the whole break.
