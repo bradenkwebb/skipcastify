@@ -36,5 +36,8 @@ urls = load_subscriptions(subscriptions_path, exclude_host)
 episode_token = os.environ.get("EPISODE_TOKEN", "")
 fm = FeedManager(server_base_url, data_dir, episode_token)
 for url in urls:
-    path = fm.generate_feed(url)
-    print(f"Generated: {path}")
+    try:
+        path = fm.generate_feed(url)
+        print(f"Generated: {path}")
+    except Exception as e:
+        print(f"WARNING: Skipped {url}: {e}", file=sys.stderr)
