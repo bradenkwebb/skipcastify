@@ -47,7 +47,8 @@ class EpisodeDownloader:
 
         try:
             logger.info(f"Downloading: {entry.title}")
-            with requests.get(audio_url, stream=True, timeout=10) as r:
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; Skipcastify/1.0)"}
+            with requests.get(audio_url, stream=True, timeout=10, headers=headers) as r:
                 r.raise_for_status()
                 with open(target_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):
