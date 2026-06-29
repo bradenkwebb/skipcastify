@@ -85,6 +85,10 @@ class FeedManager:
                 except Exception as e:
                     logger.warning(f"No usable enclosure for '{entry.title}' from {title}: {e}")
 
+            duration = entry.get('itunes_duration')
+            if duration:
+                fe.podcast.itunes_duration(duration)
+
         feed_path = os.path.join(self.data_dir, 'feeds', f'{slug}.xml')
         os.makedirs(os.path.dirname(feed_path), exist_ok=True)
         fg.rss_file(feed_path, pretty=True)
