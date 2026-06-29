@@ -104,7 +104,7 @@ class AudioProcessor:
 
         # Limit CPU threads to avoid thermal runaway on low-TDP hardware.
         # WHISPER_THREADS defaults to 2; raise it for faster (hotter) transcription.
-        whisper_threads = int(os.environ.get("WHISPER_THREADS", "4"))
+        whisper_threads = int(os.environ.get("WHISPER_THREADS", "2"))
         try:
             import torch
             torch.set_num_threads(whisper_threads)
