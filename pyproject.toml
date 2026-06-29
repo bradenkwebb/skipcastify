@@ -14,11 +14,13 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.4",
     "openai-whisper>=20231117",
+    "pillow>=10.4.0",
 ]
 
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
+    "pytest>=8.3.5",
 ]
 
 [project.scripts]

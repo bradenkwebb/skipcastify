@@ -3,10 +3,12 @@ import yaml
 from feedgen.feed import FeedGenerator
 import os
 import re
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 import logging
 
 from skipcastify.utils.utils import slugify, safe_filename
+from skipcastify.services.artwork_processor import process_artwork
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +31,26 @@ class FeedManager:
 
         image_url = feed.feed.get('image', {}).get('href')
         if image_url:
-            fg.image(url=image_url, title=title, link=subscription_url)
-            fg.podcast.itunes_image(image_url)
+            artwork_dir = os.path.join(self.data_dir, 'artwork')
+            filename = process_artwork(image_url, artwork_dir, slug)
+            if filename:
+                local_artwork_url = f"{self.server_base_url}/artwork/{self.episode_token}/{filename}"
+                fg.image(url=local_artwork_url, title=title, link=subscription_url)
+                fg.podcast.itunes_image(local_artwork_url)
+            else:
+                fg.image(url=image_url, title=title, link=subscription_url)
+                fg.podcast.itunes_image(image_url)
 
         for entry in feed.entries[:10]:  # take top 10 episodes
             fe = fg.add_entry()
             fe.title(entry.title)
             fe.description(entry.get("summary", ""))
             ep_filename = safe_filename(entry.title, slug)
+
+            if entry.get('published_parsed'):
+                fe.pubDate(datetime(*entry.published_parsed[:6], tzinfo=timezone.utc))
+            else:
+                logger.warning(f"Episode '{entry.title}' of {title} has no publish date.")
 
             if hasattr(entry, "link"):
                 fe.link(href=entry.link)

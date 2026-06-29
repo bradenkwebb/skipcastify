@@ -19,7 +19,7 @@ class Pipeline:
 
         server_base_url = os.environ.get("SERVER_BASE_URL") or f"http://{socket.getfqdn()}:5000"
         episode_token = os.environ.get("EPISODE_TOKEN", "")
-        self.feed_manager = FeedManager(server_base_url, self.data_dir, episode_token=episode_token)
+        self.feed_manager = FeedManager(server_base_url, self.data_dir, episode_token)
         self.downloader = EpisodeDownloader(config_path, self.data_dir)
         self.processor = AudioProcessor(self.data_dir)
     

@@ -37,6 +37,16 @@ def serve_feed(podcast_name):
     return send_from_directory(path, filename)
 
 
+@app.route('/artwork/<token>/<path:filename>')
+def serve_artwork(token, filename):
+    if token != _episode_token:
+        return abort(403)
+    path = os.path.join(data_dir, 'artwork')
+    if not os.path.exists(os.path.join(path, filename)):
+        return abort(404)
+    return send_from_directory(path, filename)
+
+
 @app.route('/episodes/<token>/<podcast_name>/<path:filename>')
 def serve_episode(token, podcast_name, filename):
     if token != _episode_token:

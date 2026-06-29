@@ -37,7 +37,7 @@ with open(subscriptions_path) as f:
     config = yaml.safe_load(f)
 
 episode_token = os.environ.get("EPISODE_TOKEN", "")
-fm = FeedManager(server_base_url, data_dir, episode_token=episode_token)
+fm = FeedManager(server_base_url, data_dir, episode_token)
 for url in config['subscriptions']:
     path = fm.generate_feed(url)
     print(f"Generated: {path}")
