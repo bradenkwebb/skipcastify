@@ -45,38 +45,49 @@ def load_events(data_dir: str) -> list[dict]:
 
 
 def load_monitor_log(log_path: str) -> list[tuple[datetime, float]]:
-    """Return [(datetime, cpu_temp), ...] with day-rollover applied."""
-    pattern = re.compile(r"\[(\d{2}:\d{2}:\d{2})\] CPU: ([\d.]+)°C")
-    entries: list[tuple[datetime, float]] = []
-    base = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    """Return [(datetime, cpu_temp), ...].
+
+    Supports two log formats:
+      New: [2026-06-29 14:30:00] CPU: 87.0°C ...
+      Old: [14:30:00] CPU: 87.0°C ...  (time-only; day-rollover heuristic applied)
+    Old entries are prepended before new entries, both sorted chronologically.
+    """
+    pat_new = re.compile(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] CPU: ([\d.]+)°C")
+    pat_old = re.compile(r"\[(\d{2}:\d{2}:\d{2})\] CPU: ([\d.]+)°C")
+    new_entries: list[tuple[datetime, float]] = []
+    old_entries: list[tuple[datetime, float]] = []
+
     with open(log_path) as f:
         for line in f:
-            m = pattern.search(line)
+            m = pat_new.search(line)
             if m:
-                t = datetime.strptime(m.group(1), "%H:%M:%S")
-                entries.append((t, float(m.group(2))))
+                new_entries.append((datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S"), float(m.group(2))))
+                continue
+            m = pat_old.search(line)
+            if m:
+                old_entries.append((datetime.strptime(m.group(1), "%H:%M:%S"), float(m.group(2))))
 
-    # Anchor to a real date by applying day rollovers
-    if entries:
-        anchored: list[tuple[datetime, float]] = []
-        prev = entries[0][0]
+    # For old-format entries: apply day-rollover then anchor last old entry
+    # to just before the first new entry (or to now if no new entries exist).
+    anchored_old: list[tuple[datetime, float]] = []
+    if old_entries:
+        rolled: list[tuple[datetime, float]] = []
+        prev = old_entries[0][0]
         day_offset = 0
-        for t, cpu in entries:
+        for t, cpu in old_entries:
             if t < prev:
                 day_offset += 1
-            anchored.append((t + timedelta(days=day_offset), cpu))
+            rolled.append((t + timedelta(days=day_offset), cpu))
             prev = t
-        # Shift all entries so the last one lands on today
-        if anchored:
-            last_t = anchored[-1][0]
-            today_approx = datetime.now().replace(second=0, microsecond=0)
-            shift = timedelta(
-                hours=today_approx.hour - last_t.hour,
-                minutes=today_approx.minute - last_t.minute,
-            )
-            anchored = [(t + shift, cpu) for t, cpu in anchored]
-        return anchored
-    return []
+        last_t = rolled[-1][0]
+        if new_entries:
+            anchor = new_entries[0][0]
+        else:
+            anchor = datetime.now().replace(second=0, microsecond=0)
+        shift = anchor - last_t - timedelta(seconds=30)
+        anchored_old = [(t + shift, cpu) for t, cpu in rolled]
+
+    return anchored_old + new_entries
 
 
 # ---------------------------------------------------------------------------
@@ -118,10 +129,12 @@ def report_feeds(events: list[dict]) -> None:
     for ev in complete:
         by_feed[ev.get("feed_slug", "unknown")].append(ev)
 
+    w = max(len(s) for s in by_feed) + 2 if by_feed else 30
+    rule = "─" * (w + 42)
     print("\nAd Density & Listening Time Saved")
-    print("─" * 72)
-    print(f"{'Feed':<30} {'Episodes':>8} {'Avg ad%':>8} {'Total saved':>12} {'Avg/ep':>10}")
-    print("─" * 72)
+    print(rule)
+    print(f"{'Feed':{w}} {'Episodes':>8} {'Avg ad%':>8} {'Total saved':>12} {'Avg/ep':>10}")
+    print(rule)
 
     total_saved = 0.0
     for slug in sorted(by_feed):
@@ -132,11 +145,11 @@ def report_feeds(events: list[dict]) -> None:
         total_saved += total_slug_saved
         avg_pct = _mean(ads_pcts)
         avg_saved = _mean(saved)
-        print(f"{slug:<30} {len(eps):>8} {avg_pct:>7.1f}% {_fmt_duration(total_slug_saved):>12} {_fmt_duration(avg_saved):>10}")
+        print(f"{slug:{w}} {len(eps):>8} {avg_pct:>7.1f}% {_fmt_duration(total_slug_saved):>12} {_fmt_duration(avg_saved):>10}")
 
-    print("─" * 72)
+    print(rule)
     total_eps = sum(len(v) for v in by_feed.values())
-    print(f"{'TOTAL':<30} {total_eps:>8} {'':>8} {_fmt_duration(total_saved):>12}")
+    print(f"{'TOTAL':{w}} {total_eps:>8} {'':>8} {_fmt_duration(total_saved):>12}")
 
 
 # ---------------------------------------------------------------------------
@@ -153,10 +166,12 @@ def report_tokens(events: list[dict]) -> None:
     for ev in sections:
         by_feed[ev.get("feed_slug", "unknown")].append(ev)
 
+    w = max(len(s) for s in by_feed) + 2 if by_feed else 30
+    rule = "─" * (w + 43)
     print("\nLLM Token & Cost Breakdown (per feed)")
-    print("─" * 78)
-    print(f"{'Feed':<30} {'Sections':>8} {'Prompt tok':>11} {'Compl tok':>10} {'Cost USD':>10}")
-    print("─" * 78)
+    print(rule)
+    print(f"{'Feed':{w}} {'Sections':>8} {'Prompt tok':>11} {'Compl tok':>10} {'Cost USD':>10}")
+    print(rule)
 
     total_cost = 0.0
     total_prompt = 0
@@ -169,10 +184,10 @@ def report_tokens(events: list[dict]) -> None:
         total_prompt += prompt
         total_compl += compl
         total_cost += cost
-        print(f"{slug:<30} {len(secs):>8} {prompt:>11,} {compl:>10,} {cost:>10.4f}")
+        print(f"{slug:{w}} {len(secs):>8} {prompt:>11,} {compl:>10,} {cost:>10.4f}")
 
-    print("─" * 78)
-    print(f"{'TOTAL':<30} {len(sections):>8} {total_prompt:>11,} {total_compl:>10,} {total_cost:>10.4f}")
+    print(rule)
+    print(f"{'TOTAL':{w}} {len(sections):>8} {total_prompt:>11,} {total_compl:>10,} {total_cost:>10.4f}")
 
     # Per-day breakdown
     by_day: dict[str, list[dict]] = defaultdict(list)
@@ -205,10 +220,12 @@ def report_transcription(events: list[dict]) -> None:
     for ev in ends:
         by_feed[ev.get("feed_slug", "unknown")].append(ev)
 
+    w = max(len(s) for s in by_feed) + 2 if by_feed else 30
+    rule = "─" * (w + 34)
     print("\nWhisper Transcription Time")
-    print("─" * 62)
-    print(f"{'Feed':<30} {'Episodes':>8} {'Total time':>12} {'Avg/ep':>10}")
-    print("─" * 62)
+    print(rule)
+    print(f"{'Feed':{w}} {'Episodes':>8} {'Total time':>12} {'Avg/ep':>10}")
+    print(rule)
 
     total_time = 0.0
     for slug in sorted(by_feed):
@@ -216,10 +233,10 @@ def report_transcription(events: list[dict]) -> None:
         durations = [e.get("duration_s", 0) for e in eps]
         total = sum(durations)
         total_time += total
-        print(f"{slug:<30} {len(eps):>8} {_fmt_duration(total):>12} {_fmt_duration(_mean(durations)):>10}")
+        print(f"{slug:{w}} {len(eps):>8} {_fmt_duration(total):>12} {_fmt_duration(_mean(durations)):>10}")
 
-    print("─" * 62)
-    print(f"{'TOTAL':<30} {len(ends):>8} {_fmt_duration(total_time):>12}")
+    print(rule)
+    print(f"{'TOTAL':{w}} {len(ends):>8} {_fmt_duration(total_time):>12}")
 
     # Show model breakdown if mixed
     by_model: dict[str, float] = defaultdict(float)
@@ -290,10 +307,21 @@ def report_utilization(events: list[dict], monitor_log: str) -> None:
         else:
             idle_temps.append(cpu)
 
+    all_temps = [cpu for _, cpu in monitor_entries]
+    now = datetime.now()
+    recent_temps = [cpu for ts, cpu in monitor_entries if (now - ts).total_seconds() <= 3600]
+    last_reading = monitor_entries[-1][1] if monitor_entries else None
+
     print("\nCPU Temperature")
     print("─" * 50)
+    if last_reading is not None:
+        print(f"  Current (last reading)       : {last_reading:.1f}°C")
+    if recent_temps:
+        print(f"  Last hour                    : {_mean(recent_temps):.1f}°C avg  max {max(recent_temps):.1f}°C  (n={len(recent_temps)})")
+    if all_temps:
+        print(f"  All-time                     : {_mean(all_temps):.1f}°C avg  max {max(all_temps):.1f}°C  (n={len(all_temps)})")
     if transcription_temps:
-        print(f"  During Whisper transcription : {_mean(transcription_temps):.1f}°C avg  (n={len(transcription_temps)})")
+        print(f"  During Whisper               : {_mean(transcription_temps):.1f}°C avg  max {max(transcription_temps):.1f}°C  (n={len(transcription_temps)})")
     if idle_temps:
         print(f"  During idle / other          : {_mean(idle_temps):.1f}°C avg  (n={len(idle_temps)})")
 
@@ -314,10 +342,12 @@ def report_breakdown(events: list[dict], date_str: str) -> None:
 
     feeds = sorted({e.get("feed_slug", "unknown") for e in day_events})
 
+    w = max((len(s) for s in feeds), default=30) + 2
+    rule = "─" * (w + 53)
     print(f"\nBreakdown for {date_str}")
-    print("─" * 85)
-    print(f"{'Feed':<30} {'Whisper':>9} {'LLM time':>9} {'Tokens':>9} {'Cost':>8} {'Ads removed':>12}")
-    print("─" * 85)
+    print(rule)
+    print(f"{'Feed':{w}} {'Whisper':>9} {'LLM time':>9} {'Tokens':>9} {'Cost':>8} {'Ads removed':>12}")
+    print(rule)
 
     for slug in feeds:
         xscr_time = sum(e.get("duration_s", 0) for e in xscr_ends.values() if e.get("feed_slug") == slug)
@@ -326,7 +356,7 @@ def report_breakdown(events: list[dict], date_str: str) -> None:
                      for e in llm_secs if e.get("feed_slug") == slug)
         cost = sum(e.get("cost_usd", 0) for e in llm_secs if e.get("feed_slug") == slug)
         ads_removed = sum(e.get("ads_removed_s", 0) for e in completes if e.get("feed_slug") == slug)
-        print(f"{slug:<30} {_fmt_duration(xscr_time):>9} {_fmt_duration(llm_time):>9} {tokens:>9,} {cost:>8.4f} {_fmt_duration(ads_removed):>12}")
+        print(f"{slug:{w}} {_fmt_duration(xscr_time):>9} {_fmt_duration(llm_time):>9} {tokens:>9,} {cost:>8.4f} {_fmt_duration(ads_removed):>12}")
 
 
 # ---------------------------------------------------------------------------
