@@ -101,7 +101,10 @@ class Pipeline:
 
             logger.info("Generating RSS feeds")
             for url in self.downloader.subscription_urls:
-                self.feed_manager.generate_feed(url)
+                try:
+                    self.feed_manager.generate_feed(url)
+                except Exception as e:
+                    logger.warning(f"Skipping feed generation for {url}: {e}")
 
             self._cleanup_old_episodes()
         except Exception as e:
