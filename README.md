@@ -1,42 +1,173 @@
-A simple tool for removing ads from podcasts.
+# Skipcastify
 
-![A diagram of the podcast ad removal process](./pipeline.png)
+Automatically removes ads from podcast episodes and serves ad-free feeds you can subscribe to in any podcast app.
 
-## Installation
+## How it works
+
+```
+upstream OPML
+      │
+      ▼
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  Downloader │────▶│  Transcriber │────▶│  LLM Classifier │
+│  (RSS/Atom) │     │  (Whisper)   │     │  (OpenAI/Ollama)│
+└─────────────┘     └──────────────┘     └─────────────────┘
+                                                  │
+                                                  ▼
+                                         ┌─────────────────┐
+                                         │  Audio Stitcher │
+                                         │  (pydub)        │
+                                         └─────────────────┘
+                                                  │
+                          ┌───────────────────────┘
+                          ▼
+                 ┌─────────────────┐     ┌──────────────────┐
+                 │  Feed Generator │────▶│  Flask Server    │
+                 │  (feedgen)      │     │  (Basic Auth)    │
+                 └─────────────────┘     └──────────────────┘
+                                                  │
+                                                  ▼
+                                           Podcast app
+                                           (e.g. Overcast)
+```
+
+1. **Download** — fetches new episodes from every feed in `upstream.opml`
+2. **Transcribe** — runs Whisper locally to produce time-coded segments
+3. **Classify** — sends 10-minute transcript windows to an LLM to identify ad spans
+4. **Stitch** — cuts ad segments from the audio and re-encodes with pydub
+5. **Serve** — Flask server exposes ad-free MP3s and regenerated RSS feeds behind HTTP Basic Auth
+
+## Setup
+
+### Requirements
+
+- Python 3.10+, [uv](https://github.com/astral-sh/uv)
+- ffmpeg (`apt install ffmpeg`)
+- Tailscale (for public HTTPS access via Funnel)
 
 ```bash
-pip install -r requirements.txt
+git clone <repo>
+cd skipcastify
+uv sync
+cp .env.example .env   # then edit
 ```
+
+### Configuration
+
+All runtime config lives in `.env` (never committed):
+
+| Variable | Description |
+|---|---|
+| `DATA_DIR` | Root data directory (e.g. `data`) |
+| `SUBSCRIPTIONS` | Path to upstream OPML file |
+| `SERVER_BASE_URL` | Public HTTPS base URL (e.g. Tailscale Funnel URL) |
+| `FEED_USERNAME` / `FEED_PASSWORD` | HTTP Basic Auth credentials for the feed server |
+| `EPISODE_TOKEN` | Secret token appended to episode URLs |
+| `EPISODE_LIMIT` | Max episodes to download per feed per run (default: 5) |
+| `ENABLE_PROCESSING` | Set `true` to enable ad removal (default: `false`) |
+| `PROCESS_SLUGS` | Comma-separated feed slugs to process; empty = all feeds |
+| `LLM_PROVIDER` | `openai` or `ollama` (default: `ollama`) |
+| `OPENAI_API_KEY` | Required if `LLM_PROVIDER=openai` |
+| `OPENAI_MODEL` | OpenAI model to use (default: `gpt-4o-mini`) |
+| `OLLAMA_MODEL` | Ollama model to use (default: `gemma4:e2b`) |
+| `STORAGE_HIGH_WATER_GB` | Start deleting audio above this threshold (default: 75) |
+| `STORAGE_LOW_WATER_GB` | Stop deleting once below this threshold (default: 50) |
+
+### Subscriptions
+
+Export your podcast subscriptions as OPML and save to `upstream.opml` (gitignored). The pipeline downloads from every feed listed there.
+
+### Running the server
+
+```bash
+uv run python server.py
+```
+
+Expose it publicly with Tailscale Funnel:
+
+```bash
+tailscale funnel 5000
+```
+
+Then add your feeds in any podcast app as:
+```
+https://<your-tailscale-host>/feeds/<podcast-slug>.xml
+```
+with your `FEED_USERNAME` / `FEED_PASSWORD` credentials.
 
 ## Usage
 
-## Notes
+### Automated pipeline (cron)
 
-I originally planned to use Azure Cognitive Services to transcribe the podcast audio, at least for simplicity while testing. The free tier only allows 5 hours of audio per month, so I'd fly through that really quickly if I were to use this tool regularly.
+The pipeline downloads new episodes, processes them (if enabled), regenerates feeds, and enforces storage limits:
 
-However, it doesn't appear as though Azure actually provides a convenient way to _align_ its speech-to-text outputs with audio. That seems like a major oversight—there are lots of non-neural forced alignment tools out there—but [Buzz](https://chidiwilliams.github.io/buzz/docs) actually provides a great solution, which calls on OpenAI's Whisper model (which was actually open-sourced). Since I can run that locally (albeit somewhat slowly) from a very straightforward CLI, I think I'll use that instead.
-
-The main problem with Buzz at the moment is _closing_ it from the CLI. It seems to hang indefinitely, and I have to kill the process manually. I'll have to look into that.
-
-I don't think the Buzz source code is particularly inscrutable, though - if anything, it's quite accessible. I think
-that if I look at it a bit more closely, I should be able to figure out how to use it in a more programmatic way.
-
-Also, I think I should use a zer-shot classifier for ads. There are a couple on HuggingFace including one from 2022, `morenolq/spotify-podcast-advertising-classification`, which might be worth checking out.
-
-I ran the following as an administrator to get the daily task scheduled:
-
-```powershell
-$Action = New-ScheduledTaskAction -Execute "c:\Users\bkweb\projects\skipcastify\scripts\run_pipeline.bat"
-$Trigger = New-ScheduledTaskTrigger -Daily -At 4am
-Register-ScheduledTask -Action $Action -Trigger $Trigger -TaskName "Skipcastify Pipeline" -Description "Run Skipcastify pipeline daily"
+```bash
+uv run python pipeline.py
 ```
 
-### Pipeline
+Recommended cron (hourly):
+```
+0 * * * * cd /path/to/skipcastify && .venv/bin/python pipeline.py >> data/logs/cron.log 2>&1
+```
 
-1. Download new podcast episodes
-2. Transcribe with Whisper (local, ~1-2x real-time)
-3. Classify segments (content vs ads vs intros/outros)
-4. Aggregate consecutive segments of same type
-5. Cut and stitch audio (remove non-content segments)
-6. Save ad-free audio to `data/podcasts/processed/`
-7. Update podcast feed with new audio files
+### Preview a single episode
+
+Test ad detection on one episode without touching production data:
+
+```bash
+# Full run (transcribe + LLM)
+uv run python scripts/preview_episode.py path/to/episode.mp3
+
+# Re-run LLM only (reuse cached transcript — much faster)
+uv run python scripts/preview_episode.py path/to/episode.mp3 --use-cached
+
+# Force re-transcription even if cached
+uv run python scripts/preview_episode.py path/to/episode.mp3 --force-transcribe
+```
+
+Output goes to `data/podcasts/processed_preview/` and includes an annotated transcript showing exactly which segments were kept or removed.
+
+### Regenerate feeds only
+
+```bash
+uv run python scripts/generate_feeds.py
+```
+
+### Enable processing for specific feeds
+
+To process only one podcast (e.g. while validating):
+
+```env
+ENABLE_PROCESSING=true
+PROCESS_SLUGS=global-news-podcast
+```
+
+Remove `PROCESS_SLUGS` (or leave it empty) to process all feeds.
+
+## Ad detection
+
+Transcription uses [OpenAI Whisper](https://github.com/openai/whisper) (`base` model by default). The transcript is split into ~10-minute overlapping windows, each sent to the configured LLM.
+
+The LLM prompt is in `skipcastify/llm_prompts/identify_ads_prompt.txt` and can be edited independently of the code. It instructs the model to return a JSON array of ad spans. Segments classified as `ADVERTISEMENT` or `SPONSOR` are removed; `INTRO` and `OUTRO` are kept.
+
+LLM call profiles (latency, cost, spans found) are saved to `data/llm_profiles/` after each episode.
+
+## Storage
+
+Raw episodes live in `data/podcasts/raw/<slug>/`. Processed episodes go to `data/podcasts/processed/<slug>/`. The pipeline enforces a storage budget:
+
+- When total audio exceeds `STORAGE_HIGH_WATER_GB`, the oldest files are deleted until usage drops below `STORAGE_LOW_WATER_GB`
+- Raw files are always deleted first when a processed counterpart exists
+- Files under `data/samples/` are excluded from the retention policy
+
+## Testing
+
+```bash
+# Standard tests (no LLM calls, fast)
+uv run pytest
+
+# LLM prompt regression tests (makes real API calls, costs money)
+uv run pytest --run-llm
+```
+
+The LLM tests run the full ad-detection pipeline on a known BBC episode and assert both precision (no false positives on editorial content) and recall (all known ads detected).
