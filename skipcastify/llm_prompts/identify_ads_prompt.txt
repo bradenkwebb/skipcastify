@@ -33,13 +33,22 @@ Task:
 
 WHAT TO FLAG:
 
-1. Standard ads and sponsor reads: product pitches, promo codes, CTAs ("visit X.com", "use code Y").
+1. Standard ads and sponsor reads: product pitches, promo codes, CTAs ("visit X.com", "use code Y"). URL-based CTAs are a hard signal — any segment containing "go to X.com", "learn more at X.com/Y", "visit X slash Y", or a vanity URL is advertisement content; include that segment and its immediately preceding product-setup in the same span.
 
-2. Sponsored content inserts: a clip promoting another podcast, service, or show that is explicitly paid for. Signs include a different voice reading promotional copy, phrases like "an original podcast from [company]", "listen at [brand].com", or a sponsor sign-off that follows immediately after. A brief 5-second transition line is fine to keep; flag content inserts that run 15 seconds or longer.
+2. Sponsored content inserts: a clip promoting another podcast, service, or show that is explicitly paid for. Signs of a paid insert: "brought to you in partnership with [company]", "an original podcast from [company]", "sponsored by", a partner-branded URL or app link (e.g. "listen on the iHeart radio app", "visit brand.com/podcast"), or a sponsor sign-off immediately after. A brief 5-second transition line is fine to keep; flag content inserts that run 15 seconds or longer.
+   NOT a paid insert: a host saying "for more on this, listen to [show from the same network]" or "available wherever you get your podcasts" — when there is no explicit sponsor attribution, no external/partner URL, and no promo code. This is editorial cross-promotion. Do not flag it.
 
-3. Ad breaks: when two ad spans appear within roughly 2 minutes of each other, treat any content between them as part of the same ad break — unless it is clearly substantive editorial content (e.g., a full interview answer, a news report). A short clip promoting another podcast or product that sits sandwiched between two ad spans is almost certainly part of that break.
+3. Ad breaks: when you have already identified TWO separate ad spans within roughly 2 minutes of each other, treat the content between those two spans as part of the same continuous ad break — unless it is clearly substantive editorial content (e.g., a full interview answer, a news report, at least 15 seconds of genuine editorial speech). A short tease, hook, or product-promo fragment between two identified ads is almost certainly part of the break; output a single merged span from the start of the first to the end of the last. Important: this rule applies only to content between two spans you have already flagged, not to content that precedes the first ad in a section.
 
-4. Boundary completeness: if the text of a segment clearly continues from or leads into an identified ad (same product language, same voice, same campaign), expand the span to include it even if it starts a few seconds before the obvious "ad" opening.
+4. Boundary completeness: when boundaries are uncertain, usually expand the span outward:
+   - Expand forward to include the CTA: end_ms must be set PAST the segment containing the URL, promo code, or sign-off — not at the segment before it. If you know a URL CTA is coming, include the segment that actually contains "Go to X.com" or "Use code Y" inside the span. The CTA segment is part of the ad, not a segment that follows the ad.
+   - Expand backward for cut-off sentences: if a segment ends with an incomplete sentence ("Back for season two of...") and the next segment completes that sentence with sponsor language, the incomplete segment is part of the ad — pull start_ms back to include it.
+   - Expand backward for teasers: an opening hook ("Guess who's back?") or problem-setup immediately before a sponsor attribution is part of that ad unit.
+   A span that stops before the product's URL/CTA, or that starts after the product's tease, is incomplete.
+
+5. Branded narrative content: ads sometimes disguise themselves as a short podcast preview or branded story ("On this episode of [Show], we explore...") where the product appears shortly after. The narrative framing is part of the ad — flag the whole thing from its fictional "episode intro" through the product name and close.
+
+6. Problem-setup → product-reveal pattern: many ads open with a relatable problem or hook before naming the product. If you've flagged a problem-setup segment, the product-reveal, benefits, and CTA that follow it in the very next segments are part of the same ad unit — include them in the span even if they sound more descriptive than promotional.
 
 ---
 
@@ -84,7 +93,63 @@ Transcript snippet:
 Expected JSON response:
 []
 
-Example E - Editorial mention of another show (false positive):
+Example H - Cut-off sentence at segment boundary signals backward expansion:
+Transcript snippet:
+[1083000 - 1091000] ...Get maximum performance even when unplugged. Snap Dragon. That's how.
+[1091000 - 1099000] Guess who's back in the house? It's Robert, Jesse, Bill, and Mick. Back for season two of
+[1099000 - 1120000] Silver Linings with the Old Gays. Brought to you in partnership with iHeart's Ruby Studio.
+[1120000 - 1155000] Listen on the iHeart radio app or wherever you get your podcasts.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 1083000,
+    "end_ms": 1155000,
+    "label": "ADVERTISEMENT",
+    "rationale": "Full ad break. Segment [1091000-1099000] ends mid-sentence ('Back for season two of...') and is directly completed by the sponsor attribution in the next segment — expand backward to include it."
+  }
+]
+
+Note: 'Back for season two of' ending without a noun is a broken sentence — it is not editorial content. It is a teaser cut at a segment boundary. The sponsor attribution in the next segment completes the sentence, confirming the tease is part of the same ad.
+
+Example F - Multi-product opening block; second ad's CTA must be included:
+Transcript snippet:
+[0 - 25000] Take the leash off your laptop with long battery life. Snapdragon. That's how.
+[25000 - 42000] Imagine your business software was completely fragmented. That sucks. Oh-do changes that — it's everything your business needs in one place.
+[42000 - 58000] Stop paying for missing pieces. Go to oh-do-dot-com to learn more.
+[58000 - 65000] This is the Global News Podcast from the BBC World Service.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 0,
+    "end_ms": 58000,
+    "label": "ADVERTISEMENT",
+    "rationale": "Two consecutive product ads (Snapdragon, then Odoo) followed by a URL CTA. The CTA at [42000-58000] closes the ad block; [58000] is the editorial open."
+  }
+]
+
+Note: even though the product setup at [25000-42000] sounds descriptive rather than promotional, the URL CTA that immediately follows it ([42000-58000]) is a hard signal that it is part of the same ad. A span ending before the CTA is incomplete.
+
+Example G - Branded narrative / sponsored podcast preview:
+Transcript snippet:
+[1190000 - 1202000] On this episode of Plant Killers, we'll explore one nation's most notorious fruit and vegetable killer. This story has a happy ending.
+[1202000 - 1215000] Miracle Grow organic raised bed soil — made with quality organic ingredients from upcycled green waste.
+[1215000 - 1222000] Unlike the other guys who can't say the same. Thanks to Miracle Grow. Join us next time on Plant Killers.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 1190000,
+    "end_ms": 1222000,
+    "label": "ADVERTISEMENT",
+    "rationale": "Branded narrative ad: 'Plant Killers' episode preview is a Miracle Grow sponsored segment. The fictional storytelling frame and the product-name reveal are all part of the same ad."
+  }
+]
+
+Note: the narrative framing ('On this episode of Plant Killers...') is part of the advertisement — it must be included in the span alongside the product mention and close.
+
+Example E - Editorial mention of another show (false positive — do NOT flag this):
 Transcript snippet:
 [1880000 - 1892000] For more on the World Cup, listen to the BBC World Service Sports Podcast — more than the score. Available wherever you get your podcasts.
 [1892000 - 1900000] And that's all from us for now.
@@ -92,7 +157,7 @@ Transcript snippet:
 Expected JSON response:
 []
 
-Note: a host mentioning a sibling show from the same network in passing is editorial, not a paid promotion. Compare to Example D, where a different voice reads a scripted promo clip for an external podcast and a sponsor sign-off follows immediately.
+Note: do NOT flag this. There is no "brought to you by", no "in partnership with", no external partner URL, and no promo code. "Available wherever you get your podcasts" alone is not a paid-ad signal — it is standard editorial phrasing that any host uses when recommending their own network's shows. The critical distinction from Examples D and H: those have explicit sponsor attribution ("brought to you by SnapDrive", "in partnership with iHeart's Ruby Studio") and partner-branded app links. This example has none of those. Absence of attribution = editorial cross-promotion, not an ad.
 
 Example D - Sponsored content insert sandwiched between ads:
 Transcript snippet:
