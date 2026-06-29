@@ -79,12 +79,12 @@ def main():
         with open(result['transcript_path'], 'r', encoding='utf-8') as f:
             print(f.read())
         
-        # Also show predictions summary
-        if result.get('ad_spans'):
+        # Show span comparison across all stages
+        def _print_spans(title: str, spans: list) -> None:
             print("\n" + "="*100)
-            print(f"PREDICTIONS: {len(result['ad_spans'])} ad spans detected")
+            print(f"{title}: {len(spans)} ad span(s) detected")
             print("="*100 + "\n")
-            for i, span in enumerate(result['ad_spans'], 1):
+            for i, span in enumerate(spans, 1):
                 start = int(span.get('start_ms', 0))
                 end = int(span.get('end_ms', 0))
                 duration_s = (end - start) / 1000
@@ -93,6 +93,22 @@ def main():
                 print(f"{i}. [{start}ms-{end}ms] ({duration_s:.1f}s) - {label}")
                 if rationale:
                     print(f"   {rationale}")
+
+        stage1 = result.get('stage1_spans') or []
+        postprocessed = result.get('postprocessed_spans') or []
+        refined = result.get('refined_spans')
+
+        if stage1:
+            _print_spans("STAGE 1 — raw LLM output", stage1)
+        if postprocessed and postprocessed != stage1:
+            _print_spans("POST-PROCESSING — merged + CTA extended", postprocessed)
+        elif postprocessed:
+            print(f"\n(Post-processing: no changes from stage 1)")
+        if refined is not None:
+            _print_spans("STAGE 2 — LLM boundary refinement", refined)
+
+        if not stage1:
+            _print_spans("PREDICTIONS", result.get('ad_spans') or [])
         
         print(f"\nNext steps:")
         print(f"  1. Annotate ads:  python scripts/annotate_ads.py {ep_name}")

@@ -17,8 +17,11 @@ from skipcastify.models.content import ContentType
 from skipcastify.services import llm_utils
 from skipcastify.services import metrics
 from skipcastify.services import section_processor
+from skipcastify.services import span_postprocess
 from skipcastify.services.segment_classifier import ClassifiedSegment
 from skipcastify.services.llm_monitor import get_monitor
+
+from skipcastify.utils.thermal import wait_for_cool_cpu
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +101,24 @@ class AudioProcessor:
         
         logger.info(f"Starting Whisper transcription: {audio_path}")
         logger.info(f"Model size: {model_size}")
-        
+
+        # Limit CPU threads to avoid thermal runaway on low-TDP hardware.
+        # WHISPER_THREADS defaults to 2; raise it for faster (hotter) transcription.
+        whisper_threads = int(os.environ.get("WHISPER_THREADS", "4"))
+        try:
+            import torch
+            torch.set_num_threads(whisper_threads)
+        except Exception:
+            pass
+        logger.info(f"Whisper threads: {whisper_threads}")
+
+        # Wait for CPU to cool before starting if it is running hot.
+        wait_for_cool_cpu()
+
         # Load Whisper model (downloads on first use)
         logger.info(f"Loading Whisper model ({model_size})...")
         model = whisper.load_model(model_size)
-        
+
         # Transcribe audio
         logger.info("Transcribing audio...")
         result = model.transcribe(
@@ -226,13 +242,28 @@ class AudioProcessor:
                               segment_count=len(segments))
             logger.info(f"Transcribed {len(segments)} segments")
 
-            # Run section-level LLM refinement (10-minute windows) to detect ad spans
-            logger.info("Running section-level LLM refinement (if available)...")
+            # Stage 1: section-level LLM span identification
+            logger.info("Running stage-1 LLM span identification...")
             try:
-                llm_ad_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name, feed_slug=feed_slug)
+                stage1_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name, feed_slug=feed_slug)
             except Exception as e:
-                logger.warning(f"Section LLM refinement failed: {e}. Falling back to heuristic classification.")
-                llm_ad_spans = []
+                logger.warning(f"Stage-1 LLM failed: {e}. Falling back to heuristic classification.")
+                stage1_spans = []
+
+            # Stage 1b: code-level post-processing
+            if stage1_spans:
+                stage1_spans = span_postprocess.postprocess_spans(stage1_spans, segments)
+
+            # Stage 2 (optional): LLM boundary refinement
+            if os.environ.get("TWO_STAGE_LLM", "false").lower() == "true" and stage1_spans:
+                logger.info("Running stage-2 LLM boundary refinement...")
+                sections = section_processor.make_sections_from_segments(segments)
+                try:
+                    stage1_spans = self._run_refinement_llm(stage1_spans, sections, transcripts_dir, episode_name, feed_slug)
+                except Exception as e:
+                    logger.warning(f"Stage-2 refinement failed: {e}")
+
+            llm_ad_spans = stage1_spans
 
             # Mark segments based on LLM results or heuristic fallback
             classifier = SegmentClassifier(use_ollama=False)
@@ -492,12 +523,134 @@ class AudioProcessor:
                     continue
 
         logger.info(f"LLM identified {len(all_spans)} ad spans across sections")
-        
+
         # Save and print monitoring summary
         monitor.save_episode_profile()
         monitor.print_episode_summary()
-        
+
         return all_spans
+
+    def _annotate_section_with_spans(self, section, spans: list[dict]) -> str:
+        """Build a section transcript annotated with <<SPAN_START>>/<<SPAN_END>> markers."""
+        import re as _re
+
+        sorted_spans = sorted(spans, key=lambda s: s["start_ms"])
+        open_ids: set[int] = set()
+        lines = []
+
+        for line in section.text_lines:
+            m = _re.match(r'\[(\d+)\s*-\s*(\d+)\]', line)
+            if not m:
+                lines.append(line)
+                continue
+            seg_start = int(m.group(1))
+
+            # Close spans that have ended before this segment starts
+            for i, span in enumerate(sorted_spans):
+                if i in open_ids and seg_start >= span["end_ms"]:
+                    lines.append(f"<<SPAN_END {i}>>")
+                    open_ids.discard(i)
+
+            # Open spans that start at or before this segment
+            for i, span in enumerate(sorted_spans):
+                if i not in open_ids and span["start_ms"] <= seg_start < span["end_ms"]:
+                    lines.append(f"<<SPAN_START id={i} start_ms={span['start_ms']} end_ms={span['end_ms']}>>")
+                    open_ids.add(i)
+
+            lines.append(line)
+
+        for i in sorted(open_ids):
+            lines.append(f"<<SPAN_END {i}>>")
+
+        return "\n".join(lines)
+
+    def _run_refinement_llm(
+        self,
+        spans: list[dict],
+        sections,
+        transcripts_dir: str,
+        episode_name: str,
+        feed_slug: str = "",
+    ) -> list[dict]:
+        """Stage-2: refine span boundaries with a focused LLM call per section.
+
+        For each section that has identified spans, builds an annotated transcript
+        and asks the LLM to expand boundaries or merge adjacent spans.
+        Returns the full (possibly adjusted) span list.
+        """
+        prompt_path = os.path.normpath(os.path.join(
+            os.path.dirname(__file__), "..", "llm_prompts", "refine_spans_prompt.txt"
+        ))
+        try:
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                prompt_template = f.read()
+        except Exception as e:
+            logger.error("Failed to read refinement prompt: %s", e)
+            return spans
+
+        refined = list(spans)
+
+        for sec in sections:
+            sec_spans = [s for s in refined if s["start_ms"] < sec.end_ms and s["end_ms"] > sec.start_ms]
+            if not sec_spans:
+                continue
+
+            annotated = self._annotate_section_with_spans(sec, sec_spans)
+            full_prompt = (
+                prompt_template
+                + f"Annotated transcript (section {sec.start_ms}ms–{sec.end_ms}ms):\n{annotated}"
+                + f"\n\nCurrent spans:\n{json.dumps(sec_spans, indent=2)}"
+            )
+
+            try:
+                resp = llm_utils.call_llm(full_prompt)
+                metrics.log_event(
+                    "llm_refinement",
+                    feed_slug=feed_slug,
+                    episode_name=episode_name,
+                    section_start_ms=sec.start_ms,
+                    prompt_tokens=resp.prompt_tokens,
+                    completion_tokens=resp.completion_tokens,
+                    cost_usd=round(resp.cost_usd, 6),
+                )
+
+                debug_path = os.path.join(transcripts_dir, f"{episode_name}_refine_{sec.start_ms}.txt")
+                try:
+                    with open(debug_path, "w", encoding="utf-8") as f:
+                        f.write(resp.text)
+                except Exception:
+                    pass
+
+                new_spans = llm_utils.parse_json_array_from_text(resp.text)
+                valid = []
+                for ns in new_spans:
+                    try:
+                        s = int(ns.get("start_ms", 0))
+                        e = int(ns.get("end_ms", 0))
+                        if s >= e:
+                            continue
+                        valid.append({
+                            "start_ms": s,
+                            "end_ms": e,
+                            "label": ns.get("label", "ADVERTISEMENT"),
+                            "rationale": ns.get("rationale", ""),
+                        })
+                    except Exception:
+                        pass
+
+                if valid:
+                    # Replace spans in this section with the refined set
+                    refined = [s for s in refined if not (s["start_ms"] < sec.end_ms and s["end_ms"] > sec.start_ms)]
+                    refined.extend(valid)
+                    refined.sort(key=lambda s: s["start_ms"])
+                    logger.info(
+                        "Refinement [%d-%d]: %d → %d spans",
+                        sec.start_ms, sec.end_ms, len(sec_spans), len(valid),
+                    )
+            except Exception as e:
+                logger.warning("Refinement call failed for section [%d-%d]: %s", sec.start_ms, sec.end_ms, e)
+
+        return refined
 
     def _aggregated_segments_to_ad_spans(self, aggregated_segments: List) -> List[dict]:
         """Convert aggregated segments classified as ads into ad span dicts.
@@ -527,6 +680,8 @@ class AudioProcessor:
         """
         logger.info(f"Preview processing episode: {episode_file_path}")
 
+        two_stage = os.environ.get("TWO_STAGE_LLM", "false").lower() == "true"
+
         audio = self.load_and_validate_audio_file(episode_file_path)
         working_dir = self._get_episode_working_dir(episode_file_path)
         transcripts_dir = self._get_episode_transcripts_dir(episode_file_path)
@@ -537,21 +692,38 @@ class AudioProcessor:
         logger.info("Transcribing for preview...")
         segments = self.transcribe_with_whisper(wav_path, model_size="base")
 
-        # LLM refinement
         episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
-        try:
-            llm_ad_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name)
-        except Exception as e:
-            logger.warning(f"Preview LLM refinement failed: {e}")
-            llm_ad_spans = []
 
-        if llm_ad_spans:
-            logger.info(f"LLM identified {len(llm_ad_spans)} ad spans for preview.")
+        # Stage 1: LLM span identification
+        try:
+            stage1_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name)
+        except Exception as e:
+            logger.warning(f"Preview stage-1 LLM failed: {e}")
+            stage1_spans = []
+
+        # Stage 1b: code-level post-processing
+        postprocessed_spans = span_postprocess.postprocess_spans(stage1_spans, segments) if stage1_spans else stage1_spans
+
+        # Stage 2 (optional): LLM boundary refinement
+        refined_spans = None
+        if two_stage and postprocessed_spans:
+            logger.info("Running stage-2 LLM boundary refinement...")
+            sections = section_processor.make_sections_from_segments(segments)
+            try:
+                refined_spans = self._run_refinement_llm(postprocessed_spans, sections, transcripts_dir, episode_name)
+            except Exception as e:
+                logger.warning(f"Stage-2 refinement failed: {e}")
+                refined_spans = postprocessed_spans
+
+        final_spans = refined_spans if refined_spans is not None else postprocessed_spans
+
+        if final_spans:
+            logger.info(f"Using {len(final_spans)} spans for preview audio cut.")
             classified_segments = []
             for seg in segments:
                 is_ad = False
                 ad_label = None
-                for span in llm_ad_spans:
+                for span in final_spans:
                     span_start = int(span.get('start_ms', 0))
                     span_end = int(span.get('end_ms', 0))
                     if seg.start < span_end and seg.end > span_start:
@@ -564,7 +736,6 @@ class AudioProcessor:
                 else:
                     classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
         else:
-            # Fallback: use heuristic classifier
             logger.info("Using heuristic classifier as fallback for preview...")
             classifier = SegmentClassifier(use_ollama=False)
             classified_segments = classifier.classify_segments(segments)
@@ -577,26 +748,16 @@ class AudioProcessor:
         preview_audio.export(preview_output_path, format="mp3", bitrate="192k")
         logger.info(f"Saved preview audio to: {preview_output_path}")
 
-        # Save side-by-side transcript showing original vs. removed
         transcript_path = preview_output_path.replace('.mp3', '_transcript.txt')
         self._save_preview_transcript(transcript_path, aggregated_segments, classified_segments)
         logger.info(f"Saved preview transcript to: {transcript_path}")
 
-        # Save predictions to JSON for evaluation
-        # Use episode name directly (not preview_output_path) to get consistent naming
         preview_dir = os.path.dirname(preview_output_path)
         predictions_path = os.path.join(preview_dir, f"{episode_name}_predictions.json")
-        
-        # If LLM returned nothing, use heuristic results as predictions
-        predictions_to_save = llm_ad_spans if llm_ad_spans else self._aggregated_segments_to_ad_spans(aggregated_segments)
-        
-        predictions_data = {
-            'predictions': predictions_to_save
-        }
+        predictions_to_save = final_spans if final_spans else self._aggregated_segments_to_ad_spans(aggregated_segments)
         try:
             with open(predictions_path, 'w', encoding='utf-8') as f:
-                json.dump(predictions_data, f, indent=2, ensure_ascii=False)
-            logger.info(f"Saved predictions to: {predictions_path}")
+                json.dump({"predictions": predictions_to_save}, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.warning(f"Failed to save predictions: {e}")
             predictions_path = None
@@ -606,7 +767,10 @@ class AudioProcessor:
             "transcript_path": transcript_path,
             "predictions_path": predictions_path,
             "segments": segments,
-            "ad_spans": predictions_to_save
+            "ad_spans": predictions_to_save,
+            "stage1_spans": stage1_spans,
+            "postprocessed_spans": postprocessed_spans,
+            "refined_spans": refined_spans,
         }
 
     def process_preview_with_segments(self, episode_file_path: str, preview_output_path: str, segments: List[Segment]) -> dict:
@@ -624,6 +788,8 @@ class AudioProcessor:
         """
         logger.info(f"Preview processing episode (using cached segments): {episode_file_path}")
 
+        two_stage = os.environ.get("TWO_STAGE_LLM", "false").lower() == "true"
+
         audio = self.load_and_validate_audio_file(episode_file_path)
         episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
         working_dir = self._get_episode_working_dir(episode_file_path)
@@ -631,20 +797,42 @@ class AudioProcessor:
 
         logger.info(f"Using {len(segments)} cached segments (skipping transcription)")
 
-        # LLM refinement
+        # Stage 1: LLM span identification
         try:
-            llm_ad_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name)
+            stage1_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name)
         except Exception as e:
-            logger.warning(f"Preview LLM refinement failed: {e}")
-            llm_ad_spans = []
+            logger.warning(f"Preview stage-1 LLM failed: {e}")
+            stage1_spans = []
 
-        if llm_ad_spans:
-            logger.info(f"LLM identified {len(llm_ad_spans)} ad spans for preview.")
+        # Stage 1b: code-level post-processing (merge nearby, extend for CTA)
+        if stage1_spans:
+            postprocessed_spans = span_postprocess.postprocess_spans(stage1_spans, segments)
+        else:
+            postprocessed_spans = stage1_spans
+
+        # Stage 2 (optional): LLM boundary refinement
+        refined_spans = None
+        if two_stage and postprocessed_spans:
+            logger.info("Running stage-2 LLM boundary refinement...")
+            sections = section_processor.make_sections_from_segments(segments)
+            try:
+                refined_spans = self._run_refinement_llm(
+                    postprocessed_spans, sections, transcripts_dir, episode_name
+                )
+            except Exception as e:
+                logger.warning(f"Stage-2 refinement failed: {e}")
+                refined_spans = postprocessed_spans
+
+        # Use best available spans for the audio cut
+        final_spans = refined_spans if refined_spans is not None else postprocessed_spans
+
+        if final_spans:
+            logger.info(f"Using {len(final_spans)} spans for preview audio cut.")
             classified_segments = []
             for seg in segments:
                 is_ad = False
                 ad_label = None
-                for span in llm_ad_spans:
+                for span in final_spans:
                     span_start = int(span.get('start_ms', 0))
                     span_end = int(span.get('end_ms', 0))
                     if seg.start < span_end and seg.end > span_start:
@@ -657,7 +845,6 @@ class AudioProcessor:
                 else:
                     classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
         else:
-            # Fallback: use heuristic classifier
             logger.info("Using heuristic classifier as fallback for preview...")
             classifier = SegmentClassifier(use_ollama=False)
             classified_segments = classifier.classify_segments(segments)
@@ -670,26 +857,16 @@ class AudioProcessor:
         preview_audio.export(preview_output_path, format="mp3", bitrate="192k")
         logger.info(f"Saved preview audio to: {preview_output_path}")
 
-        # Save side-by-side transcript showing original vs. removed
         transcript_path = preview_output_path.replace('.mp3', '_transcript.txt')
         self._save_preview_transcript(transcript_path, aggregated_segments, classified_segments)
         logger.info(f"Saved preview transcript to: {transcript_path}")
 
-        # Save predictions to JSON for evaluation
-        # Use episode name directly (not preview_output_path) to get consistent naming
         preview_dir = os.path.dirname(preview_output_path)
         predictions_path = os.path.join(preview_dir, f"{episode_name}_predictions.json")
-        
-        # If LLM returned nothing, use heuristic results as predictions
-        predictions_to_save = llm_ad_spans if llm_ad_spans else self._aggregated_segments_to_ad_spans(aggregated_segments)
-        
-        predictions_data = {
-            'predictions': predictions_to_save
-        }
+        predictions_to_save = final_spans if final_spans else self._aggregated_segments_to_ad_spans(aggregated_segments)
         try:
             with open(predictions_path, 'w', encoding='utf-8') as f:
-                json.dump(predictions_data, f, indent=2, ensure_ascii=False)
-            logger.info(f"Saved predictions to: {predictions_path}")
+                json.dump({"predictions": predictions_to_save}, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.warning(f"Failed to save predictions: {e}")
             predictions_path = None
@@ -699,6 +876,9 @@ class AudioProcessor:
             "transcript_path": transcript_path,
             "predictions_path": predictions_path,
             "segments": segments,
-            "ad_spans": predictions_to_save
+            "ad_spans": predictions_to_save,
+            "stage1_spans": stage1_spans,
+            "postprocessed_spans": postprocessed_spans,
+            "refined_spans": refined_spans,
         }
 
