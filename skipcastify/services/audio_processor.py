@@ -1,6 +1,5 @@
 from pydub import AudioSegment
 import sys
-from skipcastify.services.rss_parser import RSSParser
 import logging
 import os
 import subprocess
