@@ -24,6 +24,7 @@ class Pipeline:
         episode_limit = int(os.environ.get("EPISODE_LIMIT", "5"))
         self.storage_high_water = int(os.environ.get("STORAGE_HIGH_WATER_GB", "75")) * 1024 ** 3
         self.storage_low_water = int(os.environ.get("STORAGE_LOW_WATER_GB", "50")) * 1024 ** 3
+        self.processing_enabled = os.environ.get("ENABLE_PROCESSING", "false").lower() == "true"
 
         exclude_host = urlparse(server_base_url).hostname
         self.feed_manager = FeedManager(server_base_url, data_dir, episode_token)
@@ -94,10 +95,13 @@ class Pipeline:
             logger.info("Downloading new episodes")
             self.downloader.download_latest()
 
-            state_manager = StateManager(self.data_dir)
-            logger.info("Processing episodes")
-            for episode_fpath in state_manager.get_unprocessed_episodes():
-                self.processor.process(episode_fpath, state_manager)
+            if self.processing_enabled:
+                state_manager = StateManager(self.data_dir)
+                logger.info("Processing episodes")
+                for episode_fpath in state_manager.get_unprocessed_episodes():
+                    self.processor.process(episode_fpath, state_manager)
+            else:
+                logger.info("Audio processing disabled (ENABLE_PROCESSING=false)")
 
             logger.info("Generating RSS feeds")
             for url in self.downloader.subscription_urls:
