@@ -48,9 +48,8 @@ class FeedManager:
                     type="audio/mpeg",
                     length=entry.enclosures[0]["length"],
                 )
-            except AttributeError as e:
-                logger.warning(f"Error with {entry.title} from podcast {title}")
-                logger.warning(e)
+            except Exception as e:
+                logger.warning(f"No usable enclosure for '{entry.title}' from {title}: {e}")
         
         feed_path = f"{self.data_dir}/feeds/{slug}.xml"
         os.makedirs(os.path.dirname(feed_path), exist_ok=True)
