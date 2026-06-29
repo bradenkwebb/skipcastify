@@ -1,3 +1,4 @@
+import json
 import os
 import feedparser
 import requests
@@ -14,6 +15,31 @@ class EpisodeDownloader:
         self.data_dir = data_dir
         self.episode_limit = episode_limit
         self.subscription_urls = load_subscriptions(config_path, exclude_host)
+
+    def _seen_path(self) -> Path:
+        return Path(self.data_dir) / "seen_episodes.json"
+
+    def _load_seen(self) -> dict[str, set[str]]:
+        path = self._seen_path()
+        if path.exists():
+            with open(path) as f:
+                raw = json.load(f)
+            return {k: set(v) for k, v in raw.items()}
+        return {}
+
+    def _save_seen(self, seen: dict[str, set[str]]) -> None:
+        with open(self._seen_path(), "w") as f:
+            json.dump({k: sorted(v) for k, v in seen.items()}, f, indent=2)
+
+    def _entry_id(self, entry) -> str:
+        """Return a stable identifier for a feed entry."""
+        eid = entry.get("id") or entry.get("guid")
+        if eid:
+            return eid
+        try:
+            return self.get_audio_url(entry)
+        except ValueError:
+            return entry.get("title", "")
     
     @staticmethod
     def get_audio_url(entry):
@@ -60,6 +86,8 @@ class EpisodeDownloader:
             return None
 
     def download_latest(self):
+        seen = self._load_seen()
+
         for subscription_url in self.subscription_urls:
             try:
                 feed = feedparser.parse(subscription_url)
@@ -68,6 +96,31 @@ class EpisodeDownloader:
                 logger.warning(f"Skipping feed {subscription_url}: {e}")
                 continue
             logger.info(f"Checking podcast: {podcast_title}")
-            for entry in feed.entries[:self.episode_limit]:
-                self.download_episode(entry, podcast_title)
+
+            feed_seen = seen.get(subscription_url)
+            if feed_seen is None:
+                # First time seeing this feed — record all current episodes as seen, download none.
+                feed_seen = set()
+                for entry in feed.entries:
+                    try:
+                        feed_seen.add(self._entry_id(entry))
+                    except Exception:
+                        pass
+                seen[subscription_url] = feed_seen
+                logger.info(f"New feed '{podcast_title}': marked {len(feed_seen)} existing episodes as seen, will download future episodes only")
+                continue
+
+            new_entries = [
+                entry for entry in feed.entries[:self.episode_limit]
+                if self._entry_id(entry) not in feed_seen
+            ]
+
+            for entry in new_entries:
+                result = self.download_episode(entry, podcast_title)
+                if result:
+                    feed_seen.add(self._entry_id(entry))
+
+            seen[subscription_url] = feed_seen
+
+        self._save_seen(seen)
 
