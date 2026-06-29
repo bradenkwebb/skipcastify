@@ -61,10 +61,13 @@ class EpisodeDownloader:
 
     def download_latest(self):
         for subscription_url in self.subscription_urls:
-            feed = feedparser.parse(subscription_url)
-            podcast_title = feed.feed.title
+            try:
+                feed = feedparser.parse(subscription_url)
+                podcast_title = feed.feed.title
+            except Exception as e:
+                logger.warning(f"Skipping feed {subscription_url}: {e}")
+                continue
             logger.info(f"Checking podcast: {podcast_title}")
-
             for entry in feed.entries[:self.episode_limit]:
                 self.download_episode(entry, podcast_title)
 
