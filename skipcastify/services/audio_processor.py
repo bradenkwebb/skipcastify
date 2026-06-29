@@ -15,6 +15,7 @@ from skipcastify.services.state_manager import StateManager
 from skipcastify.services.segment_classifier import SegmentClassifier
 from skipcastify.models.content import ContentType
 from skipcastify.services import llm_utils
+from skipcastify.services import metrics
 from skipcastify.services import section_processor
 from skipcastify.services.segment_classifier import ClassifiedSegment
 from skipcastify.services.llm_monitor import get_monitor
@@ -201,25 +202,34 @@ class AudioProcessor:
         8. Update state_manager with processing status
         """
         logger.info(f"Processing episode: {episode_file_path}")
-        
+        episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
+        feed_slug = os.path.basename(os.path.dirname(episode_file_path))
+
         try:
             audio = self.load_and_validate_audio_file(episode_file_path)
-            
+            metrics.log_event("episode_start", feed_slug=feed_slug, episode_name=episode_name,
+                              raw_duration_s=round(audio.duration_seconds, 1))
+
             working_dir = self._get_episode_working_dir(episode_file_path)
             transcripts_dir = self._get_episode_transcripts_dir(episode_file_path)
-            
+
             wav_path = os.path.join(working_dir, "audio_for_transcription.wav")
             self._export_audio_to_wav(audio, wav_path)
-            
+
             logger.info("Starting transcription with Whisper...")
+            metrics.log_event("transcription_start", feed_slug=feed_slug, episode_name=episode_name, model="base")
+            transcription_start = time.time()
             segments = self.transcribe_with_whisper(wav_path, model_size="base")
+            transcription_duration = time.time() - transcription_start
+            metrics.log_event("transcription_end", feed_slug=feed_slug, episode_name=episode_name,
+                              model="base", duration_s=round(transcription_duration, 1),
+                              segment_count=len(segments))
             logger.info(f"Transcribed {len(segments)} segments")
-            episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
-            
+
             # Run section-level LLM refinement (10-minute windows) to detect ad spans
             logger.info("Running section-level LLM refinement (if available)...")
             try:
-                llm_ad_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name)
+                llm_ad_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name, feed_slug=feed_slug)
             except Exception as e:
                 logger.warning(f"Section LLM refinement failed: {e}. Falling back to heuristic classification.")
                 llm_ad_spans = []
@@ -276,7 +286,23 @@ class AudioProcessor:
             logger.info(f"Saving processed audio to: {processed_audio_path}")
             processed_audio.export(processed_audio_path, format="mp3", bitrate="192k")
             logger.info(f"Successfully saved processed audio")
-            
+
+            original_s = audio.duration_seconds
+            processed_s = processed_audio.duration_seconds
+            ads_removed_s = original_s - processed_s
+            metrics.log_event(
+                "episode_complete",
+                feed_slug=feed_slug,
+                episode_name=episode_name,
+                original_duration_s=round(original_s, 1),
+                processed_duration_s=round(processed_s, 1),
+                ads_removed_s=round(ads_removed_s, 1),
+                ads_pct=round((ads_removed_s / original_s * 100) if original_s > 0 else 0, 2),
+                span_count=len(llm_ad_spans),
+                spans=[{"start_ms": s["start_ms"], "end_ms": s["end_ms"], "label": s["label"]}
+                       for s in llm_ad_spans],
+            )
+
             # Save classification results for debugging
             classification_log_path = os.path.join(
                 transcripts_dir,
@@ -361,7 +387,7 @@ class AudioProcessor:
             logger.warning(f"Failed to save preview transcript: {e}")
 
 
-    def _run_section_llm(self, segments: List[Segment], transcripts_dir: str, episode_name: str) -> List[dict]:
+    def _run_section_llm(self, segments: List[Segment], transcripts_dir: str, episode_name: str, feed_slug: str = "") -> List[dict]:
         """Run the section-level LLM on suspicious sections and return ad spans.
 
         Returns a list of dicts with keys: start_ms, end_ms, label, rationale
@@ -393,36 +419,36 @@ class AudioProcessor:
             parsed = []
             success = False
             error_msg = None
-            raw = None
-            
+            llm_resp = None
+
             try:
-                raw = llm_utils.call_llm(full_prompt)
+                llm_resp = llm_utils.call_llm(full_prompt)
                 call_duration = time.time() - call_start
-                
+
                 # Save raw response for debugging
                 try:
                     debug_response_path = os.path.join(transcripts_dir, f"{episode_name}_section_{section_idx}_response.txt")
                     with open(debug_response_path, 'w', encoding='utf-8') as f:
                         f.write(f"Raw LLM Response for section {section_idx} [{sec.start_ms}ms-{sec.end_ms}ms]:\n")
                         f.write("="*100 + "\n")
-                        f.write(raw)
+                        f.write(llm_resp.text)
                         f.write("\n" + "="*100 + "\n")
                     logger.debug(f"Saved raw LLM response to: {debug_response_path}")
                 except Exception as debug_e:
                     logger.debug(f"Failed to save debug response: {debug_e}")
-                
+
                 try:
-                    parsed = llm_utils.parse_json_array_from_text(raw)
+                    parsed = llm_utils.parse_json_array_from_text(llm_resp.text)
                     success = True
                 except Exception as e:
                     error_msg = str(e)
                     logger.warning(f"Failed to parse LLM response for section {sec.start_ms}-{sec.end_ms}: {e}")
-                    logger.debug(f"Raw response was: {raw[:500]}...")
+                    logger.debug(f"Raw response was: {llm_resp.text[:500]}...")
             except Exception as e:
                 call_duration = time.time() - call_start
                 error_msg = str(e)
                 logger.warning(f"Ollama call failed for section {sec.start_ms}-{sec.end_ms}: {e}")
-            
+
             # Record metrics
             monitor.record_call(
                 section_index=section_idx,
@@ -432,6 +458,17 @@ class AudioProcessor:
                 success=success,
                 spans_returned=len(parsed) if success else 0,
                 error_msg=error_msg
+            )
+            metrics.log_event(
+                "llm_section",
+                feed_slug=feed_slug,
+                episode_name=episode_name,
+                section_idx=section_idx,
+                duration_s=round(call_duration, 2),
+                prompt_tokens=llm_resp.prompt_tokens if llm_resp else 0,
+                completion_tokens=llm_resp.completion_tokens if llm_resp else 0,
+                cost_usd=round(llm_resp.cost_usd, 6) if llm_resp else 0.0,
+                spans_found=len(parsed) if success else 0,
             )
 
             # Validate and normalize spans
