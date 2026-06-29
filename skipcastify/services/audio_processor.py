@@ -141,8 +141,9 @@ class AudioProcessor:
         # Collect all CONTENT segments
         content_pieces = []
         
+        AD_TYPES = {ContentType.ADVERTISEMENT, ContentType.SPONSOR}
         for agg_seg in aggregated_segments:
-            if agg_seg.content_type == ContentType.CONTENT:
+            if agg_seg.content_type not in AD_TYPES:
                 try:
                     # Extract audio from this segment (times are in milliseconds)
                     piece = audio[agg_seg.start:agg_seg.end]
@@ -379,9 +380,6 @@ class AudioProcessor:
         monitor.start_episode(episode_name)
 
         for section_idx, sec in enumerate(sections):
-            if not section_processor.is_section_suspicious(sec):
-                continue
-
             section_text = section_processor.section_to_prompt_text(sec)
             full_prompt = prompt_template + "\n\nTRANSCRIPT:\n" + section_text
 
@@ -393,7 +391,7 @@ class AudioProcessor:
             raw = None
             
             try:
-                raw = llm_utils.call_ollama_generate(full_prompt)
+                raw = llm_utils.call_llm(full_prompt)
                 call_duration = time.time() - call_start
                 
                 # Save raw response for debugging
