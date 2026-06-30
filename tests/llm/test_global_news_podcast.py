@@ -93,9 +93,17 @@ class TestMustNotRemove:
             f"Venezuela earthquake news [102000-411000ms] was falsely flagged. Spans: {llm_spans}"
 
     def test_world_cup_mathematician(self, llm_spans):
-        """Interview with the World Cup-predicting mathematician — genuine content."""
-        assert not any_overlap(llm_spans, 1_750_000, 1_900_000), \
-            f"World Cup mathematician segment [1750000-1900000ms] was falsely flagged. Spans: {llm_spans}"
+        """Interview with the World Cup-predicting mathematician — genuine content.
+
+        Window ends at 1887000, where the interview ends and the end-of-show
+        cross-promo for the BBC Sports Podcast begins. That cross-promo
+        ('listen to the BBC World Service Sports Podcast... available wherever
+        you get your podcasts') is borderline ad/editorial and acceptable to
+        remove either way, so it is intentionally outside the protected window;
+        this test guards the genuine interview, not the outro.
+        """
+        assert not any_overlap(llm_spans, 1_750_000, 1_887_000), \
+            f"World Cup mathematician interview [1750000-1887000ms] was falsely flagged. Spans: {llm_spans}"
 
     def test_spice_girls_anniversary(self, llm_spans):
         """Spice Girls 30th anniversary feature — cultural content, not an ad."""

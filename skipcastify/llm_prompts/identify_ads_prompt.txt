@@ -48,7 +48,12 @@ WHAT TO FLAG:
 
 5. Branded narrative content: ads sometimes disguise themselves as a short podcast preview or branded story ("On this episode of [Show], we explore...") where the product appears shortly after. The narrative framing is part of the ad — flag the whole thing from its fictional "episode intro" through the product name and close.
 
-6. Problem-setup → product-reveal pattern: many ads open with a relatable problem or hook before naming the product. If you've flagged a problem-setup segment, the product-reveal, benefits, and CTA that follow it in the very next segments are part of the same ad unit — include them in the span even if they sound more descriptive than promotional.
+6. Problem-setup → product-reveal pattern (expand in BOTH directions): many ads open with a relatable problem, symptom list, or hook before naming the product, and may not reveal a brand or CTA until the very end.
+   - Forward: if you've flagged a problem-setup segment, the product-reveal, benefits, and CTA in the following segments are part of the same ad unit — include them even if they sound more descriptive than promotional.
+   - Backward: if you've flagged a brand mention or a CTA/URL, look back through the immediately preceding contiguous segments and pull start_ms back to include the entire lead-in that builds to it — the problem/symptom framing, "talk to your doctor"-style advice, or storytelling hook.
+   - Pre-roll position: a promotional block at the very start of a section — before the show's name, theme music, or the host's greeting — is very likely a pre-roll ad. When such an opening block ends in a brand or CTA, flag it from the first segment (start_ms at or near 0 / the section start). Position at the top of the episode is itself a strong ad signal.
+   An ad's lead-in can sound like a neutral consumer tip or public-health message (listing memory symptoms, explaining a medical condition, describing a relatable frustration) right up until the brand is named. A HARD CTA at the end is what signals the whole preceding contiguous block was an ad: an external URL, a promo code, an app-download prompt, or "visit / go to / use code X". Apply this backward expansion ONLY when such a hard CTA is present.
+   Critically, this does NOT loosen the editorial guard: a bare recommendation to check out another show ("listen to the X Podcast", "available wherever you get your podcasts") with no URL, no promo code, and no sponsor attribution is NOT a CTA — it is editorial cross-promotion and must stay (see Examples C and E). Ordinary news reports and interview answers are never ad lead-ins, even when they mention a company or product.
 
 ---
 
@@ -177,6 +182,28 @@ Expected JSON response:
     "rationale": "Full ad break: product ad followed by two sponsored podcast promos, all within ~75 seconds."
   }
 ]
+
+Example I - Health-PSA-style ad; backward expansion through the symptom hook:
+Transcript snippet:
+[0 - 6800] If you walk into a room and can't remember why, it could be nothing, or something more. If you
+[6800 - 12640] confuse a familiar recipe, it could be a slip-up, or it could be associated with Amaloid
+[12640 - 17320] plaque build up in the brain. Amaloid is a protein that your body produces naturally, but a
+[17320 - 21440] build up in the brain could lead to memory and thinking issues. To see what may be behind
+[21440 - 25400] your memory and thinking issues, talk to your doctor about getting a full assessment.
+[25400 - 30040] It's never too early to start the conversation. Visit Amaloid.com to learn more.
+[56040 - 62920] You could really make a case that Chris Rufo is the most successful activist on the right.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 0,
+    "end_ms": 30040,
+    "label": "ADVERTISEMENT",
+    "rationale": "Health-PSA-style ad: the symptom hook and 'talk to your doctor' framing all build to the branded CTA 'Visit Amaloid.com'. Expand backward from the CTA through the entire lead-in; editorial does not resume until [56040]."
+  }
+]
+
+Note: the opening segments sound like a neutral public-health message about memory and amyloid plaque, but they culminate in a branded URL CTA — that retroactively makes the whole contiguous block an ad. This is also a pre-roll: it runs at the very top of the episode, before the show's intro/branding. The span must start at [0], not at the CTA segment.
 
 ---
 
