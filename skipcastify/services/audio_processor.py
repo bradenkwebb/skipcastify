@@ -20,6 +20,7 @@ from skipcastify.services import section_processor
 from skipcastify.services import span_postprocess
 from skipcastify.services.segment_classifier import ClassifiedSegment
 from skipcastify.services.llm_monitor import get_monitor
+from skipcastify.services.transcript_cache import TranscriptCache
 
 from skipcastify.utils.thermal import wait_for_cool_cpu
 
@@ -257,6 +258,13 @@ class AudioProcessor:
                               model="base", duration_s=round(transcription_duration, 1),
                               segment_count=len(segments))
             logger.info(f"Transcribed {len(segments)} segments")
+
+            # Persist the full transcript so we never have to re-transcribe for
+            # debugging or LLM regression tests. Saved to data/transcripts/, the
+            # same location the golden tests read from.
+            TranscriptCache(os.path.join(self.data_dir, "transcripts")).save_transcript(
+                episode_name, segments
+            )
 
             # Stage 1: section-level LLM span identification
             logger.info("Running stage-1 LLM span identification...")
