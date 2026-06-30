@@ -514,6 +514,7 @@ class AudioProcessor:
                 duration_s=round(call_duration, 2),
                 prompt_tokens=llm_resp.prompt_tokens if llm_resp else 0,
                 completion_tokens=llm_resp.completion_tokens if llm_resp else 0,
+                cached_tokens=llm_resp.cached_tokens if llm_resp else 0,
                 cost_usd=round(llm_resp.cost_usd, 6) if llm_resp else 0.0,
                 spans_found=len(parsed) if success else 0,
             )

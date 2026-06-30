@@ -16,9 +16,11 @@ DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
 DEFAULT_OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
 # Input/output price per token by model. Update if OpenAI changes pricing.
+# "cached_input" is the discounted rate for prompt-prefix tokens served from
+# OpenAI's automatic prompt cache (50% of input for the 4o family).
 _OPENAI_PRICE: dict[str, dict[str, float]] = {
-    "gpt-4o-mini": {"input": 0.15 / 1_000_000, "output": 0.60 / 1_000_000},
-    "gpt-4o":      {"input": 2.50 / 1_000_000, "output": 10.00 / 1_000_000},
+    "gpt-4o-mini": {"input": 0.15 / 1_000_000, "cached_input": 0.075 / 1_000_000, "output": 0.60 / 1_000_000},
+    "gpt-4o":      {"input": 2.50 / 1_000_000, "cached_input": 1.25 / 1_000_000, "output": 10.00 / 1_000_000},
 }
 
 
@@ -27,6 +29,7 @@ class LLMResponse:
     text: str
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    cached_tokens: int = 0
     cost_usd: float = 0.0
 
 
@@ -66,15 +69,31 @@ def call_openai_chat(prompt: str) -> LLMResponse:
         temperature=0.0,
     )
 
-    prompt_tokens = response.usage.prompt_tokens if response.usage else 0
-    completion_tokens = response.usage.completion_tokens if response.usage else 0
+    usage = response.usage
+    prompt_tokens = usage.prompt_tokens if usage else 0
+    completion_tokens = usage.completion_tokens if usage else 0
+
+    # Tokens served from OpenAI's automatic prompt cache (the stable system
+    # prompt prefix) are billed at the discounted cached_input rate.
+    cached_tokens = 0
+    details = getattr(usage, "prompt_tokens_details", None) if usage else None
+    if details is not None:
+        cached_tokens = getattr(details, "cached_tokens", 0) or 0
+
     prices = _OPENAI_PRICE.get(DEFAULT_OPENAI_MODEL, {"input": 0.0, "output": 0.0})
-    cost_usd = prompt_tokens * prices["input"] + completion_tokens * prices["output"]
+    cached_rate = prices.get("cached_input", prices["input"])
+    uncached_tokens = prompt_tokens - cached_tokens
+    cost_usd = (
+        uncached_tokens * prices["input"]
+        + cached_tokens * cached_rate
+        + completion_tokens * prices["output"]
+    )
 
     return LLMResponse(
         text=response.choices[0].message.content or "",
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        cached_tokens=cached_tokens,
         cost_usd=cost_usd,
     )
 
