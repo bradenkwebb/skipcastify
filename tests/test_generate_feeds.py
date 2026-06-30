@@ -7,15 +7,19 @@ import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from skipcastify.services.generate_feeds import FeedManager
+from skipcastify.services.generate_feeds import FeedManager, _itunes_safe_image
 
 
-def _make_entry(title="Ep 1", published_parsed=(2025, 1, 1, 12, 0, 0, 0, 0, 0), enclosures=None):
+def _make_entry(title="Ep 1", published_parsed=(2025, 1, 1, 12, 0, 0, 0, 0, 0),
+                enclosures=None, image_href=None):
     entry = MagicMock()
     entry.title = title
     entry.published_parsed = published_parsed
     entry.link = "https://example.com/ep"
-    entry.get.side_effect = lambda k, default=None: {"summary": "desc"}.get(k, default)
+    data = {"summary": "desc"}
+    if image_href is not None:
+        data["image"] = {"href": image_href}
+    entry.get.side_effect = lambda k, default=None: data.get(k, default)
     entry.enclosures = enclosures if enclosures is not None else [
         {"length": "12345", "href": "https://cdn.example.com/ep.mp3"}
     ]
@@ -122,3 +126,59 @@ def test_entries_without_enclosure_are_included(fm, tmp_path):
     content = Path(path).read_text()
     assert "Bonus Post" in content
     assert "Normal Episode" in content
+
+
+@pytest.mark.parametrize("url,expected", [
+    ("https://x.com/a.jpg", "https://x.com/a.jpg"),
+    ("https://x.com/a.png", "https://x.com/a.png"),
+    ("https://x.com/a.jpeg", None),                       # feedgen rejects .jpeg
+    ("https://x.com/a.jpg?ixlib=rails&max-w=3000", None),  # query string breaks it
+    ("https://x.com/a.webp", None),
+    ("https://x.com/noext", None),
+    (None, None),
+])
+def test_itunes_safe_image(url, expected):
+    assert _itunes_safe_image(url) == expected
+
+
+def test_feed_image_jpeg_does_not_abort(fm, tmp_path):
+    """A feed-level .jpeg image (feedgen-invalid) must not abort feed generation."""
+    feed = _make_feed([_make_entry()], image_href="https://example.com/cover.jpeg")
+    with patch("feedparser.parse", return_value=feed), \
+         patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
+        path = fm.generate_feed("https://example.com/feed.xml")
+
+    content = Path(path).read_text()
+    assert "Ep 1" in content                  # feed still generated
+    assert "<itunes:image" not in content     # the invalid image was skipped, not emitted
+
+
+def test_episode_image_with_querystring_does_not_abort(fm, tmp_path):
+    """An episode image URL with a query string must not abort the whole feed."""
+    bad = _make_entry(title="Has Bad Image",
+                      image_href="https://cdn.example.com/ep.jpg?w=3000&auto=format")
+    good = _make_entry(title="Normal Episode")
+    feed = _make_feed([bad, good], image_href=None)
+    with patch("feedparser.parse", return_value=feed), \
+         patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
+        path = fm.generate_feed("https://example.com/feed.xml")
+
+    content = Path(path).read_text()
+    assert "Has Bad Image" in content
+    assert "Normal Episode" in content
+    assert "<itunes:image" not in content     # bad ep image skipped, no crash
+
+
+def test_valid_episode_jpg_image_is_passed_through(fm, tmp_path):
+    """A valid .jpg episode image should be emitted as itunes:image."""
+    feed = _make_feed(
+        [_make_entry(title="Ep 1", image_href="https://cdn.example.com/ep-art.jpg")],
+        image_href=None,
+    )
+    with patch("feedparser.parse", return_value=feed), \
+         patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
+        path = fm.generate_feed("https://example.com/feed.xml")
+
+    content = Path(path).read_text()
+    assert 'https://cdn.example.com/ep-art.jpg' in content
+    assert "<itunes:image" in content

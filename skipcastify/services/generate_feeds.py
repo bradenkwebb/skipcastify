@@ -11,6 +11,16 @@ from skipcastify.services.artwork_processor import process_artwork
 logger = logging.getLogger(__name__)
 
 
+def _itunes_safe_image(url: str | None) -> str | None:
+    """feedgen's itunes_image() raises 'Image file must be png or jpg' unless the
+    URL ends in exactly .jpg or .png. Return the URL only if it qualifies, else
+    None — so an unsupported image (.jpeg, a query string, no extension) is
+    skipped instead of letting the exception abort the entire feed."""
+    if url and (url.endswith('.jpg') or url.endswith('.png')):
+        return url
+    return None
+
+
 class FeedManager:
     def __init__(self, server_base_url: str, data_dir: str, episode_token: str = "") -> None:
         self.server_base_url = server_base_url.rstrip('/')
@@ -56,7 +66,11 @@ class FeedManager:
                 fg.podcast.itunes_image(local_artwork_url)
             else:
                 fg.image(url=image_url, title=title, link=subscription_url)
-                fg.podcast.itunes_image(image_url)
+                safe_image = _itunes_safe_image(image_url)
+                if safe_image:
+                    fg.podcast.itunes_image(safe_image)
+                else:
+                    logger.debug("Skipping feed itunes:image (unsupported URL: %s)", image_url)
 
         author = (feed.feed.get('author_detail', {}).get('name')
                   or feed.feed.get('author')
@@ -95,7 +109,9 @@ class FeedManager:
             # Pass through per-episode artwork (e.g. BBC Global News). We use the
             # original image URL directly rather than re-framing each one, which
             # would mean downloading every episode image on every feed-gen cycle.
-            ep_image = entry.get('image', {}).get('href')
+            # Guard it: feedgen rejects any URL not ending in .jpg/.png, and an
+            # unsupported episode image must not abort the whole feed.
+            ep_image = _itunes_safe_image(entry.get('image', {}).get('href'))
             if ep_image:
                 fe.podcast.itunes_image(ep_image)
 
