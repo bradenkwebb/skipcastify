@@ -251,7 +251,7 @@ class AudioProcessor:
             # Whisper step. The cache lives in data/transcripts/, the same place
             # the golden tests read from.
             cache = TranscriptCache(os.path.join(self.data_dir, "transcripts"))
-            cached = cache.load_cached_transcript(episode_name)
+            cached = cache.load_cached_transcript(episode_name, source_path=episode_file_path)
             if cached is not None:
                 segments = [Segment(start=c.start, end=c.end, text=c.text) for c in cached]
                 logger.info(f"Using cached transcript for {episode_name}: {len(segments)} segments")
@@ -271,8 +271,11 @@ class AudioProcessor:
                                   segment_count=len(segments))
                 logger.info(f"Transcribed {len(segments)} segments")
 
-                # Persist so we never have to re-transcribe this episode again.
-                cache.save_transcript(episode_name, segments)
+                # Persist so we never have to re-transcribe this episode again,
+                # tagged with the audio's hash so the cache self-invalidates if
+                # the file is later replaced (e.g. a re-download with different
+                # dynamically-inserted ads).
+                cache.save_transcript(episode_name, segments, source_path=episode_file_path)
 
             # Stage 1: section-level LLM span identification
             logger.info("Running stage-1 LLM span identification...")

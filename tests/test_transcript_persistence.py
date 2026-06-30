@@ -37,6 +37,23 @@ def test_transcript_cache_round_trips_segments(tmp_path):
         (0, 5000, "hello"), (5000, 10000, "world")]
 
 
+def test_transcript_cache_validates_source_hash(tmp_path):
+    """With a source_path, the cache hits only when the audio is unchanged."""
+    cache = TranscriptCache(str(tmp_path / "cache"))
+    audio = tmp_path / "ep.mp3"
+    audio.write_bytes(b"version one")
+    cache.save_transcript("ep", [Segment(start=0, end=1000, text="hi")],
+                          source_path=str(audio))
+
+    # Same audio -> hit.
+    assert cache.load_cached_transcript("ep", source_path=str(audio)) is not None
+    # No source_path given -> no validation, still a hit (back-compat).
+    assert cache.load_cached_transcript("ep") is not None
+    # Audio changed -> cache invalidated.
+    audio.write_bytes(b"version two is entirely different")
+    assert cache.load_cached_transcript("ep", source_path=str(audio)) is None
+
+
 def _run_process_with_mocks(tmp_path, segments, llm_spans):
     """Run AudioProcessor.process with every heavy stage mocked out.
 
@@ -92,10 +109,11 @@ def test_process_reuses_cached_transcript(tmp_path):
     episode_path = raw_dir / "test-feed-some_episode.mp3"
     episode_path.write_bytes(b"not really mp3")
 
-    # Pre-seed the cache for this episode.
+    # Pre-seed the cache for this episode, tagged with the audio's hash.
     cache = TranscriptCache(str(data_dir / "transcripts"))
     cache.save_transcript("test-feed-some_episode",
-                          [Segment(start=0, end=4000, text="cached content")])
+                          [Segment(start=0, end=4000, text="cached content")],
+                          source_path=str(episode_path))
 
     audio = MagicMock(); audio.duration_seconds = 50.0
     processed = MagicMock(); processed.duration_seconds = 40.0
@@ -111,6 +129,41 @@ def test_process_reuses_cached_transcript(tmp_path):
         processor.process(str(episode_path), state_manager=MagicMock())
 
     mock_transcribe.assert_not_called()
+
+
+def test_process_reruns_when_audio_changed(tmp_path):
+    """If the raw audio is replaced (e.g. a re-download with different dynamic
+    ads), the name-keyed cache must be invalidated and Whisper must re-run."""
+    data_dir = tmp_path / "data"
+    raw_dir = data_dir / "podcasts" / "raw" / "test-feed"
+    raw_dir.mkdir(parents=True)
+    episode_path = raw_dir / "test-feed-some_episode.mp3"
+    episode_path.write_bytes(b"download A with ad X")
+
+    # Cache a transcript built from download A.
+    cache = TranscriptCache(str(data_dir / "transcripts"))
+    cache.save_transcript("test-feed-some_episode",
+                          [Segment(start=0, end=4000, text="from download A")],
+                          source_path=str(episode_path))
+
+    # The same episode name is re-downloaded with different bytes (different ads).
+    episode_path.write_bytes(b"download B with a totally different ad Y")
+
+    audio = MagicMock(); audio.duration_seconds = 50.0
+    processed = MagicMock(); processed.duration_seconds = 40.0
+    processor = AudioProcessor(str(data_dir))
+
+    with patch.object(AudioProcessor, "load_and_validate_audio_file", return_value=audio), \
+         patch.object(AudioProcessor, "_export_audio_to_wav"), \
+         patch.object(AudioProcessor, "transcribe_with_whisper",
+                      return_value=[Segment(start=0, end=4000, text="from download B")]) as mock_transcribe, \
+         patch.object(AudioProcessor, "_run_section_llm", return_value=[]), \
+         patch.object(AudioProcessor, "cut_and_stitch_audio", return_value=processed), \
+         patch("skipcastify.services.audio_processor._source_bitrate", return_value="128k"), \
+         patch("skipcastify.services.audio_processor.metrics.log_event"):
+        processor.process(str(episode_path), state_manager=MagicMock())
+
+    mock_transcribe.assert_called_once()
 
 
 def test_process_persists_transcript_even_with_ads(tmp_path):
