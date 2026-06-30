@@ -246,25 +246,33 @@ class AudioProcessor:
             working_dir = self._get_episode_working_dir(episode_file_path)
             transcripts_dir = self._get_episode_transcripts_dir(episode_file_path)
 
-            wav_path = os.path.join(working_dir, "audio_for_transcription.wav")
-            self._export_audio_to_wav(audio, wav_path)
+            # Reuse a cached transcript when one exists (e.g. warmed by an ad-hoc
+            # transcribe run, or a reprocess) to skip the expensive, CPU-hot
+            # Whisper step. The cache lives in data/transcripts/, the same place
+            # the golden tests read from.
+            cache = TranscriptCache(os.path.join(self.data_dir, "transcripts"))
+            cached = cache.load_cached_transcript(episode_name)
+            if cached is not None:
+                segments = [Segment(start=c.start, end=c.end, text=c.text) for c in cached]
+                logger.info(f"Using cached transcript for {episode_name}: {len(segments)} segments")
+                metrics.log_event("transcription_cached", feed_slug=feed_slug,
+                                  episode_name=episode_name, segment_count=len(segments))
+            else:
+                wav_path = os.path.join(working_dir, "audio_for_transcription.wav")
+                self._export_audio_to_wav(audio, wav_path)
 
-            logger.info("Starting transcription with Whisper...")
-            metrics.log_event("transcription_start", feed_slug=feed_slug, episode_name=episode_name, model="base")
-            transcription_start = time.time()
-            segments = self.transcribe_with_whisper(wav_path, model_size="base")
-            transcription_duration = time.time() - transcription_start
-            metrics.log_event("transcription_end", feed_slug=feed_slug, episode_name=episode_name,
-                              model="base", duration_s=round(transcription_duration, 1),
-                              segment_count=len(segments))
-            logger.info(f"Transcribed {len(segments)} segments")
+                logger.info("Starting transcription with Whisper...")
+                metrics.log_event("transcription_start", feed_slug=feed_slug, episode_name=episode_name, model="base")
+                transcription_start = time.time()
+                segments = self.transcribe_with_whisper(wav_path, model_size="base")
+                transcription_duration = time.time() - transcription_start
+                metrics.log_event("transcription_end", feed_slug=feed_slug, episode_name=episode_name,
+                                  model="base", duration_s=round(transcription_duration, 1),
+                                  segment_count=len(segments))
+                logger.info(f"Transcribed {len(segments)} segments")
 
-            # Persist the full transcript so we never have to re-transcribe for
-            # debugging or LLM regression tests. Saved to data/transcripts/, the
-            # same location the golden tests read from.
-            TranscriptCache(os.path.join(self.data_dir, "transcripts")).save_transcript(
-                episode_name, segments
-            )
+                # Persist so we never have to re-transcribe this episode again.
+                cache.save_transcript(episode_name, segments)
 
             # Stage 1: section-level LLM span identification
             logger.info("Running stage-1 LLM span identification...")

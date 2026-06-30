@@ -84,6 +84,35 @@ def test_process_persists_transcript(tmp_path):
     ]
 
 
+def test_process_reuses_cached_transcript(tmp_path):
+    """When a transcript is already cached, process() must not re-run Whisper."""
+    data_dir = tmp_path / "data"
+    raw_dir = data_dir / "podcasts" / "raw" / "test-feed"
+    raw_dir.mkdir(parents=True)
+    episode_path = raw_dir / "test-feed-some_episode.mp3"
+    episode_path.write_bytes(b"not really mp3")
+
+    # Pre-seed the cache for this episode.
+    cache = TranscriptCache(str(data_dir / "transcripts"))
+    cache.save_transcript("test-feed-some_episode",
+                          [Segment(start=0, end=4000, text="cached content")])
+
+    audio = MagicMock(); audio.duration_seconds = 50.0
+    processed = MagicMock(); processed.duration_seconds = 40.0
+    processor = AudioProcessor(str(data_dir))
+
+    with patch.object(AudioProcessor, "load_and_validate_audio_file", return_value=audio), \
+         patch.object(AudioProcessor, "_export_audio_to_wav"), \
+         patch.object(AudioProcessor, "transcribe_with_whisper") as mock_transcribe, \
+         patch.object(AudioProcessor, "_run_section_llm", return_value=[]), \
+         patch.object(AudioProcessor, "cut_and_stitch_audio", return_value=processed), \
+         patch("skipcastify.services.audio_processor._source_bitrate", return_value="128k"), \
+         patch("skipcastify.services.audio_processor.metrics.log_event"):
+        processor.process(str(episode_path), state_manager=MagicMock())
+
+    mock_transcribe.assert_not_called()
+
+
 def test_process_persists_transcript_even_with_ads(tmp_path):
     """Transcript is saved regardless of whether the LLM found ad spans."""
     segments = [Segment(start=0, end=5000, text="buy our sponsor product"),
