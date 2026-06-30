@@ -59,4 +59,6 @@ def serve_episode(token, podcast_name, filename):
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    # threaded=True so a slow episode download doesn't block feed/artwork/other
+    # requests — podcast apps open several connections at once.
+    app.run(host='0.0.0.0', port=5000, threaded=True)
