@@ -127,6 +127,20 @@ uv run python scripts/preview_episode.py path/to/episode.mp3 --force-transcribe
 
 Output goes to `data/podcasts/processed_preview/` and includes an annotated transcript showing exactly which segments were kept or removed.
 
+### Process an episode ad-hoc (into production)
+
+To transcribe or fully process specific episodes now, without waiting for the cron run:
+
+```bash
+# Transcribe only, caching the transcript to data/transcripts/
+uv run python scripts/transcribe_episode.py path/to/episode.mp3 --feed <slug>
+
+# Full process (transcribe + LLM + stitch) into data/podcasts/processed/
+uv run python scripts/process_episode.py path/to/episode.mp3 --feed <slug>
+```
+
+Transcripts are cached and keyed by a hash of the source audio, so re-runs skip Whisper unless the audio changed (`--force` to override on `transcribe_episode.py`).
+
 ### Regenerate feeds only
 
 ```bash
@@ -170,4 +184,4 @@ uv run pytest
 uv run pytest --run-llm
 ```
 
-The LLM tests run the full ad-detection pipeline on a known BBC episode and assert both precision (no false positives on editorial content) and recall (all known ads detected).
+The LLM tests run ad detection against committed transcript fixtures for several feeds (one file per feed under `tests/llm/`) and assert both recall (known ads detected) and precision (no false positives on editorial or ad-free content, e.g. the Wisdom of the Masters negative tests).
