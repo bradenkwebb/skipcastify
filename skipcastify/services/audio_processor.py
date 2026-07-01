@@ -164,61 +164,63 @@ class AudioProcessor:
         aggregated_segments: List
     ) -> AudioSegment:
         """
-        Remove non-CONTENT segments from audio and concatenate remaining pieces.
-        
+        Remove only the ad segments, keeping the rest of the audio intact.
+
+        Excises the time ranges classified as ads and preserves everything else
+        byte-for-byte — content speech, intro/outro music, musical interludes and
+        intentional pauses all survive. (The previous approach rebuilt the
+        episode from speech segments, which silently dropped every non-speech
+        gap: intro themes, the ear-training podcast's musical examples, the
+        meditative silences, etc.)
+
         Args:
             audio: The full AudioSegment to process
             aggregated_segments: List of AggregatedSegment objects with classifications
-            
+
         Returns:
-            New AudioSegment containing only CONTENT segments, with transitions preserved
+            New AudioSegment equal to the original minus the ad ranges.
         """
         if not aggregated_segments:
             logger.warning("No aggregated segments provided, returning original audio")
             return audio
-        
-        # Collect all CONTENT segments
-        content_pieces = []
-        
+
+        total_ms = len(audio)
         AD_TYPES = {ContentType.ADVERTISEMENT, ContentType.SPONSOR}
-        for agg_seg in aggregated_segments:
-            if agg_seg.content_type not in AD_TYPES:
-                try:
-                    # Extract audio from this segment (times are in milliseconds)
-                    piece = audio[agg_seg.start:agg_seg.end]
-                    content_pieces.append(piece)
-                    logger.debug(
-                        f"Extracted content piece: {agg_seg.start}ms-{agg_seg.end}ms "
-                        f"({len(piece)//1000}s, {agg_seg.segment_count} segments)"
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to extract segment [{agg_seg.start}ms-{agg_seg.end}ms]: {e}"
-                    )
-        
-        if not content_pieces:
-            logger.warning("No content segments found, returning original audio")
+        ad_ranges = [
+            (max(0, agg_seg.start), min(total_ms, agg_seg.end))
+            for agg_seg in aggregated_segments
+            if agg_seg.content_type in AD_TYPES and agg_seg.end > agg_seg.start
+        ]
+        if not ad_ranges:
+            logger.info("No ad segments found, keeping original audio unchanged")
             return audio
-        
-        # Concatenate all content pieces
-        logger.info(f"Stitching {len(content_pieces)} content pieces together...")
-        stitched_audio = content_pieces[0]
-        
-        for piece in content_pieces[1:]:
-            stitched_audio += piece
-        
-        original_duration = audio.duration_seconds
-        processed_duration = stitched_audio.duration_seconds
-        ads_duration = original_duration - processed_duration
-        ads_percentage = (ads_duration / original_duration * 100) if original_duration > 0 else 0
-        
+
+        # Merge overlapping / adjacent ad ranges.
+        ad_ranges.sort()
+        merged = [ad_ranges[0]]
+        for start, end in ad_ranges[1:]:
+            if start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                merged.append((start, end))
+
+        # Keep the complement of the ad ranges: everything that isn't an ad.
+        kept = AudioSegment.empty()
+        cursor = 0
+        for start, end in merged:
+            if start > cursor:
+                kept += audio[cursor:start]
+            cursor = max(cursor, end)
+        if cursor < total_ms:
+            kept += audio[cursor:total_ms]
+
+        removed_ms = sum(end - start for start, end in merged)
         logger.info(
-            f"Audio stitching complete: "
-            f"{original_duration:.1f}s → {processed_duration:.1f}s "
-            f"({ads_duration:.1f}s ads removed, {ads_percentage:.1f}%)"
+            f"Removed {len(merged)} ad span(s): "
+            f"{total_ms / 1000:.1f}s → {len(kept) / 1000:.1f}s "
+            f"({removed_ms / 1000:.1f}s of ads removed)"
         )
-        
-        return stitched_audio
+        return kept
     
     def process(self, episode_file_path: str, state_manager: StateManager):
         """
