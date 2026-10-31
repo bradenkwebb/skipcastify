@@ -5,8 +5,8 @@ import os
 import subprocess
 import datetime
 import json
-import whisper
 import time
+from faster_whisper import WhisperModel
 from pathlib import Path
 from dataclasses import dataclass
 from typing import List
@@ -102,59 +102,66 @@ class AudioProcessor:
         model_size: str = "base"
     ) -> List[Segment]:
         """
-        Transcribe audio using OpenAI Whisper locally.
-        
+        Transcribe audio locally with faster-whisper (CTranslate2).
+
+        Same Whisper weights as openai-whisper, but int8-quantized and greedy-
+        decoded: roughly 2x faster on this CPU and runs cooler, which matters on
+        low-TDP hardware with no thermal governor. See docs/faster-whisper.md.
+
         Args:
             audio_path: Path to the audio file to transcribe
             model_size: Whisper model size - 'tiny', 'base', 'small', 'medium', 'large'
                        (default: 'base' - good balance of speed/accuracy for POC)
-            
+
         Returns:
             List of Segment objects with transcription and timing
         """
         if not os.path.isfile(audio_path):
             logger.error(f"Audio file not found for transcription: {audio_path}")
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
-        
+
         logger.info(f"Starting Whisper transcription: {audio_path}")
         logger.info(f"Model size: {model_size}")
 
         # Limit CPU threads to avoid thermal runaway on low-TDP hardware.
         # WHISPER_THREADS defaults to 2; raise it for faster (hotter) transcription.
         whisper_threads = int(os.environ.get("WHISPER_THREADS", "2"))
-        try:
-            import torch
-            torch.set_num_threads(whisper_threads)
-        except Exception:
-            pass
         logger.info(f"Whisper threads: {whisper_threads}")
 
         # Wait for CPU to cool before starting if it is running hot.
         wait_for_cool_cpu()
 
-        # Load Whisper model (downloads on first use)
+        # Load Whisper model (downloads and converts on first use)
         logger.info(f"Loading Whisper model ({model_size})...")
-        model = whisper.load_model(model_size)
+        model = WhisperModel(
+            model_size,
+            device="cpu",
+            compute_type="int8",
+            cpu_threads=whisper_threads,
+        )
 
-        # Transcribe audio
+        # Transcribe audio. beam_size=1 (greedy) rather than the library default
+        # of 5: beam search costs ~50% more time here for no measured gain in ad
+        # detection. transcribe() returns a lazy generator, so the work happens
+        # as the segments below are consumed.
         logger.info("Transcribing audio...")
-        result = model.transcribe(
+        segment_iter, _info = model.transcribe(
             audio_path,
-            verbose=False,
             language="en",
+            beam_size=1,
             initial_prompt="This podcast may contain advertisements and sponsor messages.",
         )
-        
+
         # Convert Whisper segments to our Segment format
         segments = []
-        for seg in result["segments"]:
+        for seg in segment_iter:
             segment = Segment(
-                start=int(seg["start"] * 1000),  # Convert seconds to ms
-                end=int(seg["end"] * 1000),      # Convert seconds to ms
-                text=seg["text"].strip()
+                start=int(seg.start * 1000),  # Convert seconds to ms
+                end=int(seg.end * 1000),      # Convert seconds to ms
+                text=seg.text.strip()
             )
             segments.append(segment)
-        
+
         logger.info(f"Transcription complete: {len(segments)} segments")
         return segments
     

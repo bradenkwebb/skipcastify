@@ -7,7 +7,7 @@ name = "skipcastify"
 version = "0.1.0"
 description = "A tool for removing ads from podcasts"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     "feedgen>=1.0.0",
     "feedparser>=6.0.11",
@@ -17,7 +17,7 @@ dependencies = [
     "psutil>=5.9.0",
     "python-dotenv>=1.0.1",
     "requests>=2.32.4",
-    "openai-whisper>=20231117",
+    "faster-whisper>=1.2.1",
     "pillow>=10.4.0",
     "mutagen>=1.47.0",
     "openai>=2.2.0",
@@ -33,3 +33,9 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.uv]
+# faster-whisper pulls in onnxruntime for its Silero VAD (which we don't enable).
+# onnxruntime dropped cp310 wheels in 1.24, and this box runs Python 3.10, so
+# hold it at the last version that still publishes one.
+constraint-dependencies = ["onnxruntime<1.24"]
