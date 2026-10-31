@@ -142,14 +142,23 @@ class AudioProcessor:
 
         # Transcribe audio. beam_size=1 (greedy) rather than the library default
         # of 5: beam search costs ~50% more time here for no measured gain in ad
-        # detection. transcribe() returns a lazy generator, so the work happens
-        # as the segments below are consumed.
+        # detection.
+        #
+        # No initial_prompt: with faster-whisper it can suppress timestamp tokens,
+        # collapsing a 30s window into one segment and misaligning the text that
+        # follows. word_timestamps=True ends each segment at its last spoken word
+        # instead of the window edge, so intro music between an ad and the show
+        # stays outside every segment (and so never gets cut with the ad).
+        # See docs/faster-whisper.md.
+        #
+        # transcribe() returns a lazy generator, so the work happens as the
+        # segments below are consumed.
         logger.info("Transcribing audio...")
         segment_iter, _info = model.transcribe(
             audio_path,
             language="en",
             beam_size=1,
-            initial_prompt="This podcast may contain advertisements and sponsor messages.",
+            word_timestamps=True,
         )
 
         # Convert Whisper segments to our Segment format

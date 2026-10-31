@@ -56,17 +56,58 @@ intervene.
 
 ```python
 WhisperModel("base", device="cpu", compute_type="int8", cpu_threads=WHISPER_THREADS)
-model.transcribe(path, language="en", beam_size=1, initial_prompt=...)
+model.transcribe(path, language="en", beam_size=1, word_timestamps=True)
 ```
 
 - `compute_type="int8"` — quantized inference; the main speedup on CPU.
 - `beam_size=1` (greedy) — the library default is 5. Beam search cost ~50% more
   time in benchmarking for no measured gain in ad detection.
+- **No `initial_prompt`** and **`word_timestamps=True`** — see below.
 - `cpu_threads` replaces the old `torch.set_num_threads()` call.
 - VAD (`vad_filter`) is left off. It would drop silence and shift segment
   timings, which the ad-span cutting depends on.
 - `transcribe()` returns a lazy generator — the work happens as segments are
   consumed, not when the call returns.
+
+## Segment boundaries: no prompt, word timestamps
+
+Ad cutting works on segment boundaries, so segment *shape* matters as much as
+transcript text. Two problems showed up when the first version of this change
+passed the old `initial_prompt` ("This podcast may contain advertisements...")
+through to faster-whisper:
+
+1. **The prompt can suppress timestamp tokens.** The decoder then emits the
+   whole 30s window as one segment, and text after it gets misaligned. On the
+   Ezra Klein / Chris Rufo opening, the first 75s came back as three blobs
+   (0–30, 30–59, 59–75s), with the ad's brand name spliced into the interview
+   ("Amaloid is the most successful activist..."). On the 33-minute BBC
+   episode, the opening ad block collapsed into 0–30s and 30–57s.
+2. **Without the prompt, segment ends can still snap to the window edge.** On
+   the Ezra opening, "Visit amyloid.com to learn more." ran 28.1–57.2s, which
+   swallowed ~27s of intro music (about −20 dBFS throughout) that openai-whisper
+   had left outside every segment. An ad cut would have removed the music.
+   `vad_filter=True` did not help: it treats the music as possible speech.
+
+`word_timestamps=True` fixes both. Each segment ends at its last word, so the
+ad ends at 29.8s and the interview starts at 56.5s, with the music in neither.
+The text is also cleaner than openai-whisper's on this clip ("amyloid", not
+"Amaloid"; "Chris Rufo is the most successful activist").
+
+Cost on the same 33-minute BBC episode (2 threads, turbo off):
+
+| | prompt, no word timestamps | **no prompt, word timestamps** |
+|---|---|---|
+| Transcribe | 161.9s | **173.3s** (+7%) |
+| Segments | 320 | 295 |
+| Segments >= 25s | 3 (two are the opening ad) | 1 (continuous news speech) |
+| Peak package temp | 50C | 48C |
+
+Still ~2x faster than openai-whisper (342.1s).
+
+The `--run-llm` tests can't catch this class of problem on their own: they
+read saved transcripts, so they never exercise the transcription engine. To
+check a transcription change, re-transcribe a test episode's audio first and
+then run the suite against that output.
 
 ## Dependency notes
 
