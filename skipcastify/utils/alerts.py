@@ -49,9 +49,10 @@ SECRET_ENV_VARS = (
 # Tokens that live in a URL rather than in our environment — chiefly the
 # private Substack feed token, which arrives from upstream.opml and is not an
 # env var we could match on.
+# `<` is excluded so re-scrubbing a `<REDACTED>` string is a no-op.
 _QUERY_TOKEN = re.compile(
-    r"\b(private|token|api[_-]?key|key|auth|signature|sig)=[^\s&\"'>]+", re.I)
-_PATH_TOKEN = re.compile(r"/(private|s)/[^\s/\"'>]+", re.I)
+    r"\b(private|token|api[_-]?key|key|auth|signature|sig)=[^\s&\"'><]+", re.I)
+_PATH_TOKEN = re.compile(r"/(private|s)/[^\s/\"'><]+", re.I)
 _USERINFO = re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+@")
 
 

@@ -43,7 +43,7 @@ upstream OPML
 
 - Python 3.10+, [uv](https://github.com/astral-sh/uv)
 - ffmpeg (`apt install ffmpeg`)
-- Tailscale (for public HTTPS access via Funnel)
+- Tailscale (for tailnet HTTPS access via `tailscale serve`)
 
 ```bash
 git clone <repo>
@@ -60,7 +60,7 @@ All runtime config lives in `.env` (never committed):
 |---|---|
 | `DATA_DIR` | Root data directory (e.g. `data`) |
 | `SUBSCRIPTIONS` | Path to upstream OPML file |
-| `SERVER_BASE_URL` | Public HTTPS base URL (e.g. Tailscale Funnel URL) |
+| `SERVER_BASE_URL` | HTTPS base URL for this server (e.g. its `tailscale serve` URL) |
 | `FEED_USERNAME` / `FEED_PASSWORD` | HTTP Basic Auth credentials for the feed server and the `/dashboard` web UI |
 | `EPISODE_TOKEN` | Secret token appended to episode URLs |
 | `EPISODE_LIMIT` | Max episodes to download per feed per run (default: 5) |
@@ -79,21 +79,45 @@ Export your podcast subscriptions as OPML and save to `upstream.opml` (gitignore
 
 ### Running the server
 
+For local development:
+
 ```bash
 uv run python server.py
 ```
 
-Expose it publicly with Tailscale Funnel:
+In production the app is served by **gunicorn**, which imports `server:app`
+and never runs that block:
 
 ```bash
-tailscale funnel 5000
+uv run gunicorn --workers 2 --threads 4 --bind 127.0.0.1:5000 --timeout 60 server:app
 ```
 
-Then add your feeds in any podcast app as:
+`systemd/skipcastify-server.service` runs exactly that. gunicorn's access log
+is off because the legacy `/episodes/<token>/` routes carry `EPISODE_TOKEN`;
+`server.py` logs each request itself with secrets scrubbed:
+
+```
+INFO in server: GET /episodes/<EPISODE_TOKEN>/show/ep.mp3 -> 404 0.7ms
+INFO in server: GET /dashboard -> 200 5.5ms user=bwebb
+```
+
+The server listens on **loopback only** and is reached over the tailnet via
+`tailscale serve`, which terminates TLS:
+
+```bash
+sudo tailscale serve --bg --https=443 http://127.0.0.1:5000
+```
+
+Feeds served from here need `FEED_USERNAME` / `FEED_PASSWORD`:
+
 ```
 https://<your-tailscale-host>/feeds/<podcast-slug>.xml
 ```
-with your `FEED_USERNAME` / `FEED_PASSWORD` credentials.
+
+Overcast cannot reach a tailnet, so feeds for podcast apps are published to
+Cloudflare R2 instead — see [docs/r2-publishing.md](docs/r2-publishing.md).
+Tailscale Funnel is deliberately **not** used: it would accept inbound traffic
+from the public internet onto this box.
 
 ## Usage
 

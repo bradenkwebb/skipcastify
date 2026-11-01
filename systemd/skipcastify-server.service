@@ -7,10 +7,21 @@ Type=simple
 User=bwebb
 WorkingDirectory=/home/bwebb/skipcastify
 EnvironmentFile=/home/bwebb/skipcastify/.env
-# tailscale serve proxies localhost:5000, so the dashboard never needs
-# to listen on anything but loopback.
-Environment=BIND_HOST=127.0.0.1
-ExecStart=/home/bwebb/skipcastify/.venv/bin/python server.py
+
+# --threads (gthread worker) so a slow request can't block the dashboard or
+# outlive --timeout. Loopback only; tailscale serve proxies it.
+# No access log: legacy routes carry EPISODE_TOKEN in the path. server.py logs
+# requests itself, scrubbed.
+ExecStart=/home/bwebb/skipcastify/.venv/bin/gunicorn \
+    --workers 2 \
+    --threads 4 \
+    --bind 127.0.0.1:5000 \
+    --timeout 60 \
+    server:app
+
+# HUP starts fresh workers (new code). .env changes still need a restart.
+ExecReload=/bin/kill -HUP $MAINPID
+
 Restart=on-failure
 RestartSec=5
 

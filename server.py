@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from functools import wraps
@@ -7,6 +8,7 @@ from dotenv import load_dotenv
 
 from skipcastify.services import analytics
 from skipcastify.services.published_feeds import published_feeds
+from skipcastify.utils.alerts import scrub_secrets
 
 load_dotenv()
 
@@ -18,6 +20,45 @@ _feed_password = os.environ.get("FEED_PASSWORD")
 _episode_token = os.environ.get("EPISODE_TOKEN")
 _public_base_url = os.environ.get("PUBLIC_BASE_URL", "")
 _publish_to_r2 = os.environ.get("PUBLISH_TO_R2", "false").lower() == "true"
+
+
+class RedactSecrets(logging.Filter):
+    """Scrub secrets from log messages Flask and gunicorn format on errors
+    (both include the request path). Tracebacks are not rewritten."""
+
+    def __init__(self, scrubber=scrub_secrets) -> None:
+        super().__init__()
+        self._scrub = scrubber
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:
+            # Never raise from a filter.
+            return True
+        scrubbed = self._scrub(message)
+        if scrubbed != message:
+            # Args are already folded into the message.
+            record.msg = scrubbed
+            record.args = ()
+        return True
+
+
+def install_log_redaction(scrubber=scrub_secrets) -> RedactSecrets:
+    """Attach RedactSecrets to the Flask, gunicorn.error and root loggers and
+    their handlers (logger filters don't apply to propagated records)."""
+    redactor = RedactSecrets(scrubber)
+    for logger in (app.logger, logging.getLogger("gunicorn.error"),
+                   logging.getLogger()):
+        logger.addFilter(redactor)
+        for handler in logger.handlers:
+            handler.addFilter(redactor)
+    return redactor
+
+
+install_log_redaction()
+# Under gunicorn the root logger stays at WARNING; the request log is INFO.
+app.logger.setLevel(logging.INFO)
 
 
 @app.template_filter("mb")
@@ -35,6 +76,32 @@ def _ago(when: float) -> str:
     if seconds < 86400:
         return f"{seconds / 3600:.0f}h ago"
     return f"{seconds / 86400:.0f}d ago"
+
+
+# Request log, in place of gunicorn's access log so paths get scrubbed.
+
+
+@app.before_request
+def _start_timer():
+    request.environ['skipcastify.start'] = time.monotonic()
+
+
+@app.after_request
+def _log_request(response):
+    started = request.environ.get('skipcastify.start')
+    duration_ms = (time.monotonic() - started) * 1000 if started else -1.0
+
+    target = scrub_secrets(request.path)
+    if request.query_string:
+        target += "?" + scrub_secrets(request.query_string.decode('latin-1'))
+
+    # Username only, never the password or Authorization header.
+    auth = request.authorization
+    who = f" user={auth.username}" if auth and auth.username else ""
+
+    app.logger.info("%s %s -> %s %.1fms%s", request.method, target,
+                    response.status_code, duration_ms, who)
+    return response
 
 
 def require_auth(f):
@@ -125,12 +192,7 @@ def serve_episode(token, podcast_name, filename):
 
 
 if __name__ == '__main__':
-    # threaded=True so a slow episode download doesn't block feed/artwork/other
-    # requests — podcast apps open several connections at once.
-    #
-    # Loopback by default: tailscale serve proxies localhost:5000, so binding
-    # every interface exposes the server to the LAN for no benefit. Override
-    # with BIND_HOST=0.0.0.0 if it ever needs to be reachable directly.
+    # Local development only; production runs gunicorn (see systemd/).
     app.run(host=os.environ.get('BIND_HOST', '127.0.0.1'),
             port=int(os.environ.get('BIND_PORT', '5000')),
             threaded=True)
