@@ -214,3 +214,31 @@ def test_sent_alerts_are_scrubbed(tmp_path, sent, monkeypatch):
                  "key audio/path-secret-value-123/slug/ep.mp3 failed")
 
     assert "path-secret-value-123" not in sent.sent[0]["message"]
+
+
+def test_scrubbing_is_idempotent():
+    """Scrubbing happens at the point of logging and again in a log filter.
+
+    Without this, each extra pass matched the `<REDACTED` inside its own
+    replacement and appended another `>`.
+    """
+    once = scrub_secrets("GET /x?token=abc123def&page=2")
+
+    assert scrub_secrets(once) == once
+    assert scrub_secrets(scrub_secrets(once)) == once
+    assert ">>" not in once
+
+
+def test_scrubbing_a_path_token_is_idempotent():
+    once = scrub_secrets("GET https://example.substack.com/feed/private/abc123")
+
+    assert scrub_secrets(once) == once
+    assert ">>" not in once
+
+
+def test_an_env_secret_scrub_is_idempotent(monkeypatch):
+    monkeypatch.setenv("EPISODE_TOKEN", "tok-abcdef123456")
+    once = scrub_secrets("GET /episodes/tok-abcdef123456/a/b.mp3")
+
+    assert scrub_secrets(once) == once
+    assert "<EPISODE_TOKEN>" in once

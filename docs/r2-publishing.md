@@ -312,8 +312,10 @@ accident.
 
 ### Redeploying the server
 
-The app runs under gunicorn (`server:app`), with no access log because the
-legacy `/episodes/<token>/` routes carry `EPISODE_TOKEN` in the path.
+The app runs under gunicorn (`server:app`). gunicorn's own access log is off
+because the legacy `/episodes/<token>/` routes carry `EPISODE_TOKEN` in the
+path and it would write the request line raw; `server.py` logs one scrubbed
+line per request instead. See the README for the format.
 
 ```
 cd ~/skipcastify && uv sync          # gunicorn lives in .venv

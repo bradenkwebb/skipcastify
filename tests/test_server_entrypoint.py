@@ -182,3 +182,108 @@ def test_the_filter_is_attached_where_a_path_could_be_formatted():
         logger.removeFilter(installed)
         for handler in logger.handlers:
             handler.removeFilter(installed)
+
+
+# --- the request log ------------------------------------------------------
+
+@pytest.fixture
+def client(tmp_path, monkeypatch, token_env):
+    monkeypatch.setattr(server_module, "data_dir", str(tmp_path))
+    monkeypatch.setattr(server_module, "_feed_username", "testuser")
+    monkeypatch.setattr(server_module, "_feed_password", "testpass")
+    monkeypatch.setattr(server_module, "_episode_token", TOKEN)
+    monkeypatch.setattr(server_module, "_public_base_url", "https://example.com")
+    monkeypatch.setattr(server_module, "_publish_to_r2", True)
+    server_module.app.config['TESTING'] = True
+    with server_module.app.test_client() as c:
+        yield c
+
+
+AUTH = {'Authorization': 'Basic dGVzdHVzZXI6dGVzdHBhc3M='}      # testuser:testpass
+
+
+def test_every_request_is_logged(client, caplog):
+    caplog.set_level(logging.INFO, logger="server")
+
+    client.get('/feeds', headers=AUTH)
+
+    assert "GET /feeds -> 200" in caplog.text
+    assert "ms" in caplog.text
+
+
+def test_a_token_path_is_logged_scrubbed(client, caplog):
+    """The whole point: gunicorn's access log would write this raw."""
+    caplog.set_level(logging.INFO, logger="server")
+
+    client.get(f'/episodes/{TOKEN}/show/ep.mp3')
+
+    assert TOKEN not in caplog.text
+    assert "/episodes/<EPISODE_TOKEN>/show/ep.mp3" in caplog.text
+
+
+def test_an_artwork_token_path_is_logged_scrubbed(client, caplog):
+    caplog.set_level(logging.INFO, logger="server")
+
+    client.get(f'/artwork/{TOKEN}/cover.jpg')
+
+    assert TOKEN not in caplog.text
+
+
+def test_a_query_string_is_scrubbed_too(client, caplog):
+    caplog.set_level(logging.INFO, logger="server")
+
+    client.get('/dashboard?token=secret-value-here&page=2', headers=AUTH)
+
+    assert "secret-value-here" not in caplog.text
+    assert "page=2" in caplog.text
+
+
+def test_a_rejected_request_is_logged(client, caplog):
+    """A tailnet-only service still wants failed-login visibility."""
+    caplog.set_level(logging.INFO, logger="server")
+
+    client.get('/dashboard')
+
+    assert "GET /dashboard -> 401" in caplog.text
+
+
+def test_no_credentials_are_logged(client, caplog):
+    caplog.set_level(logging.INFO, logger="server")
+
+    client.get('/dashboard', headers={'Authorization': 'Basic Ym9iOmh1bnRlcjI='})
+
+    assert "hunter2" not in caplog.text          # the password
+    assert "Ym9iOmh1bnRlcjI=" not in caplog.text  # the header itself
+    assert "Basic " not in caplog.text
+    assert "user=bob" in caplog.text              # the username is useful
+
+
+def test_an_anonymous_request_logs_no_user(client, caplog):
+    caplog.set_level(logging.INFO, logger="server")
+
+    client.get('/dashboard')
+
+    assert "user=" not in caplog.text
+
+
+def test_the_response_body_is_never_logged(client, caplog):
+    """/feeds renders feed URLs that embed the path secret."""
+    caplog.set_level(logging.INFO, logger="server")
+    manifest = __import__(
+        "skipcastify.services.publish_manifest",
+        fromlist=["PublishManifest"]).PublishManifest(server_module.data_dir)
+    manifest.record_put(f"feeds/{TOKEN}/a-show.xml", 2048, "feed")
+    manifest.save()
+
+    resp = client.get('/feeds', headers=AUTH)
+
+    assert resp.status_code == 200
+    assert "a-show.xml" not in caplog.text
+    assert "https://example.com/feeds" not in caplog.text
+    assert TOKEN not in caplog.text
+
+
+def test_the_app_logger_passes_info_through(client):
+    """gunicorn leaves the root logger with no handlers, so a NOTSET app
+    logger would inherit WARNING and drop every line of this log."""
+    assert server_module.app.logger.getEffectiveLevel() <= logging.INFO

@@ -84,6 +84,11 @@ def install_log_redaction(scrubber=scrub_secrets) -> RedactSecrets:
 # has to come before the level is set below.
 install_log_redaction()
 
+# gunicorn configures only its own loggers, leaving the root logger with no
+# handlers — so Flask's logger is NOTSET, inherits WARNING from the root, and
+# would drop every INFO line of the request log below. Set it explicitly.
+app.logger.setLevel(logging.INFO)
+
 
 @app.template_filter("mb")
 def _mb(num_bytes: int) -> str:
@@ -100,6 +105,42 @@ def _ago(when: float) -> str:
     if seconds < 86400:
         return f"{seconds / 3600:.0f}h ago"
     return f"{seconds / 86400:.0f}d ago"
+
+
+# --- request log ----------------------------------------------------------
+#
+# This replaces gunicorn's access log rather than supplementing it. gunicorn
+# would write the raw request line, and the legacy /episodes/<token>/ and
+# /artwork/<token>/ routes carry EPISODE_TOKEN in the path, so its access log
+# would persist a credential to journald for the life of the journal. Logging
+# here instead means the path goes through scrub_secrets first.
+#
+# 401s are logged too, deliberately: a tailnet-only service still wants
+# failed-login visibility, and that is the one line you would go looking for.
+
+
+@app.before_request
+def _start_timer():
+    request.environ['skipcastify.start'] = time.monotonic()
+
+
+@app.after_request
+def _log_request(response):
+    started = request.environ.get('skipcastify.start')
+    duration_ms = (time.monotonic() - started) * 1000 if started else -1.0
+
+    target = scrub_secrets(request.path)
+    if request.query_string:
+        target += "?" + scrub_secrets(request.query_string.decode('latin-1'))
+
+    # The username only. Never the password, and never the Authorization
+    # header, which is the password in a trivially reversible encoding.
+    auth = request.authorization
+    who = f" user={auth.username}" if auth and auth.username else ""
+
+    app.logger.info("%s %s -> %s %.1fms%s", request.method, target,
+                    response.status_code, duration_ms, who)
+    return response
 
 
 def require_auth(f):
