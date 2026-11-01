@@ -149,3 +149,25 @@ def test_daily_series_fills_idle_days_through_today():
     assert [r["date"] for r in rows] == [(first + timedelta(days=i)).isoformat() for i in range(4)]
     assert [r["episodes"] for r in rows] == [1, 0, 0, 0]
     assert analytics.daily_series([]) == []
+
+
+def test_payload_days_filters_episode_stats_but_not_runs(tmp_path):
+    from datetime import date, timedelta
+    old = (date.today() - timedelta(days=40)).isoformat() + "T10:00:00"
+    new = date.today().isoformat() + "T10:00:00"
+    (tmp_path / "metrics").mkdir()
+    (tmp_path / "metrics" / "events.jsonl").write_text("".join(
+        json.dumps({"ts": ts, "event": "episode_complete", "feed_slug": "s",
+                    "episode_name": "e", "spans": []}) + "\n" for ts in (old, new)))
+    append_run(tmp_path, {"started": "x", "feeds": [], "processed": [], "outcome": "ok"})
+
+    p = analytics.build_payload(str(tmp_path), days=7)
+    assert p["overview"]["episodes_processed"] == 1
+    assert len(p["daily"]) == 7 and p["daily"][-1]["episodes"] == 1
+    assert len(p["runs"]) == 1
+    assert analytics.build_payload(str(tmp_path))["overview"]["episodes_processed"] == 2
+
+
+def test_payload_days_with_no_recent_episodes_still_has_a_daily_axis(tmp_path):
+    p = analytics.build_payload(str(tmp_path), days=7)
+    assert [r["episodes"] for r in p["daily"]] == [0] * 7
