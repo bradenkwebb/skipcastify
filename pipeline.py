@@ -27,6 +27,7 @@ class Pipeline:
         self.storage_high_water = int(os.environ.get("STORAGE_HIGH_WATER_GB", "75")) * 1024 ** 3
         self.storage_low_water = int(os.environ.get("STORAGE_LOW_WATER_GB", "50")) * 1024 ** 3
         self.processing_enabled = os.environ.get("ENABLE_PROCESSING", "false").lower() == "true"
+        self.publish_to_r2 = os.environ.get("PUBLISH_TO_R2", "false").lower() == "true"
         slugs_env = os.environ.get("PROCESS_SLUGS", "")
         self.process_slugs = {s.strip() for s in slugs_env.split(",") if s.strip()}
 
@@ -97,6 +98,26 @@ class Pipeline:
                 total -= size
                 logger.info(f"Deleted processed {f.name} ({size / 1024**2:.1f}MB)")
 
+    def _publish_to_r2(self):
+        """Push ad-free audio, artwork and feeds to Cloudflare R2.
+
+        Overcast's crawlers can't reach the tailnet and we want no inbound
+        exposure of this box, so the feeds podcast apps subscribe to are
+        static objects we push out instead. See services/publisher.py.
+
+        Imported lazily so boto3 is only loaded when publishing is actually
+        switched on.
+        """
+        from skipcastify.services.publisher import R2Publisher
+
+        try:
+            publisher = R2Publisher.from_env(self.data_dir)
+        except ValueError as e:
+            logger.error(f"R2 publishing is enabled but not configured: {e}")
+            return
+        published = publisher.publish_all(self.downloader.subscription_urls)
+        logger.info(f"Published {len(published)} feed(s) to R2")
+
     def run(self):
         logger.info("Starting Skipcastify pipeline...")
         try:
@@ -129,6 +150,12 @@ class Pipeline:
                     self.feed_manager.generate_feed(url)
                 except Exception as e:
                     logger.warning(f"Skipping feed generation for {url}: {e}")
+
+            if self.publish_to_r2:
+                logger.info("Publishing to R2")
+                self._publish_to_r2()
+            else:
+                logger.info("R2 publishing disabled (PUBLISH_TO_R2=false)")
         except Exception as e:
             logger.error(f"Pipeline failed: {e}", exc_info=True)
             raise
