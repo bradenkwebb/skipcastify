@@ -11,7 +11,7 @@ from skipcastify.services.generate_feeds import FeedManager, _itunes_safe_image
 
 
 def _make_entry(title="Ep 1", published_parsed=(2025, 1, 1, 12, 0, 0, 0, 0, 0),
-                enclosures=None, image_href=None):
+                enclosures=None, image_href=None, extra=None):
     entry = MagicMock()
     entry.title = title
     entry.published_parsed = published_parsed
@@ -19,6 +19,8 @@ def _make_entry(title="Ep 1", published_parsed=(2025, 1, 1, 12, 0, 0, 0, 0, 0),
     data = {"summary": "desc"}
     if image_href is not None:
         data["image"] = {"href": image_href}
+    if extra:
+        data.update(extra)
     entry.get.side_effect = lambda k, default=None: data.get(k, default)
     entry.enclosures = enclosures if enclosures is not None else [
         {"length": "12345", "href": "https://cdn.example.com/ep.mp3"}
@@ -57,9 +59,13 @@ def test_episode_url_uses_server_when_file_downloaded(fm, tmp_path):
          patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
         path = fm.generate_feed("https://example.com/feed.xml")
 
-    content = Path(path).read_text()
-    assert "localhost:5000/episodes" in content
-    assert "cdn.example.com" not in content
+    # Assert on the enclosure specifically rather than the whole document:
+    # the original CDN URL legitimately still appears as the entry's guid,
+    # which is how an episode keeps its identity when its audio moves to us.
+    import xml.etree.ElementTree as ET
+    enclosure = ET.parse(path).getroot().find('.//item/enclosure').get('url')
+    assert "localhost:5000/episodes" in enclosure
+    assert "cdn.example.com" not in enclosure
 
 
 def test_episode_url_falls_back_to_original_when_not_downloaded(fm, tmp_path):
@@ -182,3 +188,50 @@ def test_valid_episode_jpg_image_is_passed_through(fm, tmp_path):
     content = Path(path).read_text()
     assert 'https://cdn.example.com/ep-art.jpg' in content
     assert "<itunes:image" in content
+
+
+# --- episode identity -----------------------------------------------------
+
+def _guids(path):
+    import xml.etree.ElementTree as ET
+    return [item.findtext('guid') for item in ET.parse(path).getroot().iter('item')]
+
+
+def test_guid_uses_the_upstream_value(fm, tmp_path):
+    """The published entry must carry the original feed's guid."""
+    feed = _make_feed([_make_entry(extra={"id": "tag:example.com,2026:ep-1"})])
+    with patch("feedparser.parse", return_value=feed), \
+         patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
+        path = fm.generate_feed("https://example.com/feed.xml")
+
+    assert _guids(path) == ["tag:example.com,2026:ep-1"]
+
+
+def test_guid_falls_back_to_the_original_enclosure_url(fm, tmp_path):
+    """With no upstream guid, identity comes from the original audio URL."""
+    feed = _make_feed([_make_entry()])
+    with patch("feedparser.parse", return_value=feed), \
+         patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
+        path = fm.generate_feed("https://example.com/feed.xml")
+
+    assert _guids(path) == ["https://cdn.example.com/ep.mp3"]
+
+
+def test_guid_is_the_original_url_not_our_rehosted_one(fm, tmp_path):
+    """The fallback guid must be the upstream URL, never ours.
+
+    Ours changes the moment an episode is downloaded or processed, which is
+    exactly what the guid exists to stay stable through.
+    """
+    raw_dir = tmp_path / 'podcasts' / 'raw' / 'test-podcast'
+    raw_dir.mkdir(parents=True)
+    (raw_dir / 'test-podcast-ep_1.mp3').write_bytes(b'audio')
+
+    feed = _make_feed([_make_entry()])
+    with patch("feedparser.parse", return_value=feed), \
+         patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
+        path = fm.generate_feed("https://example.com/feed.xml")
+
+    content = Path(path).read_text()
+    assert "localhost:5000/episodes" in content          # enclosure is ours
+    assert _guids(path) == ["https://cdn.example.com/ep.mp3"]   # identity is not

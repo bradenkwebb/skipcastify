@@ -7,6 +7,9 @@ Type=simple
 User=bwebb
 WorkingDirectory=/home/bwebb/skipcastify
 EnvironmentFile=/home/bwebb/skipcastify/.env
+# tailscale serve proxies localhost:5000, so the dashboard never needs
+# to listen on anything but loopback.
+Environment=BIND_HOST=127.0.0.1
 ExecStart=/home/bwebb/skipcastify/.venv/bin/python server.py
 Restart=on-failure
 RestartSec=5

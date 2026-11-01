@@ -22,10 +22,37 @@ def _itunes_safe_image(url: str | None) -> str | None:
 
 
 class FeedManager:
-    def __init__(self, server_base_url: str, data_dir: str, episode_token: str = "") -> None:
+    def __init__(self, server_base_url: str, data_dir: str, episode_token: str = "",
+                 feeds_subdir: str = "feeds") -> None:
         self.server_base_url = server_base_url.rstrip('/')
         self.episode_token = episode_token
         self.data_dir = data_dir
+        self.feeds_subdir = feeds_subdir
+
+    # --- URL and inclusion hooks -------------------------------------------
+    # These exist so a subclass can retarget the feed at different storage
+    # (see R2FeedManager) without duplicating generate_feed's 100 lines of
+    # per-podcast metadata handling. The base implementations are exactly the
+    # behaviour that was previously inline.
+
+    def _artwork_url(self, filename: str) -> str:
+        return f"{self.server_base_url}/artwork/{self.episode_token}/{filename}"
+
+    def _entry_audio(self, entry, slug: str, ep_filename: str):
+        """Resolve one entry's enclosure.
+
+        Returns ``(audio_url, length, local_path)``, where local_path is the
+        file to read an accurate duration from or None when the episode isn't
+        held locally. Returning ``None`` instead of a tuple withholds the entry
+        from the feed entirely — the base manager never does that, but
+        R2FeedManager uses it to keep unprocessed episodes out of the feed.
+        """
+        local_path = self._local_episode_path(slug, ep_filename)
+        if local_path:
+            audio_url = f"{self.server_base_url}/episodes/{self.episode_token}/{slug}/{ep_filename}"
+            return audio_url, str(os.path.getsize(local_path)), local_path
+        audio_url, length = self._original_audio_url(entry)
+        return audio_url, length, None
 
     def _local_episode_path(self, slug: str, filename: str) -> str | None:
         """Return path to local episode file (processed preferred), or None if not downloaded."""
@@ -61,7 +88,7 @@ class FeedManager:
             artwork_dir = os.path.join(self.data_dir, 'artwork')
             filename = process_artwork(image_url, artwork_dir, slug)
             if filename:
-                local_artwork_url = f"{self.server_base_url}/artwork/{self.episode_token}/{filename}"
+                local_artwork_url = self._artwork_url(filename)
                 fg.image(url=local_artwork_url, title=title, link=subscription_url)
                 fg.podcast.itunes_image(local_artwork_url)
             else:
@@ -94,9 +121,33 @@ class FeedManager:
                 fg.podcast.itunes_category(primary)
 
         for entry in feed.entries:
+            ep_filename = safe_filename(entry.title, slug)
+            decision = self._entry_audio(entry, slug, ep_filename)
+            if decision is None:
+                logger.debug("Withholding '%s' from %s feed", entry.title, title)
+                continue
+            audio_url, length, local_path = decision
+
             fe = fg.add_entry()
             fe.title(entry.title)
             fe.description(entry.get("summary", ""))
+
+            # Episode identity. With no <guid>, podcast apps fall back to
+            # keying on the enclosure URL — and our enclosure URL changes as an
+            # episode moves from its original audio to our processed copy, so
+            # the same episode would read as a brand-new one: a duplicate in
+            # the app and a second download. Carrying the upstream guid through
+            # keeps identity stable across that switch.
+            #
+            # Same rule as EpisodeDownloader._entry_id: upstream guid first,
+            # original audio URL as the fallback. The fallback is deliberately
+            # the *original* URL, never ours, because ours is the thing that
+            # moves. permalink=False because the string is what establishes
+            # identity and many podcast guids are not resolvable URLs.
+            original_url, _original_len = self._original_audio_url(entry)
+            guid = entry.get('id') or entry.get('guid') or original_url
+            if guid:
+                fe.guid(guid, permalink=False)
 
             if entry.get('published_parsed'):
                 fe.pubDate(datetime(*entry.published_parsed[:6], tzinfo=timezone.utc))
@@ -114,15 +165,6 @@ class FeedManager:
             ep_image = _itunes_safe_image(entry.get('image', {}).get('href'))
             if ep_image:
                 fe.podcast.itunes_image(ep_image)
-
-            ep_filename = safe_filename(entry.title, slug)
-            local_path = self._local_episode_path(slug, ep_filename)
-
-            if local_path:
-                audio_url = f"{self.server_base_url}/episodes/{self.episode_token}/{slug}/{ep_filename}"
-                length = str(os.path.getsize(local_path))
-            else:
-                audio_url, length = self._original_audio_url(entry)
 
             if audio_url:
                 try:
@@ -162,7 +204,7 @@ class FeedManager:
             elif ep_explicit_raw in (False, 'no', 'false', 'clean'):
                 fe.podcast.itunes_explicit('no')
 
-        feed_path = os.path.join(self.data_dir, 'feeds', f'{slug}.xml')
+        feed_path = os.path.join(self.data_dir, self.feeds_subdir, f'{slug}.xml')
         os.makedirs(os.path.dirname(feed_path), exist_ok=True)
         fg.rss_file(feed_path, pretty=True)
         return feed_path
