@@ -239,6 +239,24 @@ exactly the silent failure the rest of this file is about.
 Downloading and processing are untouched, so episodes accumulate locally and
 publish on the first run after the breaker is cleared.
 
+## Hand controls
+
+```
+uv run python -m skipcastify.tools.r2ctl status          # usage, breaker, last reconcile
+uv run python -m skipcastify.tools.r2ctl clear-breaker   # re-enable publishing
+uv run python -m skipcastify.tools.r2ctl reconcile       # reconcile now, not in 24h
+uv run python -m skipcastify.tools.r2ctl test-alert       # prove ntfy delivery
+```
+
+`status` works without R2 credentials — the breaker marker and the manifest are
+both local files — so it is also the quickest way to see whether publishing is
+on at all.
+
+**None of it prints an object key or a feed URL.** Those embed
+`PUBLIC_PATH_SECRET`, which makes a feed URL effectively a password, and this
+is the kind of output that gets pasted into a chat window. Counts and totals
+only.
+
 ## Going live
 
 Publishing is inert until `PUBLISH_TO_R2=true`, so none of this runs by
@@ -260,7 +278,13 @@ accident.
    ```
    curl -r 0-99 -o /dev/null -w '%{http_code}\n' "$PUBLIC_BASE_URL/audio/.../ep.mp3"
    ```
-5. Remove `~/.skipcastify-maintenance` once the timer is running, so
+5. Confirm alerts actually arrive, and reconcile once against the bucket:
+   ```
+   uv run python -m skipcastify.tools.r2ctl test-alert
+   uv run python -m skipcastify.tools.r2ctl reconcile
+   uv run python -m skipcastify.tools.r2ctl status
+   ```
+6. Remove `~/.skipcastify-maintenance` once the timer is running, so
    `monitor.sh` resumes its feed and pipeline-freshness alerts.
 
 Feed URLs for subscribing are written to
