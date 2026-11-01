@@ -123,7 +123,10 @@ class Pipeline:
         from skipcastify.services.publisher import R2Publisher
 
         try:
-            publisher = R2Publisher.from_env(self.data_dir)
+            # Share this run's alerter, so the publisher's throttle windows
+            # live in the same file as the pipeline's rather than in a second
+            # one that knows nothing about them.
+            publisher = R2Publisher.from_env(self.data_dir, alerter=self.alerter)
         except ValueError as e:
             logger.error(f"R2 publishing is enabled but not configured: {e}")
             return

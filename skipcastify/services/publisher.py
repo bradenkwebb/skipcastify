@@ -248,6 +248,8 @@ class R2Publisher:
             access_key_id=os.environ.get("R2_ACCESS_KEY_ID", ""),
             secret_access_key=os.environ.get("R2_SECRET_ACCESS_KEY", ""),
             secret_segment=secret,
+            # Replaced by the publisher's own counter in __init__; this is
+            # only the default for using R2Client on its own.
             on_class_a=manifest.bump_class_a,
         )
         return cls(
@@ -286,10 +288,10 @@ class R2Publisher:
     def _halt(self, reason: str) -> None:
         """Stop publishing for the rest of this run.
 
-        Reached when R2 rejects our credentials or the bucket is unreachable.
-        Pushing on would mean one failed upload per episode per feed and a
-        wall of log noise saying the same thing. Downloading and processing are
-        untouched: the only thing that stops is publishing.
+        Reached when R2 rejects our credentials, the bucket is unreachable, or
+        the Class A breaker trips. Pushing on would mean one failed upload per
+        episode per feed and a wall of log noise saying the same thing.
+        Downloading and processing are untouched: only publishing stops.
         """
         if self._halted is None:
             self._halted = reason
@@ -523,6 +525,16 @@ class R2Publisher:
                 pages += 1
                 for key, size, last_modified in page:
                     bucket[key] = (size, last_modified)
+                if self._halted:
+                    # The breaker tripped on these very LIST pages, so stop
+                    # paging: continuing would spend exactly what it just
+                    # tripped to stop. The partial view is thrown away rather
+                    # than acted on, because a live key that was simply never
+                    # listed is indistinguishable from a ghost, and
+                    # tombstoning it would revert a perfectly good episode.
+                    logger.error("Reconcile abandoned after %d page(s): %s",
+                                 pages, self._halted)
+                    return None
         except Exception as e:
             # A failed listing must not block the publish run that follows,
             # and must not record a reconcile that did not happen.

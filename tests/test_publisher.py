@@ -1117,6 +1117,28 @@ def test_list_pages_can_trip_the_breaker(tmp_path, alerts):
     pub.reconcile()
 
     assert pub.breaker.tripped
+    # Stopped paging rather than spending exactly what it tripped to stop.
+    assert len(pub.client.list_pages) == 3
+
+
+def test_a_breaker_trip_mid_listing_throws_the_partial_view_away(tmp_path, alerts):
+    """A live key that was never listed looks exactly like a ghost.
+
+    Acting on a half-read listing would tombstone perfectly good episodes and
+    revert them to their original audio for the life of the tombstone.
+    """
+    pub = make_breaker_publisher(tmp_path, alerts, per_run=1)
+    pub.client.page_size = 1
+    live = [pub.audio_key(SLUG, f"ep{i}.mp3") for i in range(4)]
+    for key in live:
+        pub.manifest.record_put(key, 1024, "audio")
+        pub.client.bucket_objects[key] = (1024, time.time() - 7200)
+
+    assert pub.reconcile() is None
+
+    assert pub.breaker.tripped
+    assert not any(pub.manifest.is_tombstoned(k) for k in live)
+    assert pub.manifest.last_reconcile_at() == 0      # not recorded
 
 
 def test_a_failed_listing_does_not_record_a_reconcile(tmp_path, alerts):

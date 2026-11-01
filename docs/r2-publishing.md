@@ -120,8 +120,11 @@ place LIST is allowed.**
 It runs **before** retention and the cap, so both work from reconciled sizes.
 A failed listing does not record a reconcile — one network blip should not mean
 24 hours of unrepaired drift — and does not block the publish run that follows.
-A tripped breaker skips it entirely, LIST included. Its summary log line
-carries counts only, never keys.
+A tripped breaker skips it entirely, LIST included — and if the breaker trips
+*on the LIST pages themselves*, paging stops and the partial view is thrown
+away rather than acted on, because a live key that was simply never listed is
+indistinguishable from a ghost. Its summary log line carries counts only,
+never keys.
 
 Reconciliation is a repair pass, not the safety net. The bucket lifecycle rule
 is still the backstop: anything we lose track of under `audio/` is deleted
