@@ -24,39 +24,62 @@ EP1 = "test-podcast-ep_1.mp3"
 EP2 = "test-podcast-ep_2.mp3"
 
 
+class FakeClientError(Exception):
+    """Shaped like a botocore ClientError, without importing botocore."""
+
+    def __init__(self, code):
+        super().__init__(f"An error occurred ({code}) when calling the operation")
+        self.response = {"Error": {"Code": code}}
+
+
 class FakeR2:
     """Records operations instead of performing them."""
 
-    def __init__(self, on_class_a=None, fail_keys=()):
+    def __init__(self, on_class_a=None, fail_keys=(), fail_all=False,
+                 fail_code=None, reachable=True, refuse_deletes=False):
         self.puts = []          # (key, cache_control, size) in upload order
+        self.attempts = []      # every key we were asked to write, failures too
         self.deleted = []
         self.bucket = "test-bucket"
         self.fail_keys = set(fail_keys)
+        self.fail_all = fail_all
+        self.fail_code = fail_code
+        self.reachable = reachable
+        self.refuse_deletes = refuse_deletes
+        self.head_calls = 0
         self._on_class_a = on_class_a or (lambda n: None)
 
-    def put_file(self, key, path, cache_control):
-        if key in self.fail_keys:
+    def _maybe_fail(self, key):
+        self.attempts.append(key)
+        if self.fail_all or key in self.fail_keys:
+            if self.fail_code:
+                raise FakeClientError(self.fail_code)
             raise RuntimeError("simulated upload failure")
+
+    def put_file(self, key, path, cache_control):
+        self._maybe_fail(key)
         size = os.path.getsize(path)
         self.puts.append((key, cache_control, size))
         self._on_class_a(1)
         return size
 
     def put_bytes(self, key, body, content_type, cache_control):
-        if key in self.fail_keys:
-            raise RuntimeError("simulated upload failure")
+        self._maybe_fail(key)
         self.puts.append((key, cache_control, len(body)))
         self._on_class_a(1)
         return len(body)
 
     def delete_keys(self, keys):
         keys = list(keys)
-        self.deleted.extend(keys)
         self._on_class_a(1)
+        if self.refuse_deletes:
+            return []
+        self.deleted.extend(keys)
         return keys
 
     def head_bucket(self):
-        return True
+        self.head_calls += 1
+        return self.reachable
 
     @property
     def keys(self):
@@ -77,9 +100,9 @@ def alerts():
     return notifier
 
 
-def make_publisher(tmp_path, alerts, **kwargs):
+def make_publisher(tmp_path, alerts, client=None, **kwargs):
     manifest = PublishManifest(str(tmp_path))
-    client = FakeR2(on_class_a=manifest.bump_class_a)
+    client = client or FakeR2(on_class_a=manifest.bump_class_a)
     pub = R2Publisher(
         client=client, manifest=manifest, secret=SECRET,
         public_base_url="https://pods.example.com",
@@ -128,6 +151,12 @@ def publish(pub, entries):
     with patch("feedparser.parse", return_value=_feed(entries)), \
          patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
         return pub.publish_feed("https://example.com/feed.xml")
+
+
+def publish_all(pub, entries, urls=("https://example.com/feed.xml",)):
+    with patch("feedparser.parse", return_value=_feed(entries)), \
+         patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
+        return pub.publish_all(list(urls))
 
 
 def feed_xml(pub):
@@ -549,3 +578,151 @@ def test_cap_will_not_evict_an_episode_already_in_this_feed(tmp_path, alerts):
     assert pub.audio_key(SLUG, EP1) not in pub.client.deleted
     assert "Ep 2" not in items                            # withheld instead
     assert any("cap" in a["title"].lower() for a in alerts.sent)
+
+
+# --- R2 failures must be audible ------------------------------------------
+
+def test_a_rejected_credential_alerts_and_halts_publishing(tmp_path, alerts):
+    """A revoked API token otherwise looks exactly like nothing happening."""
+    manifest = PublishManifest(str(tmp_path))
+    client = FakeR2(on_class_a=manifest.bump_class_a, fail_all=True,
+                    fail_code="InvalidAccessKeyId")
+    pub = make_publisher(tmp_path, alerts, client=client)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    published = publish_all(pub, [_entry()])
+
+    assert published == {}
+    assert pub.halted is not None
+    assert len(alerts.sent) == 1
+    assert alerts.sent[0]["priority"] == "high"
+    assert "InvalidAccessKeyId" in alerts.sent[0]["message"]
+
+
+@pytest.mark.parametrize("code", ["AccessDenied", "InvalidAccessKeyId",
+                                  "SignatureDoesNotMatch"])
+def test_every_credential_code_is_treated_as_fatal(tmp_path, alerts, code):
+    manifest = PublishManifest(str(tmp_path))
+    client = FakeR2(on_class_a=manifest.bump_class_a, fail_all=True, fail_code=code)
+    pub = make_publisher(tmp_path, alerts, client=client)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish_all(pub, [_entry()])
+
+    assert pub.halted is not None
+    assert any(code in a["message"] for a in alerts.sent)
+
+
+def test_a_credential_failure_stops_the_remaining_feeds(tmp_path, alerts):
+    """Pushing on means one identical failure per episode per feed."""
+    manifest = PublishManifest(str(tmp_path))
+    client = FakeR2(on_class_a=manifest.bump_class_a, fail_all=True,
+                    fail_code="AccessDenied")
+    pub = make_publisher(tmp_path, alerts, client=client)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish_all(pub, [_entry()], urls=["https://a.example/f.xml",
+                                       "https://b.example/f.xml",
+                                       "https://c.example/f.xml"])
+
+    assert len(client.attempts) == 1          # gave up after the first
+    assert len(alerts.sent) == 1
+
+
+def test_an_unreachable_bucket_alerts_and_publishes_nothing(tmp_path, alerts):
+    manifest = PublishManifest(str(tmp_path))
+    client = FakeR2(on_class_a=manifest.bump_class_a, reachable=False)
+    pub = make_publisher(tmp_path, alerts, client=client)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    assert publish_all(pub, [_entry()]) == {}
+    assert client.attempts == []
+    assert len(alerts.sent) == 1
+    assert "unreachable" in alerts.sent[0]["title"].lower()
+
+
+def test_an_unreachable_bucket_alerts_once_not_every_15_minutes(tmp_path, alerts):
+    manifest = PublishManifest(str(tmp_path))
+    client = FakeR2(on_class_a=manifest.bump_class_a, reachable=False)
+    pub = make_publisher(tmp_path, alerts, client=client)
+
+    for _ in range(6):
+        publish_all(pub, [_entry()])
+
+    assert len(alerts.sent) == 1
+
+
+def test_one_transient_upload_failure_does_not_halt_publishing(tmp_path, alerts):
+    """A single flaky PUT is not a reason to stop: the feed still updates."""
+    manifest = PublishManifest(str(tmp_path))
+    pub = make_publisher(tmp_path, alerts)
+    pub.client.fail_keys = {pub.audio_key(SLUG, EP1)}
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    published = publish_all(pub, [_entry()])
+
+    assert pub.halted is None
+    assert published != {}                   # the feed itself went out
+    assert alerts.sent == []                 # below the repeated-failure bar
+
+
+def test_repeated_failures_alert_once(tmp_path, alerts):
+    """Three failures in a run is systemic for a pilot of single-digit ops."""
+    manifest = PublishManifest(str(tmp_path))
+    client = FakeR2(on_class_a=manifest.bump_class_a, fail_all=True)
+    pub = make_publisher(tmp_path, alerts, client=client)
+    for name in ("a.mp3", "b.mp3", "c.mp3", "d.mp3"):
+        write_audio(tmp_path, "processed", name, size=1024)
+        pub.ensure_audio(pub.audio_key(SLUG, name), str(
+            Path(tmp_path) / "podcasts" / "processed" / SLUG / name), SLUG, name)
+
+    assert pub._failures == 4
+    assert len(alerts.sent) == 1
+    assert "Repeated R2 failures" == alerts.sent[0]["title"]
+
+
+def test_a_refused_delete_is_not_tombstoned(tmp_path, alerts):
+    """It is still costing storage, so the next run must try again."""
+    manifest = PublishManifest(str(tmp_path))
+    client = FakeR2(on_class_a=manifest.bump_class_a, refuse_deletes=True)
+    pub = make_publisher(tmp_path, alerts, client=client)
+    now = time.time()
+    key = pub.audio_key(SLUG, EP1)
+    pub.manifest.record_put(key, 1000, "audio", now=now - 20 * 86400)
+
+    pub.enforce_retention(now=now)
+
+    assert pub.manifest.has(key)                   # still live, will retry
+    assert not pub.manifest.is_tombstoned(key)
+
+
+def test_a_raising_delete_does_not_crash_the_run(tmp_path, alerts):
+    pub = make_publisher(tmp_path, alerts)
+
+    def boom(keys):
+        raise FakeClientError("InternalError")
+
+    pub.client.delete_keys = boom
+    now = time.time()
+    pub.manifest.record_put(pub.audio_key(SLUG, EP1), 1000, "audio",
+                            now=now - 20 * 86400)
+
+    pub.enforce_retention(now=now)                 # no raise
+
+    assert pub.manifest.has(pub.audio_key(SLUG, EP1))
+
+
+def test_an_r2_alert_never_contains_the_path_secret(tmp_path, alerts, monkeypatch):
+    """Keys embed PUBLIC_PATH_SECRET and ntfy is a public channel."""
+    monkeypatch.setenv("PUBLIC_PATH_SECRET", SECRET)
+    manifest = PublishManifest(str(tmp_path))
+    client = FakeR2(on_class_a=manifest.bump_class_a, fail_all=True,
+                    fail_code="AccessDenied")
+    pub = make_publisher(tmp_path, alerts, client=client)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish_all(pub, [_entry()])
+
+    for alert in alerts.sent:
+        assert SECRET not in alert["title"]
+        assert SECRET not in alert["message"]

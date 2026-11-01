@@ -44,8 +44,10 @@ from pathlib import Path
 from skipcastify.services.generate_feeds import FeedManager
 from skipcastify.services.publish_manifest import PublishManifest
 from skipcastify.services.r2_client import (CACHE_FEED, CACHE_IMMUTABLE,
-                                            R2Client, content_type_for,
+                                            CREDENTIAL_ERROR_CODES, R2Client,
+                                            content_type_for, error_code,
                                             redact_key)
+from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.notify import notify as ntfy_notify
 
 logger = logging.getLogger(__name__)
@@ -54,6 +56,9 @@ GB = 1024 ** 3
 DEFAULT_RETENTION_DAYS = 14
 DEFAULT_CAP_GB = 7
 DEFAULT_FALLBACK_HOURS = 6
+# Consecutive upload/delete failures in one run before we call it systemic.
+# A pilot run performs single-digit operations, so three failures is not noise.
+DEFAULT_MAX_FAILURES_PER_RUN = 3
 # Cloudflare's free tier. Class B (reads) is 10M and is spent by listeners
 # rather than by us, so only Class A is worth tracking locally.
 CLASS_A_MONTHLY_LIMIT = 1_000_000
@@ -164,7 +169,8 @@ class R2Publisher:
                  retention_days: int = DEFAULT_RETENTION_DAYS,
                  cap_bytes: int = DEFAULT_CAP_GB * GB,
                  fallback_after_s: float = DEFAULT_FALLBACK_HOURS * 3600,
-                 notifier=ntfy_notify) -> None:
+                 notifier=None, alerter=None,
+                 max_failures_per_run: int = DEFAULT_MAX_FAILURES_PER_RUN) -> None:
         if not secret:
             raise ValueError("PUBLIC_PATH_SECRET must not be empty")
         self.client = client
@@ -176,7 +182,20 @@ class R2Publisher:
         self.retention_s = retention_days * 86400
         self.cap_bytes = cap_bytes
         self.fallback_after_s = fallback_after_s
-        self._notify = notifier
+        # Two alert paths, because they want different semantics:
+        #   * _alert_once  — fires once ever, recorded in the manifest. Right
+        #     for "this episode went out with ads" or "80% of the monthly
+        #     budget", where repeating on a timer adds nothing.
+        #   * self.alerts  — 6h throttle, shared with the pipeline's alerter.
+        #     Right for a condition that may clear up and recur, like a
+        #     rejected credential or a failing upload.
+        self.alerts = (alerter if alerter is not None
+                       else Alerter(data_dir, notifier=notifier or ntfy_notify))
+        self._notify = notifier if notifier is not None else self.alerts.notifier
+        self.max_failures_per_run = max_failures_per_run
+        # Why publishing stopped for the rest of this run, if it did.
+        self._halted: str | None = None
+        self._failures = 0
         # Audio keys already written into a feed during the current pass. The
         # cap must not evict one of these: the feed referencing it has been
         # built (and possibly uploaded) already, so deleting the object would
@@ -187,7 +206,7 @@ class R2Publisher:
 
     @classmethod
     def from_env(cls, data_dir: str, manifest: PublishManifest | None = None,
-                 notifier=ntfy_notify) -> "R2Publisher":
+                 alerter=None) -> "R2Publisher":
         secret = os.environ.get("PUBLIC_PATH_SECRET", "").strip()
         if not secret:
             raise ValueError(
@@ -213,7 +232,9 @@ class R2Publisher:
             retention_days=int(os.environ.get("R2_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)),
             cap_bytes=int(float(os.environ.get("R2_CAP_GB", DEFAULT_CAP_GB)) * GB),
             fallback_after_s=float(os.environ.get("R2_FALLBACK_HOURS", DEFAULT_FALLBACK_HOURS)) * 3600,
-            notifier=notifier,
+            alerter=alerter,
+            max_failures_per_run=int(os.environ.get(
+                "R2_MAX_FAILURES_PER_RUN", DEFAULT_MAX_FAILURES_PER_RUN)),
         )
 
     # --- keys and URLs ------------------------------------------------------
@@ -233,6 +254,53 @@ class R2Publisher:
     def _safe(self, key: str) -> str:
         return redact_key(key, self.secret)
 
+    # --- failure routing ----------------------------------------------------
+
+    def _halt(self, reason: str) -> None:
+        """Stop publishing for the rest of this run.
+
+        Reached when R2 rejects our credentials or the bucket is unreachable.
+        Pushing on would mean one failed upload per episode per feed and a
+        wall of log noise saying the same thing. Downloading and processing are
+        untouched: the only thing that stops is publishing.
+        """
+        if self._halted is None:
+            self._halted = reason
+            logger.error("R2 publishing halted for this run: %s", reason)
+
+    @property
+    def halted(self) -> str | None:
+        return self._halted
+
+    def _note_r2_error(self, operation: str, exc: Exception) -> None:
+        """Turn a logged-and-swallowed R2 failure into something audible.
+
+        Every call site here used to log and carry on, which is the right
+        behaviour for the run but means a revoked API token looks exactly like
+        nothing happening: feeds quietly stop updating and nothing says why.
+        """
+        code = error_code(exc)
+        if code in CREDENTIAL_ERROR_CODES:
+            self._halt(f"R2 returned {code}")
+            # Fingerprinted on the code, not the operation: whichever call
+            # hits it first is the one that reports it.
+            self.alerts.send(
+                f"r2-credentials:{code}", "R2 credentials rejected",
+                f"R2 returned {code}, so publishing has stopped. Downloads "
+                f"and processing continue. Check the bucket API token in the "
+                f"Cloudflare dashboard.", priority="high")
+            return
+
+        self._failures += 1
+        logger.error("R2 %s failed (%d this run): %s", operation,
+                     self._failures, code or exc)
+        if self._failures == self.max_failures_per_run:
+            self.alerts.send(
+                "r2-failures", "Repeated R2 failures",
+                f"{self._failures} R2 operations have failed this run, the "
+                f"latest a {operation} ({code or type(exc).__name__}). The "
+                f"published feeds may be stale.", priority="high")
+
     # --- uploads ------------------------------------------------------------
 
     def ensure_audio(self, key: str, path: str, slug: str,
@@ -241,6 +309,9 @@ class R2Publisher:
         if self.manifest.has(key):
             self._emitted_keys.add(key)
             return self.public_url(key)
+
+        if self._halted:
+            return None
 
         size = os.path.getsize(path)
         if not self._make_room(size):
@@ -254,7 +325,7 @@ class R2Publisher:
         try:
             self.client.put_file(key, path, CACHE_IMMUTABLE)
         except Exception as e:
-            logger.error("Upload failed for %s: %s", self._safe(key), e)
+            self._note_r2_error(f"upload of {filename}", e)
             return None
 
         self.manifest.record_put(key, size, "audio")
@@ -267,13 +338,15 @@ class R2Publisher:
         key = self.art_key(filename)
         if self.manifest.has(key):
             return self.public_url(key)
+        if self._halted:
+            return None
         path = os.path.join(self.data_dir, 'artwork', filename)
         if not os.path.exists(path):
             return None
         try:
             size = self.client.put_file(key, path, CACHE_IMMUTABLE)
         except Exception as e:
-            logger.warning("Artwork upload failed for %s: %s", self._safe(key), e)
+            self._note_r2_error("artwork upload", e)
             return None
         self.manifest.record_put(key, size, "art")
         self.manifest.save()
@@ -300,10 +373,13 @@ class R2Publisher:
             logger.info("Feed %s unchanged; skipping upload", slug)
             return self.public_url(key)
 
+        if self._halted:
+            return None
+
         try:
             self.client.put_bytes(key, xml, "application/rss+xml", CACHE_FEED)
         except Exception as e:
-            logger.error("Feed upload failed for %s: %s", slug, e)
+            self._note_r2_error(f"feed upload for {slug}", e)
             return None
         self.manifest.record_put(key, len(xml), "feed", sha256=fingerprint)
         self.manifest.save()
@@ -312,9 +388,23 @@ class R2Publisher:
     # --- retention and the storage cap -------------------------------------
 
     def _delete(self, keys: list[str]) -> None:
+        """Delete from R2, then tombstone exactly what R2 confirmed gone.
+
+        A key R2 refused to delete stays live in the manifest on purpose: it
+        is still costing storage, so the next run should try again rather than
+        forget it.
+        """
         if not keys:
             return
-        deleted = self.client.delete_keys(keys)
+        try:
+            deleted = self.client.delete_keys(keys)
+        except Exception as e:
+            self._note_r2_error("delete", e)
+            return
+        if len(deleted) < len(keys):
+            self._note_r2_error(
+                f"delete ({len(keys) - len(deleted)} of {len(keys)} keys "
+                f"refused)", RuntimeError("partial delete"))
         self.manifest.record_delete(deleted)
         self.manifest.save()
 
@@ -382,10 +472,28 @@ class R2Publisher:
     def publish_all(self, subscription_urls: list[str]) -> dict[str, str]:
         """Publish every feed. Retention runs first so an episode that has
         aged out is already tombstoned before the feed is rebuilt."""
+        self._halted = None
+        self._failures = 0
+
+        # One Class B HEAD before doing anything. A dead endpoint or a revoked
+        # token otherwise shows up as a failed upload per episode per feed,
+        # all saying the same thing; this says it once, up front.
+        if not self.client.head_bucket():
+            self._halt("bucket unreachable")
+            self.alerts.send(
+                "r2-unreachable", "R2 bucket unreachable",
+                f"head_bucket failed for {self.client.bucket}, so nothing was "
+                f"published this run. Downloads and processing continue.",
+                priority="high")
+            return {}
+
         self.enforce_retention()
         self._emitted_keys = set()
         published: dict[str, str] = {}
         for url in subscription_urls:
+            if self._halted:
+                logger.warning("Skipping the remaining feed(s): %s", self._halted)
+                break
             try:
                 result = self.publish_feed(url, new_pass=False)
                 if result:

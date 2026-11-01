@@ -79,7 +79,7 @@ class Alerter:
                  notifier=ntfy_notify, window_s: float = DEFAULT_WINDOW_S) -> None:
         self.path = Path(path) if path else Path(data_dir) / "alert_state.json"
         self.window_s = window_s
-        self._notify = notifier
+        self.notifier = notifier
         self._doc = self._load()
 
     # --- state --------------------------------------------------------------
@@ -133,7 +133,7 @@ class Alerter:
         self._prune(now)
         self._save()
         try:
-            self._notify(scrub_secrets(title), scrub_secrets(message), priority)
+            self.notifier(scrub_secrets(title), scrub_secrets(message), priority)
         except Exception as e:
             logger.warning("Alert %s could not be sent: %s", fingerprint, e)
         return True
@@ -187,7 +187,7 @@ class Alerter:
             self._doc["sent"].pop(fingerprint, None)
         self._save()
         try:
-            self._notify(
+            self.notifier(
                 "Pipeline recovered",
                 scrub_secrets(f"First clean run after {(now - worst) / 3600:.1f}h "
                               f"of failures ({what})."),

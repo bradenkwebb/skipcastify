@@ -26,7 +26,6 @@ from typing import Iterable
 import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.config import Config
-from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +55,32 @@ _CONTENT_TYPES = {
 def content_type_for(filename: str) -> str:
     return _CONTENT_TYPES.get(os.path.splitext(filename)[1].lower(),
                               "application/octet-stream")
+
+
+# Codes that mean the credentials themselves are no good: the API token was
+# revoked, rotated or mistyped. Retrying cannot help, and publishing has
+# silently stopped, so these are the ones worth waking someone for.
+CREDENTIAL_ERROR_CODES = frozenset({
+    "AccessDenied",
+    "InvalidAccessKeyId",
+    "SignatureDoesNotMatch",
+    "ExpiredToken",
+})
+
+
+def error_code(exc: BaseException) -> str | None:
+    """The S3 error code from a botocore ClientError, if there is one.
+
+    Duck-typed rather than isinstance-checked so the publisher does not need
+    botocore imported, and so a test double can report a code without
+    constructing a real ClientError.
+    """
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        code = response.get("Error", {}).get("Code")
+        if code:
+            return str(code)
+    return None
 
 
 def redact_key(key: str, secret: str) -> str:
@@ -94,14 +119,19 @@ class R2Client:
         return redact_key(key, self.secret_segment)
 
     def head_bucket(self) -> bool:
-        """Cheap reachability/credential check. Class B, effectively free."""
+        """Cheap reachability/credential check. Class B, effectively free.
+
+        Catches everything, not just ClientError: a dead endpoint or a DNS
+        failure raises EndpointConnectionError, which is exactly the
+        "unreachable" case this call exists to detect.
+        """
         try:
             self._client.head_bucket(Bucket=self.bucket)
             return True
-        except ClientError as e:
+        except Exception as e:
             # Never let the exception text carry credentials into a log.
             logger.error("R2 bucket %s unreachable: %s", self.bucket,
-                         e.response.get("Error", {}).get("Code", "unknown"))
+                         error_code(e) or type(e).__name__)
             return False
 
     def put_file(self, key: str, path: str, cache_control: str) -> int:

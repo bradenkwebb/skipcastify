@@ -120,6 +120,9 @@ internet.
 | `Episode published with ads` | the `R2_FALLBACK_HOURS` fallback, once per episode |
 | `R2 storage cap reached` | an upload skipped because nothing older could be evicted |
 | `R2 storage at 80%` / `R2 Class A ops at 80%` | budget warnings |
+| `R2 credentials rejected` | `AccessDenied`, `InvalidAccessKeyId`, `SignatureDoesNotMatch` or `ExpiredToken`, high priority |
+| `R2 bucket unreachable` | the `head_bucket` check at the top of a publish run failed |
+| `Repeated R2 failures` | `R2_MAX_FAILURES_PER_RUN` (default 3) uploads or deletes failed in one run |
 
 A failing run is recorded separately from the throttle window, because a
 pipeline broken for two days and then fixed still needs to announce it — and
@@ -128,6 +131,30 @@ reported rather than silenced by a leftover window.
 
 Per-feed failures are deliberately **not** pipeline failures: one unreachable
 feed already degrades to a warning and the run continues, and that stays true.
+
+### Why an R2 credential error stops the run
+
+A revoked or rotated API token is the one failure mode that looks exactly like
+nothing happening: every upload fails, the feeds quietly stop updating, and
+without an alert the first sign is noticing an episode never arrived. So R2
+answers in the table above **halt publishing for the rest of the run** instead
+of retrying per object — otherwise one dead token means one identical failure
+per episode per feed.
+
+Halting stops *publishing only*. Downloading and processing carry on, so when
+the token is replaced the already-processed episodes publish on the next run.
+
+One `head_bucket` (Class B, free) runs before anything else in `publish_all`
+so an unreachable endpoint is reported once, up front, rather than discovered
+one object at a time.
+
+A single failed upload is **not** treated this way: one flaky PUT retries next
+run and the feed still goes out. Only the credential codes halt immediately;
+otherwise it takes `R2_MAX_FAILURES_PER_RUN` failures to raise a warning.
+
+A delete R2 *refuses* leaves the key live in the manifest rather than
+tombstoned. It is still costing storage, so the next run should try again — and
+the reconciliation pass below is what catches one that never succeeds.
 
 ## Going live
 
