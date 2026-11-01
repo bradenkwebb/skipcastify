@@ -1,9 +1,12 @@
 import os
+import time
 from functools import wraps
-from flask import Flask, send_from_directory, abort, request, Response, jsonify, render_template
+from flask import (Flask, send_from_directory, abort, request, Response,
+                   jsonify, make_response, render_template)
 from dotenv import load_dotenv
 
 from skipcastify.services import analytics
+from skipcastify.services.published_feeds import published_feeds
 
 load_dotenv()
 
@@ -13,6 +16,25 @@ data_dir = os.environ.get("DATA_DIR")
 _feed_username = os.environ.get("FEED_USERNAME")
 _feed_password = os.environ.get("FEED_PASSWORD")
 _episode_token = os.environ.get("EPISODE_TOKEN")
+_public_base_url = os.environ.get("PUBLIC_BASE_URL", "")
+_publish_to_r2 = os.environ.get("PUBLISH_TO_R2", "false").lower() == "true"
+
+
+@app.template_filter("mb")
+def _mb(num_bytes: int) -> str:
+    if num_bytes >= 1024 ** 3:
+        return f"{num_bytes / 1024 ** 3:.1f} GB"
+    return f"{num_bytes / 1024 ** 2:.0f} MB"
+
+
+@app.template_filter("ago")
+def _ago(when: float) -> str:
+    seconds = max(0.0, time.time() - float(when))
+    if seconds < 3600:
+        return f"{seconds / 60:.0f}m ago"
+    if seconds < 86400:
+        return f"{seconds / 3600:.0f}h ago"
+    return f"{seconds / 86400:.0f}d ago"
 
 
 def require_auth(f):
@@ -53,6 +75,36 @@ def serve_artwork(token, filename):
 @require_auth
 def dashboard():
     return render_template('dashboard.html')
+
+
+@app.route('/feeds')
+@require_auth
+def feeds_page():
+    """The R2 feed URLs, for copying on a phone.
+
+    Overcast only takes a feed URL in its mobile app, and these URLs are long
+    and contain a random secret, so retyping one is not an option.
+
+    Every URL on this page is effectively a password: the bucket is
+    world-readable, so holding one is holding the audio. Hence the headers
+    below — no-store so it is not left in a disk cache, no-referrer so the
+    URL cannot leak through a Referer header, and a CSP that permits no
+    outbound requests at all, which both forbids a third-party script from
+    reading these URLs out of the DOM and makes adding a CDN to this template
+    fail loudly rather than quietly widen the exposure.
+    """
+    resp = make_response(render_template(
+        'feeds.html',
+        feeds=published_feeds(data_dir, _public_base_url),
+        publishing_enabled=_publish_to_r2,
+    ))
+    resp.headers['Cache-Control'] = 'no-store'
+    resp.headers['Referrer-Policy'] = 'no-referrer'
+    resp.headers['Content-Security-Policy'] = (
+        "default-src 'none'; style-src 'unsafe-inline'; "
+        "script-src 'unsafe-inline'; form-action 'none'; base-uri 'none'"
+    )
+    return resp
 
 
 @app.route('/api/stats.json')

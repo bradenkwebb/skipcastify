@@ -290,6 +290,22 @@ accident.
 6. Remove `~/.skipcastify-maintenance` once the timer is running, so
    `monitor.sh` resumes its feed and pipeline-freshness alerts.
 
-Feed URLs for subscribing are written to
-`~/skipcastify-handoff/PILOT_FEED_URLS.txt` (mode 600). They contain the secret,
-so they don't belong in the handoff log, a commit, or a chat window.
+## Getting the feed URLs onto a phone
+
+Overcast only accepts a feed URL in its mobile app, and these URLs are long and
+carry a random secret, so retyping one is not an option. `GET /feeds` (Basic
+Auth, tailnet-only, linked from `/dashboard`) lists one row per feed **whose
+object is actually in the manifest**, with a Copy button and Overcast's
+documented `overcast://x-callback-url/add?url=` shortcut. A feed that was
+generated locally but never uploaded is deliberately not listed: subscribing to
+a URL whose object is missing is a 404 that teaches the app the feed is broken.
+
+The page necessarily displays the secret, so it sends `Cache-Control: no-store`,
+`Referrer-Policy: no-referrer`, and a CSP that permits no outbound request at
+all — which both stops a third-party script reading the URLs out of the DOM and
+makes adding a CDN to that template fail loudly instead of quietly widening the
+exposure. Unlike `/dashboard`, it loads nothing external.
+
+Feed URLs are also written to `~/skipcastify-handoff/PILOT_FEED_URLS.txt`
+(mode 600). They contain the secret, so they don't belong in the handoff log, a
+commit, or a chat window.
