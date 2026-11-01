@@ -42,6 +42,7 @@ import time
 from pathlib import Path
 
 from skipcastify.services.generate_feeds import FeedManager
+from skipcastify.services.overcast_ping import ping as overcast_ping
 from skipcastify.services.publish_manifest import PublishManifest
 from skipcastify.services.r2_breaker import R2Breaker
 from skipcastify.services.r2_client import (CACHE_FEED, CACHE_IMMUTABLE,
@@ -64,6 +65,10 @@ DEFAULT_MAX_FAILURES_PER_RUN = 3
 # rather than by us, so only Class A is worth tracking locally.
 CLASS_A_MONTHLY_LIMIT = 1_000_000
 ALERT_AT = 0.8
+# Consecutive runs of failed Overcast pings before saying so. One failure is
+# meaningless: the API is heavily rate-limited and an ignored ping only costs a
+# slower crawl.
+PING_FAILURE_RUNS_BEFORE_ALERT = 3
 # Keep tombstones well past retention so the re-upload guard can never race.
 TOMBSTONE_TTL_S = 60 * 86400
 DEFAULT_RECONCILE_HOURS = 24
@@ -187,7 +192,8 @@ class R2Publisher:
                  fallback_after_s: float = DEFAULT_FALLBACK_HOURS * 3600,
                  reconcile_interval_s: float = DEFAULT_RECONCILE_HOURS * 3600,
                  notifier=None, alerter=None, breaker=None,
-                 max_failures_per_run: int = DEFAULT_MAX_FAILURES_PER_RUN) -> None:
+                 max_failures_per_run: int = DEFAULT_MAX_FAILURES_PER_RUN,
+                 ping_enabled: bool = True, pinger=overcast_ping) -> None:
         if not secret:
             raise ValueError("PUBLIC_PATH_SECRET must not be empty")
         self.client = client
@@ -211,6 +217,8 @@ class R2Publisher:
                        else Alerter(data_dir, notifier=notifier or ntfy_notify))
         self._notify = notifier if notifier is not None else self.alerts.notifier
         self.max_failures_per_run = max_failures_per_run
+        self.ping_enabled = ping_enabled
+        self._ping = pinger
         self.breaker = breaker if breaker is not None else R2Breaker(data_dir)
         # Why publishing stopped for the rest of this run, if it did.
         self._halted: str | None = None
@@ -225,6 +233,10 @@ class R2Publisher:
         # built (and possibly uploaded) already, so deleting the object would
         # leave a published feed pointing at a 404.
         self._emitted_keys: set[str] = set()
+        # Feeds whose object was actually PUT this run. A feed skipped as
+        # unchanged has nothing new for a crawler to find, so pinging for it
+        # would spend a heavily rate-limited request on nothing.
+        self._changed_feed_urls: list[str] = []
 
     # --- construction -------------------------------------------------------
 
@@ -264,6 +276,7 @@ class R2Publisher:
             breaker=R2Breaker.from_env(data_dir),
             max_failures_per_run=int(os.environ.get(
                 "R2_MAX_FAILURES_PER_RUN", DEFAULT_MAX_FAILURES_PER_RUN)),
+            ping_enabled=os.environ.get("OVERCAST_PING", "true").lower() == "true",
         )
 
     # --- keys and URLs ------------------------------------------------------
@@ -425,6 +438,7 @@ class R2Publisher:
         """
         if new_pass:
             self._emitted_keys = set()
+            self._changed_feed_urls = []
         fm = R2FeedManager(self)
         feed_path = fm.generate_feed(subscription_url)
         xml = Path(feed_path).read_bytes()
@@ -446,7 +460,9 @@ class R2Publisher:
             return None
         self.manifest.record_put(key, len(xml), "feed", sha256=fingerprint)
         self.manifest.save()
-        return self.public_url(key)
+        url = self.public_url(key)
+        self._changed_feed_urls.append(url)
+        return url
 
     # --- retention and the storage cap -------------------------------------
 
@@ -630,6 +646,54 @@ class R2Publisher:
     def _month(now: float | None = None) -> str:
         return time.strftime("%Y-%m", time.gmtime(now or time.time()))
 
+    # --- telling Overcast about a new episode --------------------------------
+
+    def notify_overcast(self) -> None:
+        """Ask Overcast to re-crawl the feeds whose objects changed this run.
+
+        Overcast crawls unpopular feeds as rarely as once a day, and a feed
+        with one listener is as unpopular as they come, so without this an
+        ad-free episode can sit in R2 for hours.
+
+        One request **per changed feed**, not one covering the whole secret
+        prefix. A prefix ping would work — ``urlprefix`` genuinely matches by
+        prefix — but the same page asks callers to "be as specific as
+        possible to avoid crawling more feeds than necessary", and a
+        secret-level prefix would re-crawl every pilot feed each time one of
+        them gained an episode. At pilot volume this is one or two requests a
+        run either way.
+
+        Nothing is retried: the API is heavily rate-limited and an over-limit
+        ping is simply ignored, so a failure costs a slower crawl rather than
+        a missed episode. Only a streak of failed runs is worth reporting.
+        """
+        if not self.ping_enabled or not self._changed_feed_urls:
+            return
+        if self._halted:
+            # Publishing stopped part-way, so what is in the bucket may not be
+            # what the feed should say. Do not hurry a crawler to read it.
+            logger.info("Skipping the Overcast ping: %s", self._halted)
+            return
+
+        failed = 0
+        for url in self._changed_feed_urls:
+            if not self._ping(url):
+                failed += 1
+        streak = self.manifest.record_ping(failed == 0)
+        self.manifest.save()
+
+        if failed:
+            logger.warning("Overcast ping failed for %d of %d feed(s); "
+                           "%d consecutive run(s)", failed,
+                           len(self._changed_feed_urls), streak)
+        if streak >= PING_FAILURE_RUNS_BEFORE_ALERT:
+            # Slugs, never URLs: a feed URL embeds the path secret.
+            self.alerts.send(
+                "overcast-ping", "Overcast pings are failing",
+                f"The last {streak} publish runs could not ask Overcast to "
+                f"re-crawl. New episodes will still appear, but on Overcast's "
+                f"own schedule, which can be up to a day.")
+
     # --- alerting -----------------------------------------------------------
 
     def _alert_once(self, tag: str, title: str, message: str,
@@ -709,6 +773,7 @@ class R2Publisher:
 
         self.enforce_retention()
         self._emitted_keys = set()
+        self._changed_feed_urls = []
         published: dict[str, str] = {}
         for url in subscription_urls:
             if self._halted:
@@ -721,5 +786,6 @@ class R2Publisher:
             except Exception as e:
                 logger.warning("Publishing failed for %s: %s", url, e, exc_info=True)
         self.check_budgets()
+        self.notify_overcast()
         self.manifest.save()
         return published
