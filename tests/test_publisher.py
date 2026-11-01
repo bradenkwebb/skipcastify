@@ -39,6 +39,7 @@ class FakeR2:
     def __init__(self, on_class_a=None, fail_keys=(), fail_all=False,
                  fail_code=None, reachable=True, refuse_deletes=False):
         self.puts = []          # (key, cache_control, size) in upload order
+        self.bodies = {}        # key -> bytes, for what actually reached R2
         self.attempts = []      # every key we were asked to write, failures too
         self.deleted = []
         self.bucket = "test-bucket"
@@ -77,6 +78,7 @@ class FakeR2:
     def put_bytes(self, key, body, content_type, cache_control):
         self._maybe_fail(key)
         self.puts.append((key, cache_control, len(body)))
+        self.bodies[key] = body
         self.bucket_objects[key] = (len(body), time.time())
         self._on_class_a(1)
         return len(body)
@@ -1181,3 +1183,23 @@ def test_reconcile_runs_before_the_cap_sees_the_sizes(tmp_path, alerts):
 
     assert published != {}
     assert _items(pub)[0][2].startswith("https://pods.example.com/audio/")
+
+
+# --- feed privacy ---------------------------------------------------------
+
+def test_the_feed_uploaded_to_r2_is_marked_private(pub, tmp_path):
+    """Asserted on the bytes that reached R2, not on the local file.
+
+    itunes:block removes Overcast's Share and Recommend buttons, which is the
+    one path by which a single tap could hand out a feed URL that is, because
+    the bucket is world-readable, the audio itself.
+    """
+    import xml.etree.ElementTree as ET
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish(pub, [_entry()])
+
+    body = pub.client.bodies[pub.feed_key(SLUG)]
+    channel = ET.fromstring(body).find("channel")
+    ns = "http://www.itunes.com/dtds/podcast-1.0.dtd"
+    assert channel.findtext(f"{{{ns}}}block") == "yes"
