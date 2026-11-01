@@ -177,6 +177,11 @@ class R2Publisher:
         self.cap_bytes = cap_bytes
         self.fallback_after_s = fallback_after_s
         self._notify = notifier
+        # Audio keys already written into a feed during the current pass. The
+        # cap must not evict one of these: the feed referencing it has been
+        # built (and possibly uploaded) already, so deleting the object would
+        # leave a published feed pointing at a 404.
+        self._emitted_keys: set[str] = set()
 
     # --- construction -------------------------------------------------------
 
@@ -234,6 +239,7 @@ class R2Publisher:
                      filename: str) -> str | None:
         """Upload an episode if it isn't already in R2. Returns its URL."""
         if self.manifest.has(key):
+            self._emitted_keys.add(key)
             return self.public_url(key)
 
         size = os.path.getsize(path)
@@ -253,6 +259,7 @@ class R2Publisher:
 
         self.manifest.record_put(key, size, "audio")
         self.manifest.save()
+        self._emitted_keys.add(key)
         return self.public_url(key)
 
     def ensure_art(self, filename: str) -> str | None:
@@ -272,9 +279,16 @@ class R2Publisher:
         self.manifest.save()
         return self.public_url(key)
 
-    def publish_feed(self, subscription_url: str) -> str | None:
+    def publish_feed(self, subscription_url: str, new_pass: bool = True) -> str | None:
         """Publish one feed. Audio is uploaded first, as a side effect of
-        generating the XML, so the feed can never reference a missing object."""
+        generating the XML, so the feed can never reference a missing object.
+
+        publish_all clears the emitted-key set once for the whole run and
+        passes new_pass=False, so one feed's uploads cannot evict an object
+        that an earlier feed in the same run already points at.
+        """
+        if new_pass:
+            self._emitted_keys = set()
         fm = R2FeedManager(self)
         feed_path = fm.generate_feed(subscription_url)
         xml = Path(feed_path).read_bytes()
@@ -321,6 +335,8 @@ class R2Publisher:
         for key in self.manifest.oldest_first("audio"):
             if self.manifest.total_bytes("audio") + size <= self.cap_bytes:
                 break
+            if key in self._emitted_keys:
+                continue          # a feed built this pass already points at it
             logger.info("Cap: evicting %s to make room", self._safe(key))
             self._delete([key])
         return self.manifest.total_bytes("audio") + size <= self.cap_bytes
@@ -367,10 +383,11 @@ class R2Publisher:
         """Publish every feed. Retention runs first so an episode that has
         aged out is already tombstoned before the feed is rebuilt."""
         self.enforce_retention()
+        self._emitted_keys = set()
         published: dict[str, str] = {}
         for url in subscription_urls:
             try:
-                result = self.publish_feed(url)
+                result = self.publish_feed(url, new_pass=False)
                 if result:
                     published[url] = result
             except Exception as e:

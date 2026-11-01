@@ -527,3 +527,25 @@ def test_guid_is_unchanged_when_an_episode_is_evicted(pub, tmp_path):
     assert evicted[2] == "https://cdn.example.com/ep1.mp3"   # audio switched back
     assert evicted[1] == on_r2[1]                            # identity did not
     assert evicted[1] is not None
+
+
+def test_cap_will_not_evict_an_episode_already_in_this_feed(tmp_path, alerts):
+    """A feed must never be left pointing at an object we just deleted.
+
+    Within one pass an earlier episode has already been written into the
+    feed, so the cap has to refuse to evict it and skip the new upload
+    instead.
+    """
+    pub = make_publisher(tmp_path, alerts, cap_bytes=3000)
+    write_audio(tmp_path, "processed", EP1, size=2000)
+    write_audio(tmp_path, "processed", EP2, size=2000)
+
+    publish(pub, [_entry(),
+                  _entry(title="Ep 2", href="https://cdn.example.com/ep2.mp3")])
+
+    items = {t: u for t, _g, u in _items(pub)}
+    assert items["Ep 1"].startswith("https://pods.example.com/audio/")
+    assert pub.manifest.has(pub.audio_key(SLUG, EP1))     # kept, not evicted
+    assert pub.audio_key(SLUG, EP1) not in pub.client.deleted
+    assert "Ep 2" not in items                            # withheld instead
+    assert any("cap" in a["title"].lower() for a in alerts.sent)
