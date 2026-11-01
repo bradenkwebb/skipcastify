@@ -66,7 +66,7 @@ Egress is free, which is the whole reason R2 and not S3.
 |---|---|---|
 | retention | `R2_RETENTION_DAYS=14` | bounds storage regardless of feed volume |
 | hard cap | `R2_CAP_GB=7` | headroom under 10 GB; evicts oldest first |
-| no LIST | — | `ListObjectsV2` is Class A, so a local manifest is the source of truth |
+| LIST only to reconcile | `R2_RECONCILE_HOURS=24` | `ListObjectsV2` is Class A, so a local manifest is the source of truth |
 | one PUT per object | — | boto3 would otherwise bill a 90 MB episode as ~14 multipart ops |
 | changed-only feeds | — | a feed is uploaded only when its content hash changes |
 | cache headers | — | feeds `max-age=300`, audio and art `immutable`; CDN hits don't reach R2 |
@@ -90,9 +90,48 @@ forgetting the key would make the next run see "file on disk, nothing uploaded"
 and upload it again — re-publishing every episode retention just expired, every
 15 minutes, forever. Tombstones are pruned after 60 days.
 
-Because the manifest is authoritative and we never LIST, manifest and bucket can
-in principle drift (a PUT that succeeded as the process died). The lifecycle
-rule is the backstop: anything we lose track of is deleted after 30 days.
+### Daily reconciliation
+
+The manifest is authoritative so that we never have to LIST — but it can fall
+out of step with the bucket:
+
+- a crash between a successful PUT and `record_put` leaves an **orphan** that
+  the cap cannot see and retention will never evict (this happened: a kernel
+  crash on 2026-10-30);
+- a partially failed delete, or a manual delete in the Cloudflare dashboard,
+  leaves a **ghost** the published feed still points at;
+- `feeds/` and `art/` sit outside the bucket lifecycle rule, so nothing else
+  would ever clean them up.
+
+So `R2Publisher.reconcile()` runs one `ListObjectsV2` at most every
+`R2_RECONCILE_HOURS` (default 24) at the top of a publish run — about 30 Class
+A operations a month, against an allowance of a million. **This is the only
+place LIST is allowed.**
+
+| drift | what happens |
+|---|---|
+| in the bucket, not in the manifest, matches our layout, over 1h old | deleted |
+| same but under 1h old | left alone — it may be a PUT from a run still in flight |
+| same but under a *previous* `PUBLIC_PATH_SECRET` | deleted; the secret segment is matched loosely so a rotation leaves nothing behind |
+| in the bucket, not matching our layout at all | **never deleted**, alerted once; we are not necessarily the only writer |
+| in the manifest, not in the bucket | tombstoned, alerted once; the feed entry reverts to its original enclosure on the next build |
+| size disagrees | corrected from the listing; alerted once past `max(5%, 100 MB)` |
+
+It runs **before** retention and the cap, so both work from reconciled sizes.
+A failed listing does not record a reconcile — one network blip should not mean
+24 hours of unrepaired drift — and does not block the publish run that follows.
+A tripped breaker skips it entirely, LIST included. Its summary log line
+carries counts only, never keys.
+
+Reconciliation is a repair pass, not the safety net. The bucket lifecycle rule
+is still the backstop: anything we lose track of under `audio/` is deleted
+after 30 days regardless.
+
+For go-live day, or any time you want it now rather than in 24 hours:
+
+```
+uv run python -m skipcastify.tools.r2ctl reconcile
+```
 
 ## Alerting
 

@@ -66,6 +66,21 @@ CLASS_A_MONTHLY_LIMIT = 1_000_000
 ALERT_AT = 0.8
 # Keep tombstones well past retention so the re-upload guard can never race.
 TOMBSTONE_TTL_S = 60 * 86400
+DEFAULT_RECONCILE_HOURS = 24
+# An object younger than this is not treated as an orphan: it may be a PUT
+# from a run still in flight, or one whose record_put has not landed yet.
+ORPHAN_MIN_AGE_S = 3600
+# Report a bucket/manifest size disagreement past whichever is larger. The
+# percentage catches a small bucket, the floor stops a nearly empty one
+# alerting over a single artwork file.
+DRIFT_FRACTION = 0.05
+DRIFT_FLOOR_BYTES = 100 * 1024 ** 2
+# Keys we recognise as ours: audio/<secret>/<slug>/<file>, feeds/<secret>/
+# <slug>.xml, art/<secret>/<file>. The secret segment is matched loosely on
+# purpose, so a key written under a *previous* PUBLIC_PATH_SECRET is still
+# recognised as ours and gets cleaned up rather than left to the lifecycle
+# rule (which does not cover feeds/ or art/ at all).
+_OUR_LAYOUT = re.compile(r"^(audio|feeds|art)/[^/]+/.+")
 
 _LAST_BUILD_DATE = re.compile(rb"<lastBuildDate>.*?</lastBuildDate>", re.S)
 
@@ -170,6 +185,7 @@ class R2Publisher:
                  retention_days: int = DEFAULT_RETENTION_DAYS,
                  cap_bytes: int = DEFAULT_CAP_GB * GB,
                  fallback_after_s: float = DEFAULT_FALLBACK_HOURS * 3600,
+                 reconcile_interval_s: float = DEFAULT_RECONCILE_HOURS * 3600,
                  notifier=None, alerter=None, breaker=None,
                  max_failures_per_run: int = DEFAULT_MAX_FAILURES_PER_RUN) -> None:
         if not secret:
@@ -183,6 +199,7 @@ class R2Publisher:
         self.retention_s = retention_days * 86400
         self.cap_bytes = cap_bytes
         self.fallback_after_s = fallback_after_s
+        self.reconcile_interval_s = reconcile_interval_s
         # Two alert paths, because they want different semantics:
         #   * _alert_once  — fires once ever, recorded in the manifest. Right
         #     for "this episode went out with ads" or "80% of the monthly
@@ -239,6 +256,8 @@ class R2Publisher:
             retention_days=int(os.environ.get("R2_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)),
             cap_bytes=int(float(os.environ.get("R2_CAP_GB", DEFAULT_CAP_GB)) * GB),
             fallback_after_s=float(os.environ.get("R2_FALLBACK_HOURS", DEFAULT_FALLBACK_HOURS)) * 3600,
+            reconcile_interval_s=float(os.environ.get(
+                "R2_RECONCILE_HOURS", DEFAULT_RECONCILE_HOURS)) * 3600,
             alerter=alerter,
             breaker=R2Breaker.from_env(data_dir),
             max_failures_per_run=int(os.environ.get(
@@ -473,6 +492,132 @@ class R2Publisher:
             self._delete([key])
         return self.manifest.total_bytes("audio") + size <= self.cap_bytes
 
+    # --- reconciliation -----------------------------------------------------
+
+    def reconcile(self, now: float | None = None, force: bool = False) -> dict | None:
+        """Repair drift between the manifest and the bucket. Returns a summary.
+
+        The manifest is authoritative precisely so we never have to LIST, but
+        it can fall out of step with reality:
+
+          * a crash between a successful PUT and ``record_put`` leaves an
+            **orphan** the cap cannot see and retention will never evict;
+          * a partially failed delete, or a manual delete in the Cloudflare
+            dashboard, leaves a **ghost** the published feed still points at;
+          * ``feeds/`` and ``art/`` are outside the bucket lifecycle rule, so
+            nothing else would ever clean them up.
+
+        One ListObjectsV2 a day (a handful of Class A operations a month) buys
+        certainty about all three. Returns None when the pass was skipped.
+        """
+        now = now if now is not None else time.time()
+        if self.breaker.state() is not None:
+            return None
+        if not force and now - self.manifest.last_reconcile_at() < self.reconcile_interval_s:
+            return None
+
+        bucket: dict[str, tuple[int, float]] = {}
+        pages = 0
+        try:
+            for page in self.client.list_objects():
+                pages += 1
+                for key, size, last_modified in page:
+                    bucket[key] = (size, last_modified)
+        except Exception as e:
+            # A failed listing must not block the publish run that follows,
+            # and must not record a reconcile that did not happen.
+            self._note_r2_error("list", e)
+            return None
+
+        live = set(self.manifest.live_keys())
+        orphans, foreign, young = [], [], 0
+        for key, (_size, last_modified) in bucket.items():
+            if key in live:
+                continue
+            if not _OUR_LAYOUT.match(key):
+                foreign.append(key)
+                continue
+            if now - last_modified < ORPHAN_MIN_AGE_S:
+                young += 1
+                continue
+            orphans.append(key)
+
+        ghosts = [k for k in live if k not in bucket]
+
+        bucket_total = sum(size for size, _ in bucket.values())
+        manifest_total = self.manifest.total_bytes()
+        corrected = 0
+        for key in live & set(bucket):
+            if self.manifest.set_size(key, bucket[key][0]):
+                corrected += 1
+
+        if ghosts:
+            # Tombstone rather than forget: the feed entry then reverts to its
+            # original enclosure on the next build, and the processed file
+            # still on local disk is not uploaded all over again.
+            self.manifest.record_delete(ghosts, now=now)
+        if orphans:
+            logger.info("Reconcile: deleting %d orphan(s)", len(orphans))
+            self._delete(orphans)
+        self.manifest.mark_reconciled(now)
+        self.manifest.save()
+
+        self._alert_drift(bucket_total, manifest_total)
+        if foreign:
+            self._alert_once(
+                f"foreign:{self._fingerprint(foreign)}",
+                "Unrecognised objects in the R2 bucket",
+                f"{len(foreign)} object(s) do not match our key layout, so "
+                f"they were left alone. Nothing we wrote looks like this; "
+                f"check the bucket in the Cloudflare dashboard.",
+                priority="default")
+        if ghosts:
+            self._alert_once(
+                f"ghosts:{self._fingerprint(ghosts)}",
+                "R2 objects missing from the bucket",
+                f"{len(ghosts)} object(s) the manifest believed were live are "
+                f"not in the bucket. Those episodes revert to their original "
+                f"audio on the next feed build.",
+                priority="default")
+
+        summary = {
+            "objects": len(bucket), "bytes": bucket_total, "pages": pages,
+            "orphans_deleted": len(orphans), "orphans_too_young": young,
+            "ghosts_tombstoned": len(ghosts), "sizes_corrected": corrected,
+            "foreign_keys": len(foreign),
+        }
+        # Counts only, never keys: these embed PUBLIC_PATH_SECRET.
+        logger.info(
+            "Reconcile: %d object(s), %.2f GB, %d page(s); %d orphan(s) "
+            "deleted, %d too young, %d ghost(s) tombstoned, %d size(s) "
+            "corrected, %d unrecognised key(s)",
+            summary["objects"], bucket_total / GB, pages,
+            summary["orphans_deleted"], young, summary["ghosts_tombstoned"],
+            corrected, summary["foreign_keys"])
+        return summary
+
+    @staticmethod
+    def _fingerprint(keys: list[str]) -> str:
+        """A stable tag for a set of keys, so a *different* set alerts again."""
+        joined = "\n".join(sorted(keys)).encode()
+        return hashlib.sha256(joined).hexdigest()[:12]
+
+    def _alert_drift(self, bucket_total: int, manifest_total: int) -> None:
+        delta = abs(bucket_total - manifest_total)
+        threshold = max(manifest_total * DRIFT_FRACTION, DRIFT_FLOOR_BYTES)
+        if delta <= threshold:
+            return
+        self._alert_once(
+            f"drift:{self._month()}", "R2 manifest disagreed with the bucket",
+            f"The bucket holds {bucket_total / GB:.2f} GB; the manifest said "
+            f"{manifest_total / GB:.2f} GB. The manifest has been corrected "
+            f"from the listing and the cap now uses the real figure.",
+            priority="default")
+
+    @staticmethod
+    def _month(now: float | None = None) -> str:
+        return time.strftime("%Y-%m", time.gmtime(now or time.time()))
+
     # --- alerting -----------------------------------------------------------
 
     def _alert_once(self, tag: str, title: str, message: str,
@@ -493,7 +638,7 @@ class R2Publisher:
 
     def check_budgets(self, now: float | None = None) -> None:
         """Warn at 80% of the storage cap or the monthly Class A allowance."""
-        month = time.strftime("%Y-%m", time.gmtime(now or time.time()))
+        month = self._month(now)
 
         used = self.manifest.total_bytes("audio")
         if used >= self.cap_bytes * ALERT_AT:
@@ -546,6 +691,9 @@ class R2Publisher:
                 f"published this run. Downloads and processing continue.",
                 priority="high")
             return {}
+
+        # Before retention and the cap, so both work from reconciled sizes.
+        self.reconcile()
 
         self.enforce_retention()
         self._emitted_keys = set()

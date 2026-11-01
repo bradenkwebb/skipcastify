@@ -32,7 +32,8 @@ class PublishManifest:
     # --- persistence --------------------------------------------------------
 
     def _blank(self) -> dict:
-        return {"version": VERSION, "objects": {}, "ops": {}, "notified": []}
+        return {"version": VERSION, "objects": {}, "ops": {}, "notified": [],
+                "reconciled_at": 0.0}
 
     def _load(self) -> dict:
         if not self.path.exists():
@@ -54,6 +55,7 @@ class PublishManifest:
             return self._blank()
         for field in ("objects", "ops", "notified"):
             doc.setdefault(field, {} if field != "notified" else [])
+        doc.setdefault("reconciled_at", 0.0)
         return doc
 
     def save(self) -> None:
@@ -124,6 +126,22 @@ class PublishManifest:
         entry = self._doc["objects"].get(key)
         return entry.get("sha256") if entry and not entry.get("deleted_at") else None
 
+    def live_keys(self) -> list[str]:
+        """Keys we believe are in the bucket right now."""
+        return list(self._live())
+
+    def all_keys(self) -> list[str]:
+        """Every key we know of, tombstones included."""
+        return list(self._doc["objects"])
+
+    def set_size(self, key: str, size: int) -> bool:
+        """Correct a recorded size from an authoritative listing."""
+        entry = self._doc["objects"].get(key)
+        if entry is None or entry.get("size") == int(size):
+            return False
+        entry["size"] = int(size)
+        return True
+
     def keys_of_kind(self, kind: str) -> list[str]:
         return [k for k, v in self._live().items() if v.get("kind") == kind]
 
@@ -144,6 +162,14 @@ class PublishManifest:
         return [k for k, v in self._live().items()
                 if v.get("kind") == kind
                 and now - v.get("uploaded_at", now) > max_age_s]
+
+    # --- reconciliation ------------------------------------------------------
+
+    def last_reconcile_at(self) -> float:
+        return float(self._doc.get("reconciled_at") or 0.0)
+
+    def mark_reconciled(self, now: float | None = None) -> None:
+        self._doc["reconciled_at"] = float(now if now is not None else time.time())
 
     # --- operation accounting ----------------------------------------------
 

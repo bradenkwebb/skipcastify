@@ -6,9 +6,11 @@ publisher.py; what *has already been* uploaded lives in publish_manifest.py.
 
 Two rules here come straight from the free-tier budget (1M Class A ops/month):
 
-  * **No LIST.** ListObjectsV2 is a Class A operation, so there is deliberately
-    no list method on this class. The local manifest is the source of truth for
-    retention and the storage cap instead.
+  * **LIST only to reconcile.** ListObjectsV2 is a Class A operation, so the
+    local manifest — not the bucket — is the source of truth for retention and
+    the storage cap. ``list_objects`` exists for exactly one caller, the daily
+    reconciliation pass that repairs drift between the two. It must never
+    appear in the normal publish path.
   * **One PUT per object.** boto3's default transfer config switches to
     multipart above 8 MB, and multipart costs a Class A op per part plus two
     more for create/complete — so a 90 MB episode would burn ~14 ops instead of
@@ -142,6 +144,31 @@ class R2Client:
             logger.error("R2 bucket %s unreachable: %s", self.bucket,
                          error_code(e) or type(e).__name__)
             return False
+
+    def list_objects(self, max_keys: int = 1000):
+        """Yield pages of ``(key, size, last_modified_epoch)``.
+
+        Class A, one operation per page — see the module docstring. The only
+        legitimate caller is R2Publisher.reconcile().
+        """
+        token: str | None = None
+        while True:
+            kwargs = {"Bucket": self.bucket, "MaxKeys": max_keys}
+            if token:
+                kwargs["ContinuationToken"] = token
+            resp = self._client.list_objects_v2(**kwargs)
+            self._on_class_a(1)
+            yield [(o["Key"], int(o.get("Size", 0)),
+                    o["LastModified"].timestamp())
+                   for o in resp.get("Contents", [])]
+            if not resp.get("IsTruncated"):
+                return
+            token = resp.get("NextContinuationToken")
+            if not token:
+                # Truncated with no token should not happen; stopping is the
+                # safe reading, since looping would re-list page one forever.
+                logger.warning("Truncated listing with no continuation token")
+                return
 
     def put_file(self, key: str, path: str, cache_control: str) -> int:
         """Upload a local file as a single PUT. Returns its size in bytes."""

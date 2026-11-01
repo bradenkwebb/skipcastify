@@ -48,6 +48,12 @@ class FakeR2:
         self.reachable = reachable
         self.refuse_deletes = refuse_deletes
         self.head_calls = 0
+        # What the bucket actually holds: key -> (size, last_modified epoch).
+        # Kept so reconciliation has something real to list.
+        self.bucket_objects = {}
+        self.list_pages = []    # pages actually yielded, for pagination tests
+        self.list_fails = False
+        self.page_size = 1000
         self._on_class_a = on_class_a or (lambda n: None)
 
     def set_class_a_hook(self, fn):
@@ -64,12 +70,14 @@ class FakeR2:
         self._maybe_fail(key)
         size = os.path.getsize(path)
         self.puts.append((key, cache_control, size))
+        self.bucket_objects[key] = (size, time.time())
         self._on_class_a(1)
         return size
 
     def put_bytes(self, key, body, content_type, cache_control):
         self._maybe_fail(key)
         self.puts.append((key, cache_control, len(body)))
+        self.bucket_objects[key] = (len(body), time.time())
         self._on_class_a(1)
         return len(body)
 
@@ -79,7 +87,21 @@ class FakeR2:
         if self.refuse_deletes:
             return []
         self.deleted.extend(keys)
+        for key in keys:
+            self.bucket_objects.pop(key, None)
         return keys
+
+    def list_objects(self, max_keys=1000):
+        if self.list_fails:
+            raise FakeClientError("InternalError")
+        items = [(k, size, lm) for k, (size, lm) in
+                 sorted(self.bucket_objects.items())]
+        size = min(self.page_size, max_keys)
+        pages = [items[i:i + size] for i in range(0, len(items), size)] or [[]]
+        for page in pages:
+            self.list_pages.append(page)
+            self._on_class_a(1)
+            yield page
 
     def head_bucket(self):
         self.head_calls += 1
@@ -888,3 +910,252 @@ def test_class_a_day_counter_resets_at_utc_midnight(tmp_path):
 
     assert manifest.class_a_today(now=day1 + 7200) == 1
     assert manifest.class_a_this_month(now=day1 + 7200) == 51   # month keeps both
+
+
+# --- daily reconciliation -------------------------------------------------
+
+def put_in_bucket_only(pub, key, size=1024, age_s=7200):
+    """An object in R2 that the manifest knows nothing about."""
+    pub.client.bucket_objects[key] = (size, time.time() - age_s)
+    return key
+
+
+def test_an_orphan_is_deleted(tmp_path, alerts):
+    """A crash between a successful PUT and record_put leaves one behind.
+
+    Nothing else would ever remove it: the cap cannot see it and retention
+    only looks at the manifest.
+    """
+    pub = make_publisher(tmp_path, alerts)
+    key = put_in_bucket_only(pub, pub.audio_key(SLUG, "orphan.mp3"))
+
+    summary = pub.reconcile()
+
+    assert summary["orphans_deleted"] == 1
+    assert key in pub.client.deleted
+    assert key not in pub.client.bucket_objects
+
+
+def test_a_young_orphan_is_left_alone(tmp_path, alerts):
+    """It may be a PUT from a run still in flight."""
+    pub = make_publisher(tmp_path, alerts)
+    key = put_in_bucket_only(pub, pub.audio_key(SLUG, "inflight.mp3"), age_s=60)
+
+    summary = pub.reconcile()
+
+    assert summary["orphans_deleted"] == 0
+    assert summary["orphans_too_young"] == 1
+    assert pub.client.deleted == []
+
+
+def test_an_orphan_under_an_old_secret_is_still_ours(tmp_path, alerts):
+    """After a secret rotation the old keys are ours and nothing else cleans
+    up feeds/ or art/, which the bucket lifecycle rule does not cover."""
+    pub = make_publisher(tmp_path, alerts)
+    key = put_in_bucket_only(pub, f"audio/a-previous-secret/{SLUG}/old.mp3")
+
+    pub.reconcile()
+
+    assert key in pub.client.deleted
+
+
+def test_an_unrecognised_key_is_never_deleted(tmp_path, alerts):
+    """We are not the only thing that could ever write to this bucket."""
+    pub = make_publisher(tmp_path, alerts)
+    key = put_in_bucket_only(pub, "someone-elses-backup.tar")
+
+    summary = pub.reconcile()
+
+    assert summary["foreign_keys"] == 1
+    assert pub.client.deleted == []
+    assert key in pub.client.bucket_objects
+    assert any("Unrecognised" in a["title"] for a in alerts.sent)
+
+
+def test_an_unrecognised_key_alerts_only_once(tmp_path, alerts):
+    pub = make_publisher(tmp_path, alerts)
+    put_in_bucket_only(pub, "someone-elses-backup.tar")
+
+    for _ in range(4):
+        pub.reconcile(force=True)
+
+    assert len([a for a in alerts.sent if "Unrecognised" in a["title"]]) == 1
+
+
+def test_a_ghost_is_tombstoned_and_its_feed_entry_reverts(tmp_path, alerts):
+    """A manual delete in the Cloudflare dashboard leaves the feed pointing
+    at a 404 until something notices."""
+    pub = make_publisher(tmp_path, alerts)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+    publish(pub, [_entry()])
+    key = pub.audio_key(SLUG, EP1)
+    assert _items(pub)[0][2].startswith("https://pods.example.com/audio/")
+
+    del pub.client.bucket_objects[key]          # deleted behind our back
+    summary = pub.reconcile(force=True)
+
+    assert summary["ghosts_tombstoned"] == 1
+    assert pub.manifest.is_tombstoned(key)
+    assert any("missing from the bucket" in a["title"] for a in alerts.sent)
+
+    publish(pub, [_entry()])
+    item = _items(pub)[0]
+    assert item[2] == "https://cdn.example.com/ep1.mp3"      # reverted
+    assert item[1] is not None                               # guid intact
+
+
+def test_a_ghost_does_not_free_the_cap_it_was_never_using(tmp_path, alerts):
+    pub = make_publisher(tmp_path, alerts)
+    key = pub.audio_key(SLUG, EP1)
+    pub.manifest.record_put(key, 5 * 1024 ** 2, "audio")
+    assert pub.manifest.total_bytes("audio") == 5 * 1024 ** 2
+
+    pub.reconcile(force=True)
+
+    assert pub.manifest.total_bytes("audio") == 0
+
+
+def test_sizes_are_corrected_from_the_listing(tmp_path, alerts):
+    pub = make_publisher(tmp_path, alerts)
+    key = pub.audio_key(SLUG, EP1)
+    pub.manifest.record_put(key, 10, "audio")        # recorded wrong
+    pub.client.bucket_objects[key] = (4096, time.time() - 7200)
+
+    summary = pub.reconcile()
+
+    assert summary["sizes_corrected"] == 1
+    assert pub.manifest.total_bytes("audio") == 4096
+
+
+def test_a_large_size_disagreement_is_alerted(tmp_path, alerts):
+    pub = make_publisher(tmp_path, alerts)
+    key = pub.audio_key(SLUG, EP1)
+    pub.manifest.record_put(key, 10, "audio")
+    pub.client.bucket_objects[key] = (2 * GB, time.time() - 7200)
+
+    pub.reconcile()
+
+    assert any("disagreed with the bucket" in a["title"] for a in alerts.sent)
+
+
+def test_a_small_size_disagreement_is_not_alerted(tmp_path, alerts):
+    """An artwork file's worth of drift is not worth a push."""
+    pub = make_publisher(tmp_path, alerts)
+    key = pub.art_key("cover.jpg")
+    pub.manifest.record_put(key, 200_000, "art")
+    pub.client.bucket_objects[key] = (210_000, time.time() - 7200)
+
+    pub.reconcile()
+
+    assert alerts.sent == []
+
+
+def test_reconcile_paginates(tmp_path, alerts):
+    pub = make_publisher(tmp_path, alerts)
+    pub.client.page_size = 2
+    for i in range(5):
+        put_in_bucket_only(pub, pub.audio_key(SLUG, f"o{i}.mp3"))
+
+    summary = pub.reconcile()
+
+    assert summary["pages"] == 3
+    assert summary["objects"] == 5
+    assert summary["orphans_deleted"] == 5
+
+
+def test_reconcile_runs_at_most_once_a_day(tmp_path, alerts):
+    """96 runs a day must not mean 96 LIST operations."""
+    pub = make_publisher(tmp_path, alerts)
+    now = time.time()
+
+    assert pub.reconcile(now=now) is not None
+    for i in range(1, 20):
+        assert pub.reconcile(now=now + i * 900) is None
+    assert pub.reconcile(now=now + 24 * 3600 + 1) is not None
+
+    assert len(pub.client.list_pages) == 2
+
+
+def test_the_once_a_day_gate_survives_a_restart(tmp_path, alerts):
+    now = time.time()
+    make_publisher(tmp_path, alerts).reconcile(now=now)
+
+    later = make_publisher(tmp_path, alerts)
+
+    assert later.reconcile(now=now + 900) is None
+
+
+def test_force_overrides_the_gate(tmp_path, alerts):
+    """Go-live day wants a reconcile now, not in 24 hours."""
+    pub = make_publisher(tmp_path, alerts)
+    now = time.time()
+    pub.reconcile(now=now)
+
+    assert pub.reconcile(now=now + 60, force=True) is not None
+
+
+def test_each_list_page_counts_as_a_class_a_operation(tmp_path, alerts):
+    pub = make_publisher(tmp_path, alerts)
+    pub.client.page_size = 1
+    for i in range(3):
+        put_in_bucket_only(pub, pub.audio_key(SLUG, f"o{i}.mp3"))
+
+    before = pub.manifest.class_a_this_month()
+    pub.reconcile()
+
+    # Three LIST pages, plus the batch delete of the three orphans.
+    assert pub.manifest.class_a_this_month() - before == 4
+
+
+def test_list_pages_can_trip_the_breaker(tmp_path, alerts):
+    """Reconciliation is not exempt from the billing guardrail."""
+    pub = make_breaker_publisher(tmp_path, alerts, per_run=2)
+    pub.client.page_size = 1
+    for i in range(6):
+        put_in_bucket_only(pub, pub.audio_key(SLUG, f"o{i}.mp3"))
+
+    pub.reconcile()
+
+    assert pub.breaker.tripped
+
+
+def test_a_failed_listing_does_not_record_a_reconcile(tmp_path, alerts):
+    """Otherwise one network blip means 24 hours of unrepaired drift."""
+    pub = make_publisher(tmp_path, alerts)
+    pub.client.list_fails = True
+    now = time.time()
+
+    assert pub.reconcile(now=now) is None
+    assert pub.manifest.last_reconcile_at() == 0
+
+    pub.client.list_fails = False
+    assert pub.reconcile(now=now + 60) is not None
+
+
+def test_a_failed_listing_does_not_block_the_publish_run(tmp_path, alerts):
+    pub = make_publisher(tmp_path, alerts)
+    pub.client.list_fails = True
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    assert publish_all(pub, [_entry()]) != {}
+
+
+def test_a_tripped_breaker_skips_the_listing_too(tmp_path, alerts):
+    pub = make_publisher(tmp_path, alerts)
+    pub.breaker.trip("manual test")
+
+    assert pub.reconcile(force=True) is None
+    assert pub.client.list_pages == []
+
+
+def test_reconcile_runs_before_the_cap_sees_the_sizes(tmp_path, alerts):
+    """An orphan the manifest cannot see would otherwise never be reclaimed,
+    and the cap would be computed against a total that is simply wrong."""
+    pub = make_publisher(tmp_path, alerts, cap_bytes=4096)
+    put_in_bucket_only(pub, pub.audio_key(SLUG, "orphan.mp3"), size=4000)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    published = publish_all(pub, [_entry()])
+
+    assert published != {}
+    assert _items(pub)[0][2].startswith("https://pods.example.com/audio/")
