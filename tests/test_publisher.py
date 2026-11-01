@@ -142,9 +142,12 @@ def test_processed_episode_published_with_r2_url(pub, tmp_path):
 
     publish(pub, [_entry()])
 
-    xml = feed_xml(pub)
-    assert f"https://pods.example.com/audio/{SECRET}/{SLUG}/{EP1}" in xml
-    assert "cdn.example.com" not in xml
+    # Check the enclosure, not the whole document: the original CDN URL
+    # legitimately remains as the entry's guid so the episode keeps its
+    # identity when its audio moves to R2.
+    _title, _guid, url = _items(pub)[0]
+    assert url == f"https://pods.example.com/audio/{SECRET}/{SLUG}/{EP1}"
+    assert "cdn.example.com" not in url
     assert pub.audio_key(SLUG, EP1) in pub.client.keys
 
 
@@ -426,3 +429,93 @@ def test_class_a_counter_resets_each_month(tmp_path):
 
     m.bump_class_a(2, now=november)
     assert m.class_a_this_month(november) == 2
+
+
+# --- pre-go-live backlog --------------------------------------------------
+
+def _items(pub):
+    """(title, guid, enclosure url) for each item in the published feed."""
+    import xml.etree.ElementTree as ET
+    root = ET.fromstring(feed_xml(pub))
+    out = []
+    for item in root.iter("item"):
+        enc = item.find("enclosure")
+        out.append((item.findtext("title"), item.findtext("guid"),
+                    enc.get("url") if enc is not None else None))
+    return out
+
+
+def test_old_processed_audio_is_treated_as_backlog(pub, tmp_path):
+    """July's processed episodes must not be uploaded on the first run.
+
+    This box holds ~90 days of them. Uploading would contradict "start
+    fresh", and they would all vanish again 14 days later.
+    """
+    write_audio(tmp_path, "processed", EP1, size=2048, age_s=92 * 86400)
+
+    publish(pub, [_entry()])
+
+    title, _guid, url = _items(pub)[0]
+    assert url == "https://cdn.example.com/ep1.mp3"
+    assert pub.audio_key(SLUG, EP1) not in pub.client.keys
+    assert pub.manifest.total_bytes("audio") == 0
+
+
+def test_old_raw_audio_is_treated_as_backlog(pub, tmp_path):
+    """Downloaded long before go-live: still listed, never withheld."""
+    write_audio(tmp_path, "raw", EP1, age_s=92 * 86400)
+
+    publish(pub, [_entry()])
+
+    title, _guid, url = _items(pub)[0]
+    assert title == "Ep 1"
+    assert url == "https://cdn.example.com/ep1.mp3"
+    assert pub._notify.sent == []
+
+
+def test_recent_processed_audio_is_still_uploaded(pub, tmp_path):
+    """Guard against the backlog rule swallowing genuinely new episodes."""
+    write_audio(tmp_path, "processed", EP1, size=2048, age_s=2 * 86400)
+
+    publish(pub, [_entry()])
+
+    assert pub.audio_key(SLUG, EP1) in pub.client.keys
+
+
+# --- episode identity across a URL change --------------------------------
+
+def test_guid_is_stable_across_the_fallback_to_r2_transition(pub, tmp_path):
+    """The bug the guid exists to prevent.
+
+    An episode first published with its original audio (the 6h fallback) and
+    later republished from R2 changes enclosure URL. Without a guid a podcast
+    app keys on that URL and sees a brand-new episode: a duplicate in the
+    queue and a second download.
+    """
+    write_audio(tmp_path, "raw", EP1, age_s=7 * 3600)
+    publish(pub, [_entry()])
+    before = _items(pub)[0]
+    assert before[2] == "https://cdn.example.com/ep1.mp3"
+
+    write_audio(tmp_path, "processed", EP1, size=2048)
+    publish(pub, [_entry()])
+    after = _items(pub)[0]
+
+    assert after[2].startswith("https://pods.example.com/audio/")   # URL moved
+    assert after[1] == before[1]                                    # identity did not
+    assert after[1] is not None
+
+
+def test_guid_survives_age_out(pub, tmp_path):
+    """Identity is also stable for an episode that falls back to backlog."""
+    write_audio(tmp_path, "processed", EP1, size=2048)
+    publish(pub, [_entry()])
+    fresh_guid = _items(pub)[0][1]
+
+    os.utime(Path(tmp_path) / "podcasts" / "processed" / SLUG / EP1,
+             (time.time() - 92 * 86400,) * 2)
+    pub.manifest.record_delete([pub.audio_key(SLUG, EP1)])
+    pub.manifest._doc["objects"].pop(pub.audio_key(SLUG, EP1))   # no tombstone
+    publish(pub, [_entry()])
+
+    assert _items(pub)[0][1] == fresh_guid

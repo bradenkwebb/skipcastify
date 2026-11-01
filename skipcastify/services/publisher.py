@@ -107,6 +107,14 @@ class R2FeedManager(FeedManager):
 
         processed = os.path.join(pub.data_dir, 'podcasts', 'processed', slug, ep_filename)
         if os.path.exists(processed):
+            # Audio processed longer ago than the retention window predates
+            # go-live. This box holds ~90 days of July/August episodes, and
+            # uploading them on the first run would both contradict "start
+            # fresh" and make them all disappear again 14 days later. Treat
+            # them as backlog: original enclosure, never uploaded.
+            if time.time() - os.path.getmtime(processed) >= pub.retention_s:
+                url, length = self._original_audio_url(entry)
+                return url, length, None
             url = pub.ensure_audio(key, processed, slug, ep_filename)
             if url:
                 return url, str(os.path.getsize(processed)), processed
@@ -124,7 +132,12 @@ class R2FeedManager(FeedManager):
         # time, which is exactly the clock the fallback window runs on.
         age_s = time.time() - os.path.getmtime(raw)
         if age_s >= pub.retention_s:
-            return None                      # too old to be worth publishing
+            # Same reasoning as the processed case above: downloaded long
+            # before go-live, so it is backlog rather than a stuck episode.
+            # It has already alerted once on its way through the fallback
+            # window, so keep listing it instead of making it vanish.
+            url, length = self._original_audio_url(entry)
+            return url, length, None
         if age_s < pub.fallback_after_s:
             return None                      # still in the processing window
         pub.note_fallback(slug, ep_filename, age_s)
