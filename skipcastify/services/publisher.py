@@ -1,0 +1,356 @@
+"""Publish ad-free feeds to Cloudflare R2 so podcast apps can read them.
+
+Overcast fetches feeds from its own crawlers, which cannot reach bw-server's
+tailnet, and we do not want any inbound exposure of the box. So the pipeline
+pushes static objects out to R2 and the published feed points there; bw-server
+stays tailnet-only.
+
+Object layout (the ``audio/`` prefix must match the bucket's lifecycle rule):
+
+    audio/<SECRET>/<feed-slug>/<file>.mp3
+    feeds/<SECRET>/<feed-slug>.xml
+    art/<SECRET>/<file>
+
+``SECRET`` is ``PUBLIC_PATH_SECRET``. It is obscurity, not access control: the
+bucket is world-readable, so anyone holding a URL can fetch the object. Keys
+therefore never reach a log file without being redacted first.
+
+How an episode is decided into or out of a published feed:
+
+===========================================  ==================================
+state                                        enclosure
+===========================================  ==================================
+processed audio uploaded                     R2 URL (the normal case)
+downloaded, unprocessed, younger than 6h     withheld — still being worked on
+downloaded, unprocessed, 6h to 14d           original URL, alerted once
+published once, then aged out of R2          withheld — stops being listed
+never downloaded (pre-go-live backlog)       original URL
+===========================================  ==================================
+
+A published feed is therefore a rolling retention-window of ad-free episodes,
+plus whatever predates go-live still pointing at its original audio.
+"""
+
+import hashlib
+import logging
+import os
+import re
+import time
+from pathlib import Path
+
+from skipcastify.services.generate_feeds import FeedManager
+from skipcastify.services.publish_manifest import PublishManifest
+from skipcastify.services.r2_client import (CACHE_FEED, CACHE_IMMUTABLE,
+                                            R2Client, content_type_for,
+                                            redact_key)
+from skipcastify.utils.notify import notify as ntfy_notify
+
+logger = logging.getLogger(__name__)
+
+GB = 1024 ** 3
+DEFAULT_RETENTION_DAYS = 14
+DEFAULT_CAP_GB = 7
+DEFAULT_FALLBACK_HOURS = 6
+# Cloudflare's free tier. Class B (reads) is 10M and is spent by listeners
+# rather than by us, so only Class A is worth tracking locally.
+CLASS_A_MONTHLY_LIMIT = 1_000_000
+ALERT_AT = 0.8
+# Keep tombstones well past retention so the re-upload guard can never race.
+TOMBSTONE_TTL_S = 60 * 86400
+
+_LAST_BUILD_DATE = re.compile(rb"<lastBuildDate>.*?</lastBuildDate>", re.S)
+
+
+def feed_fingerprint(xml: bytes) -> str:
+    """Hash of a feed's *meaningful* content.
+
+    feedgen stamps <lastBuildDate> with the generation time, so hashing raw
+    bytes would differ on every run and re-upload an identical feed every 15
+    minutes — precisely the Class A spend the changed-only rule exists to
+    avoid. Normalising that one element out makes the hash stable.
+    """
+    return hashlib.sha256(_LAST_BUILD_DATE.sub(b"", xml)).hexdigest()
+
+
+class R2FeedManager(FeedManager):
+    """A feed whose enclosures point at R2.
+
+    This class owns only the question of *what belongs in the feed*. Uploading
+    is delegated back to the publisher, which owns the storage cap, the
+    manifest and alerting.
+    """
+
+    def __init__(self, publisher, feeds_subdir: str = "feeds_r2") -> None:
+        super().__init__(
+            server_base_url=publisher.public_base_url,
+            data_dir=publisher.data_dir,
+            episode_token="",
+            feeds_subdir=feeds_subdir,
+        )
+        self.pub = publisher
+
+    def _artwork_url(self, filename: str) -> str:
+        # Best effort: artwork is a few hundred KB and a missing image only
+        # costs a blank thumbnail, so an upload failure must not withhold the
+        # whole feed. ensure_art logs the failure.
+        self.pub.ensure_art(filename)
+        return self.pub.public_url(self.pub.art_key(filename))
+
+    def _entry_audio(self, entry, slug: str, ep_filename: str):
+        pub = self.pub
+        key = pub.audio_key(slug, ep_filename)
+
+        if pub.manifest.is_tombstoned(key):
+            # Published once and since aged out of R2. The spec says stop
+            # listing it rather than quietly reverting to the ad-ful original.
+            return None
+
+        processed = os.path.join(pub.data_dir, 'podcasts', 'processed', slug, ep_filename)
+        if os.path.exists(processed):
+            url = pub.ensure_audio(key, processed, slug, ep_filename)
+            if url:
+                return url, str(os.path.getsize(processed)), processed
+            # Upload refused (cap reached, or the PUT failed). Withhold rather
+            # than silently serving the version with ads in it.
+            return None
+
+        raw = os.path.join(pub.data_dir, 'podcasts', 'raw', slug, ep_filename)
+        if not os.path.exists(raw):
+            # Never downloaded: pre-go-live backlog. Keep the original audio.
+            url, length = self._original_audio_url(entry)
+            return url, length, None
+
+        # Downloaded but not processed. The raw file's mtime is the download
+        # time, which is exactly the clock the fallback window runs on.
+        age_s = time.time() - os.path.getmtime(raw)
+        if age_s >= pub.retention_s:
+            return None                      # too old to be worth publishing
+        if age_s < pub.fallback_after_s:
+            return None                      # still in the processing window
+        pub.note_fallback(slug, ep_filename, age_s)
+        url, length = self._original_audio_url(entry)
+        return url, length, None
+
+
+class R2Publisher:
+    """Uploads audio, artwork and feeds to R2 under the free-tier guardrails."""
+
+    def __init__(self, client: R2Client, manifest: PublishManifest, secret: str,
+                 public_base_url: str, data_dir: str,
+                 retention_days: int = DEFAULT_RETENTION_DAYS,
+                 cap_bytes: int = DEFAULT_CAP_GB * GB,
+                 fallback_after_s: float = DEFAULT_FALLBACK_HOURS * 3600,
+                 notifier=ntfy_notify) -> None:
+        if not secret:
+            raise ValueError("PUBLIC_PATH_SECRET must not be empty")
+        self.client = client
+        self.manifest = manifest
+        self.secret = secret
+        self.public_base_url = public_base_url.rstrip('/')
+        self.data_dir = data_dir
+        self.retention_days = retention_days
+        self.retention_s = retention_days * 86400
+        self.cap_bytes = cap_bytes
+        self.fallback_after_s = fallback_after_s
+        self._notify = notifier
+
+    # --- construction -------------------------------------------------------
+
+    @classmethod
+    def from_env(cls, data_dir: str, manifest: PublishManifest | None = None,
+                 notifier=ntfy_notify) -> "R2Publisher":
+        secret = os.environ.get("PUBLIC_PATH_SECRET", "").strip()
+        if not secret:
+            raise ValueError(
+                "PUBLIC_PATH_SECRET is not set. Generate one with:\n"
+                "  python -c 'import secrets; print(secrets.token_urlsafe(32))'\n"
+                "and add it to .env. Do not reuse EPISODE_TOKEN."
+            )
+        base = os.environ.get("PUBLIC_BASE_URL", "").strip()
+        if not base:
+            raise ValueError("PUBLIC_BASE_URL is not set")
+        manifest = manifest or PublishManifest(data_dir)
+        client = R2Client(
+            endpoint=os.environ.get("R2_ENDPOINT", ""),
+            bucket=os.environ.get("R2_BUCKET", ""),
+            access_key_id=os.environ.get("R2_ACCESS_KEY_ID", ""),
+            secret_access_key=os.environ.get("R2_SECRET_ACCESS_KEY", ""),
+            secret_segment=secret,
+            on_class_a=manifest.bump_class_a,
+        )
+        return cls(
+            client=client, manifest=manifest, secret=secret,
+            public_base_url=base, data_dir=data_dir,
+            retention_days=int(os.environ.get("R2_RETENTION_DAYS", DEFAULT_RETENTION_DAYS)),
+            cap_bytes=int(float(os.environ.get("R2_CAP_GB", DEFAULT_CAP_GB)) * GB),
+            fallback_after_s=float(os.environ.get("R2_FALLBACK_HOURS", DEFAULT_FALLBACK_HOURS)) * 3600,
+            notifier=notifier,
+        )
+
+    # --- keys and URLs ------------------------------------------------------
+
+    def audio_key(self, slug: str, filename: str) -> str:
+        return f"audio/{self.secret}/{slug}/{filename}"
+
+    def feed_key(self, slug: str) -> str:
+        return f"feeds/{self.secret}/{slug}.xml"
+
+    def art_key(self, filename: str) -> str:
+        return f"art/{self.secret}/{filename}"
+
+    def public_url(self, key: str) -> str:
+        return f"{self.public_base_url}/{key}"
+
+    def _safe(self, key: str) -> str:
+        return redact_key(key, self.secret)
+
+    # --- uploads ------------------------------------------------------------
+
+    def ensure_audio(self, key: str, path: str, slug: str,
+                     filename: str) -> str | None:
+        """Upload an episode if it isn't already in R2. Returns its URL."""
+        if self.manifest.has(key):
+            return self.public_url(key)
+
+        size = os.path.getsize(path)
+        if not self._make_room(size):
+            self._alert_once(
+                f"cap:{key}", "R2 storage cap reached",
+                f"Skipped {filename} ({size / 1024 ** 2:.0f} MB): it would "
+                f"exceed the {self.cap_bytes / GB:.0f} GB cap and there is "
+                f"nothing older left to evict.", priority="high")
+            return None
+
+        try:
+            self.client.put_file(key, path, CACHE_IMMUTABLE)
+        except Exception as e:
+            logger.error("Upload failed for %s: %s", self._safe(key), e)
+            return None
+
+        self.manifest.record_put(key, size, "audio")
+        self.manifest.save()
+        return self.public_url(key)
+
+    def ensure_art(self, filename: str) -> str | None:
+        """Upload feed artwork once. Best effort: failure is cosmetic."""
+        key = self.art_key(filename)
+        if self.manifest.has(key):
+            return self.public_url(key)
+        path = os.path.join(self.data_dir, 'artwork', filename)
+        if not os.path.exists(path):
+            return None
+        try:
+            size = self.client.put_file(key, path, CACHE_IMMUTABLE)
+        except Exception as e:
+            logger.warning("Artwork upload failed for %s: %s", self._safe(key), e)
+            return None
+        self.manifest.record_put(key, size, "art")
+        self.manifest.save()
+        return self.public_url(key)
+
+    def publish_feed(self, subscription_url: str) -> str | None:
+        """Publish one feed. Audio is uploaded first, as a side effect of
+        generating the XML, so the feed can never reference a missing object."""
+        fm = R2FeedManager(self)
+        feed_path = fm.generate_feed(subscription_url)
+        xml = Path(feed_path).read_bytes()
+        slug = Path(feed_path).stem
+        key = self.feed_key(slug)
+
+        fingerprint = feed_fingerprint(xml)
+        if self.manifest.has(key) and self.manifest.sha256(key) == fingerprint:
+            logger.info("Feed %s unchanged; skipping upload", slug)
+            return self.public_url(key)
+
+        try:
+            self.client.put_bytes(key, xml, "application/rss+xml", CACHE_FEED)
+        except Exception as e:
+            logger.error("Feed upload failed for %s: %s", slug, e)
+            return None
+        self.manifest.record_put(key, len(xml), "feed", sha256=fingerprint)
+        self.manifest.save()
+        return self.public_url(key)
+
+    # --- retention and the storage cap -------------------------------------
+
+    def _delete(self, keys: list[str]) -> None:
+        if not keys:
+            return
+        deleted = self.client.delete_keys(keys)
+        self.manifest.record_delete(deleted)
+        self.manifest.save()
+
+    def enforce_retention(self, now: float | None = None) -> list[str]:
+        expired = self.manifest.expired("audio", self.retention_s, now)
+        if expired:
+            logger.info("Retention: evicting %d episode(s) older than %d days",
+                        len(expired), self.retention_days)
+            self._delete(expired)
+        self.manifest.prune_tombstones(TOMBSTONE_TTL_S, now)
+        return expired
+
+    def _make_room(self, size: int) -> bool:
+        """Evict until `size` more bytes fit under the cap. False if it can't."""
+        if self.manifest.total_bytes("audio") + size <= self.cap_bytes:
+            return True
+        self.enforce_retention()
+        for key in self.manifest.oldest_first("audio"):
+            if self.manifest.total_bytes("audio") + size <= self.cap_bytes:
+                break
+            logger.info("Cap: evicting %s to make room", self._safe(key))
+            self._delete([key])
+        return self.manifest.total_bytes("audio") + size <= self.cap_bytes
+
+    # --- alerting -----------------------------------------------------------
+
+    def _alert_once(self, tag: str, title: str, message: str,
+                    priority: str = "default") -> None:
+        if self.manifest.was_notified(tag):
+            return
+        self._notify(title, message, priority)
+        self.manifest.mark_notified(tag)
+        self.manifest.save()
+
+    def note_fallback(self, slug: str, filename: str, age_s: float) -> None:
+        self._alert_once(
+            f"fallback:{slug}/{filename}",
+            "Episode published with ads",
+            f"{filename} has waited {age_s / 3600:.1f}h with no processed "
+            f"version, so the feed now points at the original audio.",
+            priority="high")
+
+    def check_budgets(self, now: float | None = None) -> None:
+        """Warn at 80% of the storage cap or the monthly Class A allowance."""
+        month = time.strftime("%Y-%m", time.gmtime(now or time.time()))
+
+        used = self.manifest.total_bytes("audio")
+        if used >= self.cap_bytes * ALERT_AT:
+            self._alert_once(
+                f"storage80:{month}", "R2 storage at 80%",
+                f"{used / GB:.1f} GB of the {self.cap_bytes / GB:.0f} GB cap in use.",
+                priority="default")
+
+        ops = self.manifest.class_a_this_month(now)
+        if ops >= CLASS_A_MONTHLY_LIMIT * ALERT_AT:
+            self._alert_once(
+                f"classa80:{month}", "R2 Class A ops at 80%",
+                f"{ops:,} of {CLASS_A_MONTHLY_LIMIT:,} free Class A operations "
+                f"used in {month}.", priority="high")
+
+    # --- entry point --------------------------------------------------------
+
+    def publish_all(self, subscription_urls: list[str]) -> dict[str, str]:
+        """Publish every feed. Retention runs first so an episode that has
+        aged out is already tombstoned before the feed is rebuilt."""
+        self.enforce_retention()
+        published: dict[str, str] = {}
+        for url in subscription_urls:
+            try:
+                result = self.publish_feed(url)
+                if result:
+                    published[url] = result
+            except Exception as e:
+                logger.warning("Publishing failed for %s: %s", url, e, exc_info=True)
+        self.check_budgets()
+        self.manifest.save()
+        return published
