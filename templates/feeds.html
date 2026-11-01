@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Skipcastify · Feeds</title>
+{# No external scripts or stylesheets on this page, deliberately: every URL
+   below carries PUBLIC_PATH_SECRET, and a third-party script could read the
+   DOM. The route also sends a Content-Security-Policy that blocks any
+   outbound request, so adding a CDN here would simply stop working. #}
+<style>
+  :root {
+    --bg: #0f1116; --panel: #181b23; --panel2: #1f2430; --line: #2a2f3a;
+    --fg: #e6e9ef; --muted: #8b93a3; --accent: #5b9dff; --ok: #46c98b; --warn: #ffb86b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         -webkit-text-size-adjust: 100%; }
+  header { padding: 18px 16px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 19px; font-weight: 650; }
+  header a { color: var(--accent); text-decoration: none; font-size: 14px; }
+  main { padding: 16px 16px 56px; max-width: 760px; margin: 0 auto; }
+  .note { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--warn);
+          border-radius: 8px; padding: 12px 14px; color: var(--muted); font-size: 13.5px; }
+  .note strong { color: var(--fg); }
+  .feed { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+          padding: 14px; margin-top: 14px; }
+  .feed h2 { margin: 0; font-size: 16px; font-weight: 620; line-height: 1.3; }
+  .meta { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .urlrow { display: flex; gap: 8px; margin-top: 12px; }
+  /* A real input, not a <code> block: it is selectable and long-press
+     copyable on a phone even if the clipboard API is unavailable. */
+  input.url { flex: 1 1 auto; min-width: 0; background: var(--panel2); color: var(--fg);
+              border: 1px solid var(--line); border-radius: 7px; padding: 9px 10px;
+              font: 12.5px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  button, .btn { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+                 border-radius: 7px; padding: 9px 14px; font-size: 13.5px; cursor: pointer;
+                 text-decoration: none; display: inline-block; white-space: nowrap;
+                 /* 44px tall: a thumb target, not a mouse target. */
+                 min-height: 40px; }
+  button.copied { background: rgba(70,201,139,.16); border-color: var(--ok); color: var(--ok); }
+  .actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .actions .btn.primary { border-color: var(--accent); color: var(--accent); }
+  .hint { color: var(--muted); font-size: 12px; }
+  @media (max-width: 520px) {
+    .urlrow { flex-direction: column; }
+    button, .btn { width: 100%; text-align: center; }
+    .actions .hint { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎧 Feeds</h1>
+  <span class="hint">published to R2</span>
+  <a href="/dashboard">← dashboard</a>
+</header>
+<main>
+
+  <div class="note">
+    <strong>Each URL below is a password.</strong> The bucket is world-readable,
+    so anyone holding one can fetch the feed and its audio. Paste them into
+    Overcast and nowhere else — not a chat window, not a bug report.
+  </div>
+
+{% if not publishing_enabled %}
+  <div class="feed">
+    <h2>Publishing is switched off</h2>
+    <p class="meta">
+      <code>PUBLISH_TO_R2</code> is not <code>true</code>, so the pipeline is
+      not uploading anything and there are no feed URLs to subscribe to yet.
+      Feeds are still generated locally and served on the tailnet.
+    </p>
+  </div>
+{% elif not feeds %}
+  <div class="feed">
+    <h2>Nothing published yet</h2>
+    <p class="meta">
+      Publishing is on, but no feed object has reached R2 so far. The next
+      pipeline run uploads one per subscribed feed; this page lists a feed only
+      once its object is actually in the bucket, so a URL shown here always
+      works. If a run has already finished, check
+      <code>r2ctl status</code> — a tripped circuit breaker stops publishing.
+    </p>
+  </div>
+{% else %}
+  {% for feed in feeds %}
+  <div class="feed">
+    <h2>{{ feed.title }}</h2>
+    <div class="meta">
+      {{ feed.slug }}
+      {%- if feed.episodes %} · {{ feed.episodes }} ad-free episode{{ '' if feed.episodes == 1 else 's' }}
+        in R2 · {{ feed.audio_bytes | mb }}{% endif %}
+      {%- if feed.last_audio_upload %} · newest {{ feed.last_audio_upload | ago }}{% endif %}
+      {%- if feed.feed_uploaded %} · feed updated {{ feed.feed_uploaded | ago }}{% endif %}
+    </div>
+    <div class="urlrow">
+      <input class="url" type="text" readonly
+             value="{{ feed.url }}"
+             aria-label="Feed URL for {{ feed.title }}"
+             spellcheck="false" autocapitalize="off" autocorrect="off">
+      <button type="button" class="copy" data-url="{{ feed.url }}">Copy</button>
+    </div>
+    <div class="actions">
+      {# Overcast's documented subscribe scheme (overcast.fm/podcasterinfo).
+         iOS only: on a desktop browser this link does nothing, which is why
+         Copy above is the primary control. rel=noreferrer belt-and-braces. #}
+      <a class="btn primary" rel="noreferrer" href="{{ feed.overcast_url }}">Add to Overcast</a>
+      <span class="hint">opens the Subscribe prompt — iPhone only</span>
+    </div>
+  </div>
+  {% endfor %}
+{% endif %}
+
+</main>
+<script>
+  // Delegated, so it survives any future re-render of the list.
+  document.addEventListener('click', function (ev) {
+    var btn = ev.target.closest('button.copy');
+    if (!btn) return;
+    var url = btn.getAttribute('data-url');
+    var input = btn.parentNode.querySelector('input.url');
+
+    function done() {
+      btn.textContent = 'Copied';
+      btn.classList.add('copied');
+      setTimeout(function () {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 1800);
+    }
+
+    // Available because tailscale serve terminates TLS, so this is a secure
+    // context. Falls back to selecting the field, which leaves the URL ready
+    // for a long-press copy rather than leaving the button looking broken.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, function () { select(); });
+    } else {
+      select();
+    }
+
+    function select() {
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(0, input.value.length);
+      btn.textContent = 'Selected — hold to copy';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 2600);
+    }
+  });
+</script>
+</body>
+</html>
