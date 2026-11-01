@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from skipcastify.services.audio_processor import AudioProcessor
 from skipcastify.services.download_episode import EpisodeDownloader
 from skipcastify.services.generate_feeds import FeedManager
+from skipcastify.services.run_log import RunRecord, append_run
 from skipcastify.services.state_manager import StateManager
 from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.lock import LockHeld, pipeline_lock
@@ -25,8 +26,9 @@ STAGE_STARTUP = "startup"
 
 
 class Pipeline:
-    def __init__(self, config_path: str, data_dir: str, alerter=None) -> None:
+    def __init__(self, config_path: str, data_dir: str, alerter=None, run=None) -> None:
         self.data_dir = data_dir
+        self.run_record = run if run is not None else RunRecord()
         self.alerter = alerter if alerter is not None else Alerter(data_dir)
         # The stage currently executing, and whether run() has already alerted
         # about a failure. main() reads both so one crash is one push.
@@ -131,6 +133,7 @@ class Pipeline:
             logger.error(f"R2 publishing is enabled but not configured: {e}")
             return
         published = publisher.publish_all(self.downloader.subscription_urls)
+        self.run_record.published = len(published)
         logger.info(f"Published {len(published)} feed(s) to R2")
 
     def report_failure(self, exc: BaseException) -> None:
@@ -154,7 +157,7 @@ class Pipeline:
         try:
             self.stage = "download"
             logger.info("Downloading new episodes")
-            self.downloader.download_latest()
+            self.run_record.feeds = self.downloader.download_latest() or []
 
             self.stage = "process"
             if self.processing_enabled:
@@ -172,6 +175,8 @@ class Pipeline:
                         time.sleep(cooldown_s)
                     first = False
                     self.processor.process(episode_fpath, state_manager)
+                    self.run_record.processed.append(
+                        {"feed": slug, "episode": Path(episode_fpath).stem})
             else:
                 logger.info("Audio processing disabled (ENABLE_PROCESSING=false)")
 
@@ -207,6 +212,9 @@ class Pipeline:
 def main():
     alerter = None
     pipeline = None
+    data_dir = None
+    run = RunRecord()
+    outcome = "failed"
     try:
         load_dotenv()
         data_dir = os.getenv("DATA_DIR")
@@ -217,24 +225,38 @@ def main():
 
         try:
             with pipeline_lock(data_dir):
-                pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir, alerter=alerter)
+                pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir, alerter=alerter, run=run)
                 pipeline.run()
+            outcome = "ok"
         except LockHeld:
             # Nothing ran, so this must not clear a failing flag.
             logging.info("Another pipeline instance is already running — exiting.")
+            outcome = "skipped"
+        _record_run(data_dir, run, outcome)
         return 0
     except Exception as e:
+        stage = pipeline.stage if pipeline is not None else STAGE_STARTUP
+        _record_run(data_dir, run, outcome, stage, type(e).__name__)
         logging.error(f"Pipeline execution failed: {e}", exc_info=True)
         # Alert only for failures run() did not already report -- a bad
         # DATA_DIR, a missing SUBSCRIPTIONS, a construction error. Without the
         # flag one crash would push twice under two different fingerprints.
         if alerter is not None and not (pipeline is not None and pipeline.alerted):
-            stage = pipeline.stage if pipeline is not None else STAGE_STARTUP
             alerter.mark_failing(f"{type(e).__name__}:{stage}", str(e))
             alerter.send(f"{type(e).__name__}:{stage}",
                          f"Pipeline failed: {stage}",
                          f"{type(e).__name__}: {e}", priority="high")
         return 1
+
+
+def _record_run(data_dir, run, outcome, stage=None, error=None) -> None:
+    # Exception type only: messages can carry feed URLs.
+    if not data_dir:
+        return
+    try:
+        append_run(data_dir, run.to_dict(outcome, stage, error))
+    except Exception as e:
+        logging.warning(f"Could not record pipeline run: {e}")
 
 
 if __name__ == "__main__":

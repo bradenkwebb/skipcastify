@@ -85,8 +85,10 @@ class EpisodeDownloader:
             logger.error(f"Failed to download episode '{entry.title}': {e}")
             return None
 
-    def download_latest(self):
+    def download_latest(self) -> list[dict]:
+        """Returns one {feed, status, ...} per subscription for the run log."""
         seen = self._load_seen()
+        results = []
 
         for subscription_url in self.subscription_urls:
             try:
@@ -94,8 +96,10 @@ class EpisodeDownloader:
                 podcast_title = feed.feed.title
             except Exception as e:
                 logger.warning(f"Skipping feed {subscription_url}: {e}")
+                results.append({"feed": None, "status": "error", "error": type(e).__name__})
                 continue
             logger.info(f"Checking podcast: {podcast_title}")
+            slug = slugify(podcast_title)
 
             feed_seen = seen.get(subscription_url)
             if feed_seen is None:
@@ -108,6 +112,7 @@ class EpisodeDownloader:
                         logger.warning(f"Could not derive ID for entry in '{podcast_title}': {e}")
                 seen[subscription_url] = feed_seen
                 logger.info(f"New feed '{podcast_title}': marked {len(feed_seen)} existing episodes as seen, will download future episodes only")
+                results.append({"feed": slug, "status": "baselined"})
                 continue
 
             unseen = [
@@ -133,16 +138,27 @@ class EpisodeDownloader:
                     except Exception as e:
                         logger.warning(f"Could not derive ID for entry in '{podcast_title}': {e}")
                 seen[subscription_url] = feed_seen
+                results.append({"feed": slug, "status": "rebaselined"})
                 continue
 
             new_entries = unseen[:self.episode_limit]
 
+            downloaded = failed = 0
             for entry in new_entries:
                 result = self.download_episode(entry, podcast_title)
                 if result:
                     feed_seen.add(self._entry_id(entry))
+                    downloaded += 1
+                else:
+                    failed += 1
 
             seen[subscription_url] = feed_seen
+            if not new_entries:
+                results.append({"feed": slug, "status": "up_to_date"})
+            else:
+                results.append({"feed": slug, "status": "downloaded",
+                                "downloaded": downloaded, "failed": failed})
 
         self._save_seen(seen)
+        return results
 

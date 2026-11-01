@@ -19,6 +19,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from skipcastify.services.run_log import recent_runs
+
 AD_LABELS = {"ADVERTISEMENT", "SPONSOR"}
 
 
@@ -189,9 +191,48 @@ def overview(events: list[dict]) -> dict:
     }
 
 
+def _aware(ts: str) -> str:
+    # events.jsonl timestamps are naive server-local time.
+    try:
+        return datetime.fromisoformat(ts).astimezone().isoformat(timespec="seconds")
+    except ValueError:
+        return ts
+
+
+def recent_episodes(events: list[dict], n: int = 25) -> list[dict]:
+    """The last n processed episodes, newest first."""
+    rows = []
+    for ev in sorted(_completes(events), key=lambda e: e.get("ts", ""), reverse=True)[:n]:
+        rows.append({
+            "ts": _aware(ev.get("ts", "")),
+            "feed_slug": ev.get("feed_slug", "unknown"),
+            "episode": ev.get("episode_name", ""),
+            "duration_min": round((ev.get("original_duration_s") or 0) / 60, 1),
+            "ad_minutes": round(_ad_ms(ev) / 60000.0, 1),
+            "ad_pct": round(_ad_pct(ev), 1),
+        })
+    return rows
+
+
+def feed_status(runs: list[dict]) -> list[dict]:
+    """Latest check per feed, plus the last download seen in `runs` (newest first)."""
+    status: dict[str, dict] = {}
+    for run in runs:
+        for f in run.get("feeds", []):
+            slug = f.get("feed")
+            if not slug:
+                continue
+            row = status.setdefault(slug, {"feed_slug": slug, "status": f.get("status"),
+                                           "checked": run.get("started"), "last_download": None})
+            if row["last_download"] is None and f.get("downloaded"):
+                row["last_download"] = run.get("started")
+    return sorted(status.values(), key=lambda r: r["feed_slug"])
+
+
 def build_payload(data_dir: str) -> dict:
     """One JSON blob with everything the dashboard needs."""
     events = load_events(data_dir)
+    runs = recent_runs(data_dir, 500)
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "overview": overview(events),
@@ -199,4 +240,7 @@ def build_payload(data_dir: str) -> dict:
         "daily": daily_series(events),
         "signatures": ad_signatures(events),
         "drop_candidates": drop_candidates(events),
+        "recent_episodes": recent_episodes(events),
+        "runs": runs[:40],
+        "feed_status": feed_status(runs),
     }

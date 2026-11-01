@@ -40,6 +40,13 @@
   .track .sp { position: absolute; top: 0; bottom: 0; background: var(--ad); opacity: .85; }
   .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
   .err { color: var(--ad); }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  .tbl td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .scroll { overflow-x: auto; }
+  .ok { color: var(--ok); }
+  .warn { color: #f0b429; }
 </style>
 </head>
 <body>
@@ -51,6 +58,23 @@
 </header>
 <main>
   <div class="cards" id="cards"></div>
+
+  <h2>Pipeline</h2>
+  <div class="panel"><div id="lastRun" style="margin-bottom:10px"></div><div class="scroll" id="feedStatus"></div></div>
+
+  <div class="grid2">
+    <div>
+      <h2>Recent runs</h2>
+      <div class="panel">
+        <div class="toolbar"><label class="muted"><input type="checkbox" id="hideQuiet" checked onchange="renderRuns()"> hide runs with nothing new</label></div>
+        <div class="scroll" id="runs"></div>
+      </div>
+    </div>
+    <div>
+      <h2>Recent episodes</h2>
+      <div class="panel scroll" id="episodes"></div>
+    </div>
+  </div>
 
   <div class="grid2">
     <div>
@@ -111,6 +135,9 @@ function render() {
     card('LLM cost', '$' + o.total_llm_cost_usd.toFixed(2)),
   ].join('');
 
+  renderPipeline();
+  renderRuns();
+  renderEpisodes();
   renderDaily();
   setLeaderboard('minutes');
   renderDrops();
@@ -194,6 +221,81 @@ function renderSignature() {
             style="left:${s.start*100}%;width:${Math.max((s.end-s.start)*100,0.4)}%"></div>`).join('');
     return `<div class="track" title="${ep.episode} (${ep.duration_min} min)">${spans}</div>`;
   }).join('');
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function ago(iso) {
+  if (!iso) return '—';
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 3600) return Math.max(0, Math.round(s / 60)) + 'm ago';
+  if (s < 86400) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+}
+
+const STATUS = {
+  up_to_date: ['nothing new', 'muted'], downloaded: ['downloaded', 'ok'],
+  baselined: ['baselined (new feed)', 'warn'], rebaselined: ['re-baselined (GUID change)', 'warn'],
+  error: ['error', 'err'],
+};
+
+function feedText(f) {
+  const [label] = STATUS[f.status] || [f.status];
+  if (f.status !== 'downloaded') return label;
+  return `downloaded ${f.downloaded}` + (f.failed ? `, ${f.failed} failed` : '');
+}
+
+function isQuiet(r) {
+  return r.outcome === 'ok' && !r.processed.length &&
+    r.feeds.every(f => f.status === 'up_to_date');
+}
+
+function renderPipeline() {
+  const r = DATA.runs[0];
+  const last = document.getElementById('lastRun');
+  if (!r) { last.innerHTML = '<span class="muted">No runs recorded yet.</span>'; }
+  else {
+    const cls = r.outcome === 'ok' ? 'ok' : r.outcome === 'skipped' ? 'warn' : 'err';
+    last.innerHTML = `Last run <b>${ago(r.started)}</b> · <span class="${cls}">${esc(r.outcome)}</span>` +
+      (r.stage ? ` in ${esc(r.stage)} (${esc(r.error)})` : '') + ` · ${r.duration_s}s`;
+  }
+  const rows = DATA.feed_status.map(f => {
+    const [, cls] = STATUS[f.status] || ['', ''];
+    return `<tr><td>${esc(f.feed_slug)}</td><td class="${cls}">${esc(feedText(f))}</td>` +
+      `<td>${ago(f.checked)}</td><td>${ago(f.last_download)}</td></tr>`;
+  }).join('');
+  document.getElementById('feedStatus').innerHTML = rows ?
+    `<table class="tbl"><tr><th>Feed</th><th>Last check</th><th>Checked</th><th>Last download</th></tr>${rows}</table>` : '';
+}
+
+function renderRuns() {
+  const hide = document.getElementById('hideQuiet').checked;
+  const runs = DATA.runs.filter(r => !(hide && isQuiet(r)));
+  const rows = runs.map(r => {
+    const cls = r.outcome === 'ok' ? 'ok' : r.outcome === 'skipped' ? 'warn' : 'err';
+    const parts = r.feeds.filter(f => f.status !== 'up_to_date')
+      .map(f => `${esc(f.feed || '?')}: ${esc(feedText(f))}`);
+    if (r.processed.length) parts.push(`processed ${r.processed.length}`);
+    if (r.outcome === 'skipped') parts.push('another run was in progress');
+    if (r.stage) parts.push(`failed in ${esc(r.stage)} (${esc(r.error)})`);
+    return `<tr><td title="${esc(r.started)}">${ago(r.started)}</td><td class="${cls}">${esc(r.outcome)}</td>` +
+      `<td>${r.duration_s}s</td><td>${parts.join('<br>') || '<span class="muted">nothing new</span>'}</td></tr>`;
+  }).join('');
+  document.getElementById('runs').innerHTML = rows ?
+    `<table class="tbl"><tr><th>When</th><th>Outcome</th><th>Took</th><th>What happened</th></tr>${rows}</table>` :
+    `<span class="muted">${DATA.runs.length} recent run(s), none with anything new.</span>`;
+}
+
+function renderEpisodes() {
+  const rows = DATA.recent_episodes.map(e =>
+    `<tr><td title="${esc(e.ts)}">${ago(e.ts)}</td><td>${esc(shorten(e.feed_slug))}</td>` +
+    `<td title="${esc(e.episode)}">${esc(e.episode.replace(e.feed_slug + '-', '').slice(0, 48))}</td>` +
+    `<td>${e.duration_min}m</td><td>${e.ad_minutes}m (${e.ad_pct}%)</td></tr>`).join('');
+  document.getElementById('episodes').innerHTML = rows ?
+    `<table class="tbl"><tr><th>When</th><th>Feed</th><th>Episode</th><th>Length</th><th>Ads cut</th></tr>${rows}</table>` :
+    '<span class="muted">No episodes processed yet.</span>';
 }
 
 function shorten(slug) { return slug.length > 26 ? slug.slice(0, 24) + '…' : slug; }
