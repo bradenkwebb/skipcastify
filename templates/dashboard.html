@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skipcastify · Processing Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1116; --panel: #181b23; --panel2: #1f2430; --line: #2a2f3a;
+    --fg: #e6e9ef; --muted: #8b93a3; --accent: #5b9dff; --ad: #ff6b6b; --ok: #46c98b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 650; }
+  header .gen { color: var(--muted); font-size: 13px; }
+  main { padding: 20px 24px 60px; max-width: 1200px; margin: 0 auto; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .04em; margin: 32px 0 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card .v { font-size: 26px; font-weight: 650; }
+  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  button, select { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .badge { display: inline-block; background: rgba(70,201,139,.14); color: var(--ok);
+    border: 1px solid rgba(70,201,139,.4); border-radius: 999px; padding: 4px 12px; margin: 0 8px 8px 0; font-size: 13px; }
+  .muted { color: var(--muted); }
+  /* ad-signature strips */
+  #sigList { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .track { position: relative; height: 20px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+  .track .sp { position: absolute; top: 0; bottom: 0; background: var(--ad); opacity: .85; }
+  .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .err { color: var(--ad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎧 Skipcastify</h1>
+  <span class="muted">processing dashboard</span>
+  <span class="gen" id="gen"></span>
+</header>
+<main>
+  <div class="cards" id="cards"></div>
+
+  <div class="grid2">
+    <div>
+      <h2>Daily throughput</h2>
+      <div class="panel"><canvas id="dailyChart" height="220"></canvas></div>
+    </div>
+    <div>
+      <h2>Ad-heaviness leaderboard</h2>
+      <div class="panel">
+        <div class="toolbar">
+          <button id="btnMinutes" class="active" onclick="setLeaderboard('minutes')">Total ad minutes</button>
+          <button id="btnPct" onclick="setLeaderboard('pct')">Avg ad %</button>
+        </div>
+        <canvas id="feedChart" height="240"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <h2>Drop candidates <span class="muted" style="text-transform:none;letter-spacing:0">— entirely ad-free recent runs</span></h2>
+  <div class="panel" id="drops"></div>
+
+  <h2>Ad signatures <span class="muted" style="text-transform:none;letter-spacing:0">— where ads land within an episode (0 = start, 1 = end)</span></h2>
+  <div class="panel">
+    <div class="toolbar">
+      <label class="muted" for="sigFeed">Feed:</label>
+      <select id="sigFeed" onchange="renderSignature()"></select>
+    </div>
+    <div id="sigList"></div>
+    <div class="axis"><span>start</span><span>25%</span><span>50%</span><span>75%</span><span>end</span></div>
+  </div>
+</main>
+
+<script>
+let DATA = null;
+let feedChart = null;
+
+async function load() {
+  try {
+    const r = await fetch('/api/stats.json', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    DATA = await r.json();
+    render();
+  } catch (e) {
+    document.getElementById('cards').innerHTML =
+      '<div class="card err">Failed to load stats: ' + e.message + '</div>';
+  }
+}
+
+function card(k, v) { return `<div class="card"><div class="v">${v}</div><div class="k">${k}</div></div>`; }
+
+function render() {
+  const o = DATA.overview;
+  document.getElementById('gen').textContent = 'updated ' + DATA.generated_at;
+  document.getElementById('cards').innerHTML = [
+    card('episodes', o.episodes_processed),
+    card('feeds', o.feeds),
+    card('ad minutes removed', o.total_ad_minutes),
+    card('LLM cost', '$' + o.total_llm_cost_usd.toFixed(2)),
+  ].join('');
+
+  renderDaily();
+  setLeaderboard('minutes');
+  renderDrops();
+  renderSignatureSelector();
+}
+
+function renderDaily() {
+  const d = DATA.daily;
+  new Chart(document.getElementById('dailyChart'), {
+    data: {
+      labels: d.map(x => x.date),
+      datasets: [
+        { type: 'bar', label: 'episodes', data: d.map(x => x.episodes),
+          backgroundColor: '#5b9dff', yAxisID: 'y', order: 2 },
+        { type: 'line', label: 'ad minutes', data: d.map(x => x.ad_minutes),
+          borderColor: '#ff6b6b', backgroundColor: '#ff6b6b', yAxisID: 'y1', tension: .3, order: 1 },
+      ],
+    },
+    options: {
+      plugins: { legend: { labels: { color: '#8b93a3' } } },
+      scales: {
+        x: { ticks: { color: '#8b93a3' }, grid: { color: '#2a2f3a' } },
+        y: { position: 'left', beginAtZero: true, ticks: { color: '#8b93a3' }, grid: { color: '#2a2f3a' } },
+        y1: { position: 'right', beginAtZero: true, ticks: { color: '#8b93a3' }, grid: { drawOnChartArea: false } },
+      },
+    },
+  });
+}
+
+function setLeaderboard(mode) {
+  document.getElementById('btnMinutes').classList.toggle('active', mode === 'minutes');
+  document.getElementById('btnPct').classList.toggle('active', mode === 'pct');
+  const key = mode === 'minutes' ? 'total_ad_minutes' : 'avg_ad_pct';
+  const rows = [...DATA.feeds].sort((a, b) => b[key] - a[key]).slice(0, 12);
+  const label = mode === 'minutes' ? 'total ad minutes' : 'avg ad %';
+  if (feedChart) feedChart.destroy();
+  feedChart = new Chart(document.getElementById('feedChart'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => shorten(r.feed_slug)),
+      datasets: [{ label, data: rows.map(r => r[key]), backgroundColor: '#ff6b6b' }],
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, ticks: { color: '#8b93a3' }, grid: { color: '#2a2f3a' } },
+        y: { ticks: { color: '#e6e9ef', font: { size: 11 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+function renderDrops() {
+  const el = document.getElementById('drops');
+  if (!DATA.drop_candidates.length) {
+    el.innerHTML = '<span class="muted">None — every feed still shows ads.</span>';
+    return;
+  }
+  el.innerHTML = DATA.drop_candidates.map(d =>
+    `<span class="badge">${d.feed_slug} · ${d.episodes} ep, all ad-free</span>`).join('');
+}
+
+function renderSignatureSelector() {
+  const sel = document.getElementById('sigFeed');
+  const withAds = DATA.signatures
+    .filter(f => f.episodes.some(e => e.spans.length))
+    .sort((a, b) => a.feed_slug.localeCompare(b.feed_slug));
+  sel.innerHTML = withAds.map(f => `<option value="${f.feed_slug}">${f.feed_slug}</option>`).join('');
+  renderSignature();
+}
+
+function renderSignature() {
+  const slug = document.getElementById('sigFeed').value;
+  const feed = DATA.signatures.find(f => f.feed_slug === slug);
+  const list = document.getElementById('sigList');
+  if (!feed) { list.innerHTML = ''; return; }
+  list.innerHTML = feed.episodes.map(ep => {
+    const spans = ep.spans.map(s =>
+      `<div class="sp" title="${(s.start*100).toFixed(0)}%–${(s.end*100).toFixed(0)}%"
+            style="left:${s.start*100}%;width:${Math.max((s.end-s.start)*100,0.4)}%"></div>`).join('');
+    return `<div class="track" title="${ep.episode} (${ep.duration_min} min)">${spans}</div>`;
+  }).join('');
+}
+
+function shorten(slug) { return slug.length > 26 ? slug.slice(0, 24) + '…' : slug; }
+
+load();
+</script>
+</body>
+</html>
