@@ -216,6 +216,49 @@ A delete R2 *refuses* leaves the key live in the manifest rather than
 tombstoned. It is still costing storage, so the next run should try again — and
 the reconciliation pass below is what catches one that never succeeds.
 
+## Telling Overcast about a new episode
+
+Overcast crawls server-side "at varying intervals from a few minutes to 24
+hours, depending on their popularity" — and a feed with one listener is as
+unpopular as a feed gets. Without a nudge, an episode can be ad-free and
+sitting in R2 for most of a day before it reaches the phone, which undercuts
+the point of the pipeline.
+
+So after a publish run, `notify_overcast()` sends `GET
+https://overcast.fm/ping?urlprefix=<encoded feed URL>` for each feed **whose
+object was actually uploaded** — never for a feed skipped as unchanged, which
+has nothing new for a crawler to find. `OVERCAST_PING=false` turns it off.
+
+One request per changed feed, not one covering the shared secret prefix.
+`urlprefix` does match by prefix, so a single `…/feeds/<SECRET>/` ping would
+work — but the same page asks callers to "be as specific as possible to avoid
+crawling more feeds than necessary", and a secret-level prefix would re-crawl
+every pilot feed each time one of them gained an episode. At pilot volume it is
+one or two requests a run either way.
+
+| property | why |
+|---|---|
+| no retries | the API is "heavily rate-limited by design" and over-limit pings are "ignored"; retrying makes it worse |
+| 10s timeout | a slow third party must not hold up a pipeline run |
+| failure is a log line | a missed ping costs a slower crawl, not a missed episode |
+| alert after 3 consecutive failing runs | one failure is noise; a streak means episodes are taking hours |
+| skipped when publishing halted | mid-run the bucket may not match what the feed should say; don't hurry a crawler to read it |
+| no URL in any log or alert | a feed URL embeds `PUBLIC_PATH_SECRET`, and the bucket is world-readable, so the URL *is* the audio |
+
+That last row is why `overcast_ping` logs an exception's class rather than the
+exception: `requests` puts the full request URL into its error messages.
+
+**Known limitation.** Overcast's page asks that the ping be sent *after* any
+caches are updated. Feeds are uploaded with `max-age=300`, so for up to five
+minutes after a PUT a Cloudflare edge that already holds the feed can serve the
+previous version — and a ping in that window may make Overcast crawl a feed
+that does not yet list the new episode, wasting the ping. It is never *worse*
+than not pinging, since the feed is still picked up on the normal schedule, and
+an edge whose copy has expired fetches fresh. Dropping `CACHE_FEED` to ~60s
+would shrink the window at a Class B cost that is noise against a 10M monthly
+allowance; it has not been changed because `max-age=300` is a deliberate,
+approved setting.
+
 ## The Class A circuit breaker
 
 `data/r2_breaker.json` + `skipcastify/services/r2_breaker.py`.

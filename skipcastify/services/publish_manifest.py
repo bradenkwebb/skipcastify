@@ -171,6 +171,22 @@ class PublishManifest:
     def mark_reconciled(self, now: float | None = None) -> None:
         self._doc["reconciled_at"] = float(now if now is not None else time.time())
 
+    # --- Overcast ping outcomes ---------------------------------------------
+
+    def record_ping(self, ok: bool) -> int:
+        """Track consecutive runs whose Overcast pings failed. Returns the run.
+
+        A single failure is not worth reporting — the API is heavily
+        rate-limited and an ignored ping only costs a slower crawl — but a
+        streak means the pings have stopped working and new episodes are
+        taking hours to appear.
+        """
+        self._doc["ping_failures"] = 0 if ok else self.ping_failures() + 1
+        return self._doc["ping_failures"]
+
+    def ping_failures(self) -> int:
+        return int(self._doc.get("ping_failures") or 0)
+
     # --- operation accounting ----------------------------------------------
 
     # The month is the billing period; the day is what the circuit breaker

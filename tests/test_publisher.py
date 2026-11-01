@@ -116,6 +116,32 @@ class FakeR2:
 
 # --- fixtures and helpers -------------------------------------------------
 
+def _noop_ping(url):
+    """The default for publishers in tests: records nothing, touches nothing.
+
+    It has to be the default rather than something a test opts into. The real
+    pinger swallows every exception so a run can never be broken by it, which
+    means a forgotten fake would not fail a test — it would quietly contact
+    overcast.fm with a URL containing our path secret. (tests/conftest.py has
+    a guard for that too, and it caught exactly this.)
+    """
+    return True
+
+
+@pytest.fixture
+def pings():
+    """A recording pinger. Set .ok = False to make every ping fail."""
+    sent = []
+
+    def pinger(url):
+        sent.append(url)
+        return pinger.ok
+
+    pinger.sent = sent
+    pinger.ok = True
+    return pinger
+
+
 @pytest.fixture
 def alerts():
     sent = []
@@ -128,13 +154,14 @@ def alerts():
     return notifier
 
 
-def make_publisher(tmp_path, alerts, client=None, **kwargs):
+def make_publisher(tmp_path, alerts, client=None, pinger=None, **kwargs):
     manifest = PublishManifest(str(tmp_path))
     client = client or FakeR2(on_class_a=manifest.bump_class_a)
     pub = R2Publisher(
         client=client, manifest=manifest, secret=SECRET,
         public_base_url="https://pods.example.com",
-        data_dir=str(tmp_path), notifier=alerts, **kwargs,
+        data_dir=str(tmp_path), notifier=alerts,
+        pinger=pinger if pinger is not None else _noop_ping, **kwargs,
     )
     return pub
 
@@ -165,14 +192,18 @@ def _entry(title="Ep 1", href="https://cdn.example.com/ep1.mp3"):
     return e
 
 
-def _feed(entries):
+def _feed_named(title, entries):
     f = MagicMock()
-    f.feed.title = "Test Podcast"
+    f.feed.title = title
     f.feed.get.side_effect = lambda k, default=None: {
         "description": "A podcast", "image": {}
     }.get(k, default)
     f.entries = entries
     return f
+
+
+def _feed(entries):
+    return _feed_named("Test Podcast", entries)
 
 
 def publish(pub, entries):
@@ -1203,3 +1234,163 @@ def test_the_feed_uploaded_to_r2_is_marked_private(pub, tmp_path):
     channel = ET.fromstring(body).find("channel")
     ns = "http://www.itunes.com/dtds/podcast-1.0.dtd"
     assert channel.findtext(f"{{{ns}}}block") == "yes"
+
+
+# --- telling Overcast about a new episode ---------------------------------
+
+def test_a_changed_feed_is_pinged(tmp_path, alerts, pings):
+    """Without this, a feed with one listener can wait a day to be crawled."""
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish_all(pub, [_entry()])
+
+    assert pings.sent == [pub.public_url(pub.feed_key(SLUG))]
+
+
+def test_an_unchanged_feed_is_not_pinged(tmp_path, alerts, pings):
+    """The API is heavily rate-limited; a feed with nothing new wastes it."""
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish_all(pub, [_entry()])
+    publish_all(pub, [_entry()])
+    publish_all(pub, [_entry()])
+
+    assert len(pings.sent) == 1
+
+
+def test_each_changed_feed_is_pinged_by_its_own_url(tmp_path, alerts, pings):
+    """Overcast asks callers to "be as specific as possible", so we do not
+    ping the shared secret prefix and re-crawl every feed."""
+    from skipcastify.utils.utils import slugify
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    titles = ["Show A", "Show B"]
+    for title in titles:
+        write_audio(tmp_path, "processed", f"{slugify(title)}-ep_1.mp3",
+                    size=2048, slug=slugify(title))
+
+    for title in titles:
+        with patch("feedparser.parse", return_value=_feed_named(title, [_entry()])), \
+             patch("skipcastify.services.generate_feeds.process_artwork",
+                   return_value=None):
+            pub.publish_all([f"https://example.com/{slugify(title)}.xml"])
+
+    assert sorted(pings.sent) == sorted(
+        pub.public_url(pub.feed_key(slugify(t))) for t in titles)
+    for url in pings.sent:
+        assert url.endswith(".xml")          # a feed URL, not a bare prefix
+
+
+def test_nothing_is_pinged_when_publishing_halted(tmp_path, alerts, pings):
+    """Mid-run the bucket may not match what the feed should say; do not
+    hurry a crawler to read it."""
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+    publish_all(pub, [_entry()])
+    pings.sent.clear()
+
+    write_audio(tmp_path, "processed", EP2, size=2048)
+    pub._halt("testing")
+    pub.notify_overcast()
+
+    assert pings.sent == []
+
+
+def test_a_tripped_breaker_pings_nothing(tmp_path, alerts, pings):
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    pub.breaker.trip("manual test")
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish_all(pub, [_entry()])
+
+    assert pings.sent == []
+
+
+def test_pinging_can_be_switched_off(tmp_path, alerts, pings):
+    pub = make_publisher(tmp_path, alerts, pinger=pings, ping_enabled=False)
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish_all(pub, [_entry()])
+
+    assert pings.sent == []
+
+
+def test_a_failed_ping_does_not_fail_the_run(tmp_path, alerts, pings):
+    """A rate-limited ping is ignored by Overcast; the feed is still published."""
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    pings.ok = False
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    published = publish_all(pub, [_entry()])
+
+    assert published != {}
+    assert alerts.sent == []                  # one failure is not news
+
+
+def test_pings_failing_on_three_runs_in_a_row_is_reported(tmp_path, alerts, pings):
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    pings.ok = False
+
+    for i in range(3):
+        write_audio(tmp_path, "processed", f"ep{i}.mp3", size=1024)
+        publish_all(pub, [_entry(title=f"Ep {i}")])
+
+    assert pub.manifest.ping_failures() == 3
+    assert len(alerts.sent) == 1
+    assert "pings are failing" in alerts.sent[0]["title"].lower()
+
+
+def test_a_successful_ping_resets_the_failure_streak(tmp_path, alerts, pings):
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    pings.ok = False
+    write_audio(tmp_path, "processed", "a.mp3", size=1024)
+    publish_all(pub, [_entry(title="A")])
+    assert pub.manifest.ping_failures() == 1
+
+    pings.ok = True
+    write_audio(tmp_path, "processed", "b.mp3", size=1024)
+    publish_all(pub, [_entry(title="B")])
+
+    assert pub.manifest.ping_failures() == 0
+    assert alerts.sent == []
+
+
+def test_the_failure_streak_survives_a_restart(tmp_path, alerts, pings):
+    """Each run is a new process, so the streak has to be on disk."""
+    pings.ok = False
+    for i in range(2):
+        pub = make_publisher(tmp_path, alerts, pinger=pings)
+        write_audio(tmp_path, "processed", f"ep{i}.mp3", size=1024)
+        publish_all(pub, [_entry(title=f"Ep {i}")])
+
+    assert make_publisher(tmp_path, alerts).manifest.ping_failures() == 2
+
+
+def test_the_ping_alert_never_contains_the_feed_url(tmp_path, alerts, pings,
+                                                    monkeypatch):
+    """A feed URL embeds the path secret, and the bucket is world-readable."""
+    monkeypatch.setenv("PUBLIC_PATH_SECRET", SECRET)
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    pings.ok = False
+
+    for i in range(3):
+        write_audio(tmp_path, "processed", f"ep{i}.mp3", size=1024)
+        publish_all(pub, [_entry(title=f"Ep {i}")])
+
+    for alert in alerts.sent:
+        assert SECRET not in alert["title"]
+        assert SECRET not in alert["message"]
+
+
+def test_no_feed_url_reaches_the_log(tmp_path, alerts, pings, caplog):
+    """The log is a file on disk that gets read, tailed and pasted."""
+    import logging
+    caplog.set_level(logging.DEBUG)
+    pub = make_publisher(tmp_path, alerts, pinger=pings)
+    pings.ok = False
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish_all(pub, [_entry()])
+
+    assert SECRET not in caplog.text
