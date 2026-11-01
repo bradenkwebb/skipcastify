@@ -132,6 +132,23 @@ class FeedManager:
             fe.title(entry.title)
             fe.description(entry.get("summary", ""))
 
+            # Episode identity. With no <guid>, podcast apps fall back to
+            # keying on the enclosure URL — and our enclosure URL changes as an
+            # episode moves from its original audio to our processed copy, so
+            # the same episode would read as a brand-new one: a duplicate in
+            # the app and a second download. Carrying the upstream guid through
+            # keeps identity stable across that switch.
+            #
+            # Same rule as EpisodeDownloader._entry_id: upstream guid first,
+            # original audio URL as the fallback. The fallback is deliberately
+            # the *original* URL, never ours, because ours is the thing that
+            # moves. permalink=False because the string is what establishes
+            # identity and many podcast guids are not resolvable URLs.
+            original_url, _original_len = self._original_audio_url(entry)
+            guid = entry.get('id') or entry.get('guid') or original_url
+            if guid:
+                fe.guid(guid, permalink=False)
+
             if entry.get('published_parsed'):
                 fe.pubDate(datetime(*entry.published_parsed[:6], tzinfo=timezone.utc))
             else:
