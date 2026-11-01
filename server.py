@@ -177,7 +177,10 @@ def feeds_page():
 @app.route('/api/stats.json')
 @require_auth
 def stats_json():
-    return jsonify(analytics.build_payload(data_dir))
+    days = request.args.get('days', type=int)
+    if days is not None and days <= 0:
+        days = None
+    return jsonify(analytics.build_payload(data_dir, days))
 
 
 @app.route('/episodes/<token>/<podcast_name>/<path:filename>')

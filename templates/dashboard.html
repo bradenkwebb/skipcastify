@@ -55,6 +55,11 @@
   <span class="muted">processing dashboard</span>
   <a href="/feeds" style="color:var(--accent);text-decoration:none;font-size:14px">feeds →</a>
   <span class="gen" id="gen"></span>
+  <span class="toolbar" style="margin:0 0 0 auto">
+    <button data-days="7" onclick="setRange(7)">7 days</button>
+    <button data-days="30" onclick="setRange(30)">30 days</button>
+    <button data-days="0" onclick="setRange(0)">All time</button>
+  </span>
 </header>
 <main>
   <div class="cards" id="cards"></div>
@@ -110,10 +115,21 @@
 <script>
 let DATA = null;
 let feedChart = null;
+let dailyChart = null;
+let range = 0;
+try { range = Number(localStorage.getItem('range')) || 0; } catch (e) {}
+
+function setRange(days) {
+  range = days;
+  try { localStorage.setItem('range', String(days)); } catch (e) {}
+  load();
+}
 
 async function load() {
   try {
-    const r = await fetch('/api/stats.json', { credentials: 'same-origin' });
+    document.querySelectorAll('[data-days]').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.days) === range));
+    const r = await fetch('/api/stats.json' + (range ? '?days=' + range : ''), { credentials: 'same-origin' });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     DATA = await r.json();
     render();
@@ -146,7 +162,8 @@ function render() {
 
 function renderDaily() {
   const d = DATA.daily;
-  new Chart(document.getElementById('dailyChart'), {
+  if (dailyChart) dailyChart.destroy();
+  dailyChart = new Chart(document.getElementById('dailyChart'), {
     data: {
       labels: d.map(x => x.date),
       datasets: [
@@ -206,7 +223,9 @@ function renderSignatureSelector() {
   const withAds = DATA.signatures
     .filter(f => f.episodes.some(e => e.spans.length))
     .sort((a, b) => a.feed_slug.localeCompare(b.feed_slug));
+  const prev = sel.value;
   sel.innerHTML = withAds.map(f => `<option value="${f.feed_slug}">${f.feed_slug}</option>`).join('');
+  if (withAds.some(f => f.feed_slug === prev)) sel.value = prev;
   renderSignature();
 }
 
