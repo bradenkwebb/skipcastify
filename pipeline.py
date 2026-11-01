@@ -1,4 +1,3 @@
-import fcntl
 import logging
 import socket
 import sys
@@ -13,6 +12,7 @@ from skipcastify.services.download_episode import EpisodeDownloader
 from skipcastify.services.generate_feeds import FeedManager
 from skipcastify.services.state_manager import StateManager
 from skipcastify.utils.alerts import Alerter
+from skipcastify.utils.lock import LockHeld, pipeline_lock
 from skipcastify.utils.logger import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -215,23 +215,13 @@ def main():
         setup_logging(data_dir)
         alerter = Alerter(data_dir)
 
-        lock_path = Path(data_dir) / "pipeline.lock"
-        lock_file = open(lock_path, "w")
         try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            # Not a failure, and not a clean run either: nothing ran, so this
-            # must not clear a failing flag.
+            with pipeline_lock(data_dir):
+                pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir, alerter=alerter)
+                pipeline.run()
+        except LockHeld:
+            # Nothing ran, so this must not clear a failing flag.
             logging.info("Another pipeline instance is already running — exiting.")
-            return 0
-
-        try:
-            pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir, alerter=alerter)
-            pipeline.run()
-        finally:
-            fcntl.flock(lock_file, fcntl.LOCK_UN)
-            lock_file.close()
-
         return 0
     except Exception as e:
         logging.error(f"Pipeline execution failed: {e}", exc_info=True)

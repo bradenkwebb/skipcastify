@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from skipcastify.services.audio_processor import AudioProcessor
 from skipcastify.services.state_manager import StateManager
+from skipcastify.utils.lock import pipeline_lock
 from skipcastify.utils.logger import setup_logging
 
 logger = logging.getLogger("process_episode")
@@ -79,7 +80,12 @@ def main():
             logger.info("cooldown %ds before next episode", args.cooldown)
             time.sleep(args.cooldown)
         logger.info("(%d/%d) processing %s", i, len(paths), path.name)
-        processor.process(str(path), state)
+        # Per episode, so a timer run can slip in during the cooldown.
+        with pipeline_lock(DATA_DIR, wait=True):
+            if not path.exists():  # retention may have removed it meanwhile
+                logger.warning("%s is gone; skipping", path)
+                continue
+            processor.process(str(path), state)
 
     logger.info("Done. Processed %d episode(s).", len(paths))
 
