@@ -156,6 +156,50 @@ A delete R2 *refuses* leaves the key live in the manifest rather than
 tombstoned. It is still costing storage, so the next run should try again — and
 the reconciliation pass below is what catches one that never succeeds.
 
+## The Class A circuit breaker
+
+`data/r2_breaker.json` + `skipcastify/services/r2_breaker.py`.
+
+The alerting above is aimed at errors, but the likelier route to an unexpected
+Cloudflare bill is runaway **success**: a loop that re-uploads the same three
+feeds, a fingerprint that stops matching, a retry that never backs off. Every
+log line in those cases says the upload worked.
+
+So the operation counts are themselves a tripwire:
+
+| limit | default | env |
+|---|---|---|
+| Class A per run | 200 | `R2_MAX_CLASS_A_PER_RUN` |
+| Class A per UTC day | 2,000 | `R2_MAX_CLASS_A_PER_DAY` |
+
+A normal pilot run spends single digits — three feed PUTs at most, plus an
+episode or two — so 200 is roughly 20x headroom and still two orders of
+magnitude below anything that costs money. Reconciliation's `LIST` pages count
+toward the same totals.
+
+On a trip: a marker is written, a high-priority alert goes out, and publishing
+stops immediately for the rest of the run.
+
+**Clearing it is manual**, by design:
+
+```
+uv run python -m skipcastify.tools.r2ctl clear-breaker
+```
+
+An automatic reset after an hour, or at midnight, would let a genuine runaway
+spend its budget in daily instalments. A marker that exists but cannot be
+parsed also counts as tripped — failing closed is the right way round here,
+since a wrong "tripped" costs stale feeds and a wrong "fine" costs the bill
+this exists to prevent.
+
+While it is tripped, a publish run spends **nothing at all** — not even the
+Class B `head_bucket` — and sends a default-priority reminder (throttled to
+6h) rather than going quiet, because a disabled publisher that says so once is
+exactly the silent failure the rest of this file is about.
+
+Downloading and processing are untouched, so episodes accumulate locally and
+publish on the first run after the breaker is cleared.
+
 ## Going live
 
 Publishing is inert until `PUBLISH_TO_R2=true`, so none of this runs by

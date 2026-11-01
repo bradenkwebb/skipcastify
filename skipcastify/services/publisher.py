@@ -43,6 +43,7 @@ from pathlib import Path
 
 from skipcastify.services.generate_feeds import FeedManager
 from skipcastify.services.publish_manifest import PublishManifest
+from skipcastify.services.r2_breaker import R2Breaker
 from skipcastify.services.r2_client import (CACHE_FEED, CACHE_IMMUTABLE,
                                             CREDENTIAL_ERROR_CODES, R2Client,
                                             content_type_for, error_code,
@@ -169,7 +170,7 @@ class R2Publisher:
                  retention_days: int = DEFAULT_RETENTION_DAYS,
                  cap_bytes: int = DEFAULT_CAP_GB * GB,
                  fallback_after_s: float = DEFAULT_FALLBACK_HOURS * 3600,
-                 notifier=None, alerter=None,
+                 notifier=None, alerter=None, breaker=None,
                  max_failures_per_run: int = DEFAULT_MAX_FAILURES_PER_RUN) -> None:
         if not secret:
             raise ValueError("PUBLIC_PATH_SECRET must not be empty")
@@ -193,9 +194,15 @@ class R2Publisher:
                        else Alerter(data_dir, notifier=notifier or ntfy_notify))
         self._notify = notifier if notifier is not None else self.alerts.notifier
         self.max_failures_per_run = max_failures_per_run
+        self.breaker = breaker if breaker is not None else R2Breaker(data_dir)
         # Why publishing stopped for the rest of this run, if it did.
         self._halted: str | None = None
         self._failures = 0
+        self.class_a_this_run = 0
+        # Count every Class A operation here rather than straight into the
+        # manifest, so the breaker sees each one as it happens instead of
+        # after the run that overspent has finished.
+        self.client.set_class_a_hook(self._count_class_a)
         # Audio keys already written into a feed during the current pass. The
         # cap must not evict one of these: the feed referencing it has been
         # built (and possibly uploaded) already, so deleting the object would
@@ -233,6 +240,7 @@ class R2Publisher:
             cap_bytes=int(float(os.environ.get("R2_CAP_GB", DEFAULT_CAP_GB)) * GB),
             fallback_after_s=float(os.environ.get("R2_FALLBACK_HOURS", DEFAULT_FALLBACK_HOURS)) * 3600,
             alerter=alerter,
+            breaker=R2Breaker.from_env(data_dir),
             max_failures_per_run=int(os.environ.get(
                 "R2_MAX_FAILURES_PER_RUN", DEFAULT_MAX_FAILURES_PER_RUN)),
         )
@@ -271,6 +279,40 @@ class R2Publisher:
     @property
     def halted(self) -> str | None:
         return self._halted
+
+    def _count_class_a(self, n: int = 1) -> None:
+        """Record a Class A operation and check it against the breaker."""
+        self.manifest.bump_class_a(n)
+        self.class_a_this_run += n
+        self._check_class_a_budget()
+
+    def _check_class_a_budget(self) -> None:
+        if self._halted is not None:
+            return                    # already stopping; one trip is enough
+        per_run = self.breaker.max_per_run
+        per_day = self.breaker.max_per_day
+        today = self.manifest.class_a_today()
+        if self.class_a_this_run > per_run:
+            self._trip_breaker(
+                f"{self.class_a_this_run} Class A operations in one run "
+                f"(limit {per_run})")
+        elif today > per_day:
+            self._trip_breaker(
+                f"{today} Class A operations today (limit {per_day})")
+
+    def _trip_breaker(self, reason: str) -> None:
+        self.breaker.trip(reason, detail={
+            "class_a_this_run": self.class_a_this_run,
+            "class_a_today": self.manifest.class_a_today(),
+            "class_a_this_month": self.manifest.class_a_this_month(),
+        })
+        self._halt(f"circuit breaker tripped: {reason}")
+        self.manifest.save()
+        self.alerts.send(
+            "r2-breaker-tripped", "R2 publishing disabled",
+            f"{reason}. Publishing is off until it is cleared by hand with "
+            f"`r2ctl clear-breaker`. Downloading and processing continue.",
+            priority="high")
 
     def _note_r2_error(self, operation: str, exc: Exception) -> None:
         """Turn a logged-and-swallowed R2 failure into something audible.
@@ -474,6 +516,24 @@ class R2Publisher:
         aged out is already tombstoned before the feed is rebuilt."""
         self._halted = None
         self._failures = 0
+        self.class_a_this_run = 0
+
+        state = self.breaker.state()
+        if state is not None:
+            self._halt(f"breaker tripped: {state.get('reason', 'unknown')}")
+            # Checked before the HEAD below so a tripped breaker spends
+            # nothing at all, not even a Class B request.
+            #
+            # Repeated rather than once: a breaker needs a hand to clear it,
+            # and a disabled publisher that says so only once is the silent
+            # failure this whole file exists to avoid. Default priority, so
+            # it reads as a reminder rather than a new emergency.
+            self.alerts.send(
+                "r2-breaker-active", "R2 publishing still disabled",
+                f"{state.get('reason', 'unknown')} (since "
+                f"{state.get('tripped_at_utc', 'unknown')}). Clear it with "
+                f"`r2ctl clear-breaker`.")
+            return {}
 
         # One Class B HEAD before doing anything. A dead endpoint or a revoked
         # token otherwise shows up as a failed upload per episode per feed,

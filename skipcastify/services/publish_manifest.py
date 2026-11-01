@@ -147,12 +147,21 @@ class PublishManifest:
 
     # --- operation accounting ----------------------------------------------
 
+    # The month is the billing period; the day is what the circuit breaker
+    # watches, because 1M ops a month is 32k a day and a runaway loop would
+    # burn through the month's allowance long before the monthly figure
+    # looked alarming. Both are UTC, matching Cloudflare's own reset.
+
     @staticmethod
     def _month(now: float | None = None) -> str:
         return time.strftime("%Y-%m", time.gmtime(now if now is not None else time.time()))
 
+    @staticmethod
+    def _day(now: float | None = None) -> str:
+        return time.strftime("%Y-%m-%d", time.gmtime(now if now is not None else time.time()))
+
     def bump_class_a(self, n: int = 1, now: float | None = None) -> None:
-        month = self._month(now)
+        month, day = self._month(now), self._day(now)
         ops = self._doc["ops"]
         # Only the current month is kept; last month's figure has no decisions
         # riding on it and keeping it would grow the file forever.
@@ -160,13 +169,23 @@ class PublishManifest:
             ops.clear()
             ops["month"] = month
             ops["class_a"] = 0
+        if ops.get("day") != day:
+            ops["day"] = day
+            ops["class_a_day"] = 0
         ops["class_a"] = ops.get("class_a", 0) + n
+        ops["class_a_day"] = ops.get("class_a_day", 0) + n
 
     def class_a_this_month(self, now: float | None = None) -> int:
         ops = self._doc["ops"]
         if ops.get("month") != self._month(now):
             return 0
         return ops.get("class_a", 0)
+
+    def class_a_today(self, now: float | None = None) -> int:
+        ops = self._doc["ops"]
+        if ops.get("day") != self._day(now):
+            return 0
+        return ops.get("class_a_day", 0)
 
     # --- one-shot alert de-duplication -------------------------------------
 

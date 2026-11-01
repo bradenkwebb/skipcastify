@@ -115,6 +115,15 @@ class R2Client:
             config=Config(signature_version="s3v4", retries={"max_attempts": 3}),
         )
 
+    def set_class_a_hook(self, fn) -> None:
+        """Replace the Class A counter.
+
+        R2Publisher calls this in its constructor so every operation is seen
+        by the circuit breaker as well as the manifest. The hook given at
+        construction remains the default for standalone use.
+        """
+        self._on_class_a = fn
+
     def _safe(self, key: str) -> str:
         return redact_key(key, self.secret_segment)
 

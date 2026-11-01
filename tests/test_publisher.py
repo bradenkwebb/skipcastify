@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from skipcastify.services.publish_manifest import PublishManifest
+from skipcastify.services.r2_breaker import R2Breaker
 from skipcastify.services.publisher import (CACHE_FEED, CACHE_IMMUTABLE, GB,
                                             R2Publisher, feed_fingerprint)
 from skipcastify.services.r2_client import redact_key
@@ -48,6 +49,9 @@ class FakeR2:
         self.refuse_deletes = refuse_deletes
         self.head_calls = 0
         self._on_class_a = on_class_a or (lambda n: None)
+
+    def set_class_a_hook(self, fn):
+        self._on_class_a = fn
 
     def _maybe_fail(self, key):
         self.attempts.append(key)
@@ -726,3 +730,161 @@ def test_an_r2_alert_never_contains_the_path_secret(tmp_path, alerts, monkeypatc
     for alert in alerts.sent:
         assert SECRET not in alert["title"]
         assert SECRET not in alert["message"]
+
+
+# --- the Class A circuit breaker ------------------------------------------
+
+def make_breaker_publisher(tmp_path, alerts, per_run=3, per_day=1000, **kwargs):
+    breaker = R2Breaker(str(tmp_path), max_per_run=per_run, max_per_day=per_day)
+    return make_publisher(tmp_path, alerts, breaker=breaker, **kwargs)
+
+
+def _upload_n(pub, tmp_path, n):
+    for i in range(n):
+        name = f"ep_{i}.mp3"
+        path = write_audio(tmp_path, "processed", name, size=256)
+        pub.ensure_audio(pub.audio_key(SLUG, name), str(path), SLUG, name)
+
+
+def test_the_breaker_trips_on_too_many_ops_in_one_run(tmp_path, alerts):
+    """Runaway success, not failure, is the likelier way to get a bill."""
+    pub = make_breaker_publisher(tmp_path, alerts, per_run=3)
+
+    _upload_n(pub, tmp_path, 8)
+
+    assert pub.breaker.tripped
+    assert "in one run" in pub.breaker.reason
+    assert len(pub.client.puts) == 4           # stopped one past the limit
+    assert any(a["title"] == "R2 publishing disabled" for a in alerts.sent)
+    assert alerts.sent[0]["priority"] == "high"
+
+
+def test_the_breaker_trips_on_too_many_ops_in_a_day(tmp_path, alerts):
+    """A run-sized limit alone lets 96 runs a day spend 96x the budget."""
+    pub = make_breaker_publisher(tmp_path, alerts, per_run=1000, per_day=3)
+    pub.manifest.bump_class_a(3)
+
+    _upload_n(pub, tmp_path, 4)
+
+    assert pub.breaker.tripped
+    assert "today" in pub.breaker.reason
+
+
+def test_a_tripped_breaker_persists_across_runs(tmp_path, alerts):
+    pub = make_breaker_publisher(tmp_path, alerts, per_run=2)
+    _upload_n(pub, tmp_path, 5)
+    assert pub.breaker.tripped
+
+    later = make_breaker_publisher(tmp_path, alerts, per_run=2)
+
+    assert later.breaker.tripped               # read from disk, not memory
+
+
+def test_a_tripped_breaker_skips_all_r2_work(tmp_path, alerts):
+    pub = make_breaker_publisher(tmp_path, alerts, per_run=1000)
+    pub.breaker.trip("manual test")
+    write_audio(tmp_path, "processed", EP1, size=2048)
+
+    published = publish_all(pub, [_entry()])
+
+    assert published == {}
+    assert pub.client.attempts == []
+    assert pub.client.head_calls == 0          # not even a Class B request
+
+
+def test_a_tripped_breaker_reminds_rather_than_going_quiet(tmp_path, alerts):
+    """It needs a hand to clear, so saying so once is a silent failure."""
+    pub = make_breaker_publisher(tmp_path, alerts)
+    pub.breaker.trip("manual test")
+
+    publish_all(pub, [_entry()])
+
+    assert len(alerts.sent) == 1
+    assert "still disabled" in alerts.sent[0]["title"].lower()
+    assert alerts.sent[0]["priority"] == "default"
+
+
+def test_the_reminder_is_throttled_not_sent_every_15_minutes(tmp_path, alerts):
+    pub = make_breaker_publisher(tmp_path, alerts)
+    pub.breaker.trip("manual test")
+
+    for _ in range(8):
+        publish_all(pub, [_entry()])
+
+    assert len(alerts.sent) == 1
+
+
+def test_clearing_the_breaker_re_enables_publishing(tmp_path, alerts):
+    pub = make_breaker_publisher(tmp_path, alerts, per_run=1000)
+    pub.breaker.trip("manual test")
+    assert publish_all(pub, [_entry()]) == {}
+
+    assert pub.breaker.clear() is True
+
+    write_audio(tmp_path, "processed", EP1, size=2048)
+    assert publish_all(pub, [_entry()]) != {}
+
+
+def test_clearing_an_untripped_breaker_is_a_no_op(tmp_path, alerts):
+    pub = make_breaker_publisher(tmp_path, alerts)
+
+    assert pub.breaker.clear() is False
+
+
+def test_a_corrupt_breaker_marker_fails_closed(tmp_path, alerts):
+    """Stale feeds are cheap; the bill this guards against is not."""
+    pub = make_breaker_publisher(tmp_path, alerts)
+    pub.breaker.path.write_text("{ not json")
+
+    assert pub.breaker.tripped
+    assert publish_all(pub, [_entry()]) == {}
+
+
+def test_the_breaker_does_not_trip_on_a_normal_run(tmp_path, alerts):
+    """A pilot run is single digits against a default limit of 200."""
+    pub = make_publisher(tmp_path, alerts)       # real defaults
+    write_audio(tmp_path, "processed", EP1, size=2048)
+    write_audio(tmp_path, "processed", EP2, size=2048)
+
+    publish_all(pub, [_entry(),
+                      _entry(title="Ep 2", href="https://cdn.example.com/ep2.mp3")])
+
+    assert not pub.breaker.tripped
+    assert pub.class_a_this_run <= 5
+
+
+def test_downloading_and_processing_are_untouched_by_a_trip(tmp_path, alerts):
+    """Only publishing stops: episodes pile up locally and go out later."""
+    pub = make_breaker_publisher(tmp_path, alerts)
+    pub.breaker.trip("manual test")
+    processed = write_audio(tmp_path, "processed", EP1, size=2048)
+
+    publish_all(pub, [_entry()])
+
+    assert processed.exists()                   # nothing local was touched
+    assert pub.client.deleted == []
+
+
+def test_the_trip_records_the_counts_that_caused_it(tmp_path, alerts):
+    pub = make_breaker_publisher(tmp_path, alerts, per_run=2)
+
+    _upload_n(pub, tmp_path, 5)
+
+    state = pub.breaker.state()
+    assert state["class_a_this_run"] == 3
+    assert state["class_a_today"] >= 3
+    assert "tripped_at_utc" in state
+
+
+def test_class_a_day_counter_resets_at_utc_midnight(tmp_path):
+    import calendar
+    manifest = PublishManifest(str(tmp_path))
+    # timegm, not mktime: the rollover must be UTC's, not this box's.
+    day1 = calendar.timegm((2026, 11, 1, 23, 0, 0, 0, 0, 0))
+    manifest.bump_class_a(50, now=day1)
+    assert manifest.class_a_today(now=day1) == 50
+
+    manifest.bump_class_a(1, now=day1 + 7200)
+
+    assert manifest.class_a_today(now=day1 + 7200) == 1
+    assert manifest.class_a_this_month(now=day1 + 7200) == 51   # month keeps both
