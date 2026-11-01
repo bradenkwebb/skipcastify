@@ -7,10 +7,40 @@ Type=simple
 User=bwebb
 WorkingDirectory=/home/bwebb/skipcastify
 EnvironmentFile=/home/bwebb/skipcastify/.env
-# tailscale serve proxies localhost:5000, so the dashboard never needs
-# to listen on anything but loopback.
-Environment=BIND_HOST=127.0.0.1
-ExecStart=/home/bwebb/skipcastify/.venv/bin/python server.py
+
+# gunicorn, not server.py: Flask's built-in server is a development server and
+# says so on startup.
+#
+# --threads, not more sync workers. Two reasons, both about serving a 90 MB
+# episode over the tailnet:
+#   * a sync worker calls notify() only between requests, so a download
+#     lasting longer than --timeout gets the worker killed mid-stream;
+#   * a sync worker handles one request at a time, so two downloads in flight
+#     would block the dashboard entirely. Podcast apps open several
+#     connections at once, which is why the dev server used threaded=True.
+# --threads > 1 selects the gthread worker, which notifies the arbiter from
+# its own loop and so is unaffected by a long request.
+#
+# Loopback only: tailscale serve proxies localhost:5000, so listening on
+# anything else would expose this to the LAN for no benefit.
+#
+# No --access-logfile, deliberately. The legacy /episodes/<token>/ and
+# /artwork/<token>/ routes carry EPISODE_TOKEN in the path, and an access log
+# would persist it to journald. The error log goes to stderr and journald as
+# usual; server.py installs a filter that strips those values from error
+# records, since Flask and gunicorn both format a request path on failure.
+ExecStart=/home/bwebb/skipcastify/.venv/bin/gunicorn \
+    --workers 2 \
+    --threads 4 \
+    --bind 127.0.0.1:5000 \
+    --timeout 60 \
+    server:app
+
+# HUP re-execs the workers, picking up code changes without dropping the
+# listening socket. It does not re-read EnvironmentFile, so a change to .env
+# still wants `systemctl restart`.
+ExecReload=/bin/kill -HUP $MAINPID
+
 Restart=on-failure
 RestartSec=5
 

@@ -288,8 +288,10 @@ accident.
    python -c 'import secrets; print(secrets.token_urlsafe(32))'
    ```
 2. Set `PUBLISH_TO_R2=true` and point `SUBSCRIPTIONS` at the pilot OPML.
-3. Install the units:
+3. Install the units. `uv sync` first — the server unit runs gunicorn out of
+   `.venv`, so without it the service fails to start:
    ```
+   uv sync
    sudo cp systemd/skipcastify-*.service systemd/skipcastify-*.timer /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl enable --now skipcastify-pipeline.timer skipcastify-server
@@ -307,6 +309,26 @@ accident.
    ```
 6. Remove `~/.skipcastify-maintenance` once the timer is running, so
    `monitor.sh` resumes its feed and pipeline-freshness alerts.
+
+### Redeploying the server
+
+The app runs under gunicorn (`server:app`), with no access log because the
+legacy `/episodes/<token>/` routes carry `EPISODE_TOKEN` in the path.
+
+```
+cd ~/skipcastify && uv sync          # gunicorn lives in .venv
+sudo cp systemd/skipcastify-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart skipcastify-server
+```
+
+`uv sync` is not optional on the first deploy after gunicorn was added: the
+unit's `ExecStart` points at `.venv/bin/gunicorn`, and systemd reports a
+missing executable as a start failure.
+
+For a code-only change, `sudo systemctl reload skipcastify-server` re-execs
+the workers without dropping the listening socket. It does **not** re-read
+`EnvironmentFile`, so a change to `.env` still needs `restart`.
 
 ## Getting the feed URLs onto a phone
 

@@ -554,6 +554,15 @@ wheels = [
 ]
 
 [[package]]
+name = "gunicorn"
+version = "26.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/8a/e4ef6ee11701b6cd64702848415ffb69eeff85cb388a3c6c7fe86f22f3f8/gunicorn-26.2.0.tar.gz", hash = "sha256:62b864895d9ebff0b2f9867ba04fe811c93121596540830c9c916d0769668447", size = 787921 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fe/85/7522a52e5e2f42faf1a129113ab63e548c42e103e9af395b7bfe65e403e2/gunicorn-26.2.0-py3-none-any.whl", hash = "sha256:bd249d0b3f7972f7432f0a6b6ff3b3ee2d129f70cd1ff6c09a9dd9e29a2b88e3", size = 228389 },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1996,6 +2005,7 @@ dependencies = [
     { name = "feedgen" },
     { name = "feedparser" },
     { name = "flask" },
+    { name = "gunicorn" },
     { name = "mutagen" },
     { name = "openai" },
     { name = "pillow" },
@@ -2019,6 +2029,7 @@ requires-dist = [
     { name = "feedgen", specifier = ">=1.0.0" },
     { name = "feedparser", specifier = ">=6.0.11" },
     { name = "flask", specifier = ">=3.0.3" },
+    { name = "gunicorn", specifier = ">=23.0.0" },
     { name = "mutagen", specifier = ">=1.47.0" },
     { name = "openai", specifier = ">=2.2.0" },
     { name = "pillow", specifier = ">=10.4.0" },

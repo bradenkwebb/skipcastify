@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from functools import wraps
@@ -7,6 +8,7 @@ from dotenv import load_dotenv
 
 from skipcastify.services import analytics
 from skipcastify.services.published_feeds import published_feeds
+from skipcastify.utils.alerts import scrub_secrets
 
 load_dotenv()
 
@@ -18,6 +20,69 @@ _feed_password = os.environ.get("FEED_PASSWORD")
 _episode_token = os.environ.get("EPISODE_TOKEN")
 _public_base_url = os.environ.get("PUBLIC_BASE_URL", "")
 _publish_to_r2 = os.environ.get("PUBLISH_TO_R2", "false").lower() == "true"
+
+
+class RedactSecrets(logging.Filter):
+    """Last-resort scrub for log records nobody here formatted.
+
+    Two things write a request path to the error log without being asked:
+
+      * Flask logs ``Exception on {request.path} [{method}]`` for any
+        unhandled view exception (flask/app.py log_exception);
+      * gunicorn's handle_error logs ``Error handling request {method} {uri}``
+        (gunicorn/workers/base.py).
+
+    The legacy ``/episodes/<token>/`` and ``/artwork/<token>/`` routes carry
+    EPISODE_TOKEN in the path, so either one would put it in journald, where
+    it persists for the life of the journal.
+
+    This covers log *messages*. A traceback that embeds a secret in an
+    exception argument is not rewritten, so this is a safety net under the
+    request log below, not a substitute for scrubbing at the point of use.
+    """
+
+    def __init__(self, scrubber=scrub_secrets) -> None:
+        super().__init__()
+        self._scrub = scrubber
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:
+            # A malformed record must not raise out of a filter: that turns a
+            # logging call anywhere in the process into an exception.
+            return True
+        scrubbed = self._scrub(message)
+        if scrubbed != message:
+            # The args are folded into the message above, so they must not be
+            # applied a second time by the formatter.
+            record.msg = scrubbed
+            record.args = ()
+        return True
+
+
+def install_log_redaction(scrubber=scrub_secrets) -> RedactSecrets:
+    """Attach RedactSecrets wherever a request path could be formatted.
+
+    A filter on a logger only sees records logged *on that logger*:
+    propagation runs an ancestor's handlers, not its filters. So this attaches
+    to the two loggers known to format a request path — Flask's app logger and
+    ``gunicorn.error``, which sets ``propagate = False`` and would otherwise
+    bypass anything on the root — and to whatever handlers exist, which is
+    what catches a record propagated up from any other module.
+    """
+    redactor = RedactSecrets(scrubber)
+    for logger in (app.logger, logging.getLogger("gunicorn.error"),
+                   logging.getLogger()):
+        logger.addFilter(redactor)
+        for handler in logger.handlers:
+            handler.addFilter(redactor)
+    return redactor
+
+
+# Accessing app.logger is what makes Flask attach its stderr handler, so this
+# has to come before the level is set below.
+install_log_redaction()
 
 
 @app.template_filter("mb")
@@ -125,8 +190,13 @@ def serve_episode(token, podcast_name, filename):
 
 
 if __name__ == '__main__':
+    # Local development only. In production this app is served by gunicorn
+    # (see systemd/skipcastify-server.service), which imports `server:app`
+    # directly and never reaches this block.
+    #
     # threaded=True so a slow episode download doesn't block feed/artwork/other
-    # requests — podcast apps open several connections at once.
+    # requests — podcast apps open several connections at once. The gunicorn
+    # unit keeps that property with --threads rather than sync workers.
     #
     # Loopback by default: tailscale serve proxies localhost:5000, so binding
     # every interface exposes the server to the LAN for no benefit. Override
