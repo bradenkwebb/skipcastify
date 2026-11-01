@@ -83,6 +83,22 @@ class FeedManager:
         fg.link(href=subscription_url)
         fg.description(feed.feed.get("description") or feed.feed.get("subtitle") or title)
 
+        # Every feed this pipeline produces is private. The tailnet ones sit
+        # behind Basic Auth on a host no crawler can reach; the R2 ones are
+        # world-readable objects guarded only by a secret in the path.
+        #
+        # itunes:block makes Overcast treat the feed as private, and what that
+        # buys is the removal of the Share and Recommend buttons from inside
+        # the app — the one path by which a single tap could hand a secret
+        # feed URL to someone else. It is *not* what keeps these feeds out of
+        # Overcast's search: that already follows from never submitting them
+        # to Apple Podcasts, which is the directory Overcast filters search
+        # and recommendations against. See https://overcast.fm/podcasterinfo.
+        #
+        # Set here rather than only in R2FeedManager so there is one answer
+        # for every feed we generate and no chance of the two drifting.
+        fg.podcast.itunes_block(True)
+
         image_url = feed.feed.get('image', {}).get('href')
         if image_url:
             artwork_dir = os.path.join(self.data_dir, 'artwork')

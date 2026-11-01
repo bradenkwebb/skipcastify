@@ -235,3 +235,39 @@ def test_guid_is_the_original_url_not_our_rehosted_one(fm, tmp_path):
     content = Path(path).read_text()
     assert "localhost:5000/episodes" in content          # enclosure is ours
     assert _guids(path) == ["https://cdn.example.com/ep.mp3"]   # identity is not
+
+
+# --- privacy --------------------------------------------------------------
+
+ITUNES_NS = "http://www.itunes.com/dtds/podcast-1.0.dtd"
+
+
+def test_feed_is_marked_private(fm, tmp_path):
+    """itunes:block is what removes Overcast's Share and Recommend buttons.
+
+    Every feed here is private — the tailnet ones behind Basic Auth, the R2
+    ones guarded only by a secret in the path — and a single tap on Share is
+    the one way a secret feed URL leaks without anyone meaning to.
+    """
+    import xml.etree.ElementTree as ET
+    feed = _make_feed([_make_entry()])
+    with patch("feedparser.parse", return_value=feed), \
+         patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
+        path = fm.generate_feed("https://example.com/feed.xml")
+
+    channel = ET.parse(path).getroot().find("channel")
+    assert channel.findtext(f"{{{ITUNES_NS}}}block") == "yes"
+
+
+def test_the_block_is_on_the_channel_not_the_items(fm, tmp_path):
+    """Per-item block would hide individual episodes, which is not the point."""
+    import xml.etree.ElementTree as ET
+    feed = _make_feed([_make_entry(title="Ep 1"), _make_entry(title="Ep 2")])
+    with patch("feedparser.parse", return_value=feed), \
+         patch("skipcastify.services.generate_feeds.process_artwork", return_value=None):
+        path = fm.generate_feed("https://example.com/feed.xml")
+
+    root = ET.parse(path).getroot()
+    assert len(root.findall(f"channel/{{{ITUNES_NS}}}block")) == 1
+    for item in root.iter("item"):
+        assert item.find(f"{{{ITUNES_NS}}}block") is None

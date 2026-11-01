@@ -29,6 +29,24 @@ nothing here logs a key without passing it through `redact_key()` first.
 The `audio/` prefix must stay as-is — the bucket's lifecycle rule (delete after
 30 days) matches on it as a backstop beneath our own 14-day retention.
 
+### Every generated feed is marked private
+
+`generate_feed` sets `<itunes:block>yes</itunes:block>` at channel level on
+every feed this pipeline produces, tailnet and R2 alike.
+
+What that buys is specific: per [Overcast's podcaster
+page](https://overcast.fm/podcasterinfo), a feed carrying `itunes:block` is
+treated as private, which **removes the Share and Recommend buttons from
+inside the app**. That is the one path by which a single tap could hand out a
+feed URL — and since the bucket is world-readable, handing out the URL is
+handing out the audio.
+
+It is *not* what keeps these feeds out of Overcast's search. That already
+follows from never submitting them to Apple Podcasts, which is the directory
+Overcast filters search and recommendations against; the same page states that
+URLs unknown to Apple Podcasts are never included. The block is defence against
+an accidental tap, not against indexing.
+
 ## What ends up in a feed
 
 | episode state | enclosure |
