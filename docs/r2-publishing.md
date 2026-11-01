@@ -94,6 +94,41 @@ Because the manifest is authoritative and we never LIST, manifest and bucket can
 in principle drift (a PUT that succeeded as the process died). The lifecycle
 rule is the backstop: anything we lose track of is deleted after 30 days.
 
+## Alerting
+
+`data/alert_state.json` + `skipcastify/utils/alerts.py`. Alerts go to
+`NTFY_TOPIC`; with it unset every alert below is a silent no-op, which is what
+a fresh checkout gets.
+
+**Every alert is throttled by a fingerprint**, at most one push per 6h. The
+timer runs every 15 minutes, so an unguarded alert on a recurring failure is
+~96 identical pushes a day for one broken thing — which just teaches you to
+ignore the channel.
+
+**Alert text is scrubbed on the send path**, not at each call site: env secret
+values, URL credentials, `?token=`-style query parameters and
+`/private/<token>` paths are replaced before anything leaves the machine. An
+exception message almost always contains the thing that failed, and here that
+is often the private Substack feed URL or an object key embedding
+`PUBLIC_PATH_SECRET`. An ntfy topic is a public channel over the open
+internet.
+
+| alert | fires when |
+|---|---|
+| `Pipeline failed: <stage>` | an unhandled exception in `run()` or `main()`, high priority; the stage is `download`/`process`/`cleanup`/`feeds`/`publish`/`startup` |
+| `Pipeline recovered` | the first clean run after any failure |
+| `Episode published with ads` | the `R2_FALLBACK_HOURS` fallback, once per episode |
+| `R2 storage cap reached` | an upload skipped because nothing older could be evicted |
+| `R2 storage at 80%` / `R2 Class A ops at 80%` | budget warnings |
+
+A failing run is recorded separately from the throttle window, because a
+pipeline broken for two days and then fixed still needs to announce it — and
+recovery clears the window so a later recurrence of the same failure is
+reported rather than silenced by a leftover window.
+
+Per-feed failures are deliberately **not** pipeline failures: one unreachable
+feed already degrades to a warning and the run continues, and that stays true.
+
 ## Going live
 
 Publishing is inert until `PUBLISH_TO_R2=true`, so none of this runs by

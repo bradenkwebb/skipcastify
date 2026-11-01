@@ -12,14 +12,26 @@ from skipcastify.services.audio_processor import AudioProcessor
 from skipcastify.services.download_episode import EpisodeDownloader
 from skipcastify.services.generate_feeds import FeedManager
 from skipcastify.services.state_manager import StateManager
+from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.logger import setup_logging
 
 logger = logging.getLogger(__name__)
 
+# Pipeline.stage names the step currently running, and goes into the failure
+# alert: knowing a run died in "process" rather than "publish" is most of the
+# diagnosis from a phone. The others are set inline in run(); this one is the
+# value before run() is even reached.
+STAGE_STARTUP = "startup"
+
 
 class Pipeline:
-    def __init__(self, config_path: str, data_dir: str) -> None:
+    def __init__(self, config_path: str, data_dir: str, alerter=None) -> None:
         self.data_dir = data_dir
+        self.alerter = alerter if alerter is not None else Alerter(data_dir)
+        # The stage currently executing, and whether run() has already alerted
+        # about a failure. main() reads both so one crash is one push.
+        self.stage = STAGE_STARTUP
+        self.alerted = False
 
         server_base_url = os.environ.get("SERVER_BASE_URL") or f"http://{socket.getfqdn()}:5000"
         episode_token = os.environ.get("EPISODE_TOKEN", "")
@@ -118,12 +130,30 @@ class Pipeline:
         published = publisher.publish_all(self.downloader.subscription_urls)
         logger.info(f"Published {len(published)} feed(s) to R2")
 
+    def report_failure(self, exc: BaseException) -> None:
+        """Push an alert about an unhandled failure, deduped by type+stage.
+
+        Until now a crashing pipeline was only noticeable through monitor.sh's
+        feed-staleness check, which fires hours later and says nothing about
+        what broke. The alerter scrubs the text, which matters here because an
+        exception message routinely contains the URL that failed.
+        """
+        self.alerted = True
+        self.alerter.mark_failing(f"{type(exc).__name__}:{self.stage}", str(exc))
+        self.alerter.send(
+            f"{type(exc).__name__}:{self.stage}",
+            f"Pipeline failed: {self.stage}",
+            f"{type(exc).__name__}: {exc}",
+            priority="high")
+
     def run(self):
         logger.info("Starting Skipcastify pipeline...")
         try:
+            self.stage = "download"
             logger.info("Downloading new episodes")
             self.downloader.download_latest()
 
+            self.stage = "process"
             if self.processing_enabled:
                 state_manager = StateManager(self.data_dir)
                 cooldown_s = int(os.environ.get("EPISODE_COOLDOWN_S", "120"))
@@ -142,8 +172,10 @@ class Pipeline:
             else:
                 logger.info("Audio processing disabled (ENABLE_PROCESSING=false)")
 
+            self.stage = "cleanup"
             self._cleanup_old_episodes()
 
+            self.stage = "feeds"
             logger.info("Generating RSS feeds")
             for url in self.downloader.subscription_urls:
                 try:
@@ -151,34 +183,47 @@ class Pipeline:
                 except Exception as e:
                     logger.warning(f"Skipping feed generation for {url}: {e}")
 
+            self.stage = "publish"
             if self.publish_to_r2:
                 logger.info("Publishing to R2")
                 self._publish_to_r2()
             else:
                 logger.info("R2 publishing disabled (PUBLISH_TO_R2=false)")
         except Exception as e:
-            logger.error(f"Pipeline failed: {e}", exc_info=True)
+            logger.error(f"Pipeline failed during {self.stage}: {e}", exc_info=True)
+            self.report_failure(e)
             raise
+
+        # A clean run from end to end. If earlier runs were failing, say so
+        # once -- otherwise the only signal that a problem went away is the
+        # absence of further alerts, which is indistinguishable from ntfy
+        # being broken.
+        self.alerter.clear_failing()
 
 
 def main():
+    alerter = None
+    pipeline = None
     try:
         load_dotenv()
         data_dir = os.getenv("DATA_DIR")
         if not data_dir:
             raise EnvironmentError("DATA_DIR is not defined")
         setup_logging(data_dir)
+        alerter = Alerter(data_dir)
 
         lock_path = Path(data_dir) / "pipeline.lock"
         lock_file = open(lock_path, "w")
         try:
             fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
+            # Not a failure, and not a clean run either: nothing ran, so this
+            # must not clear a failing flag.
             logging.info("Another pipeline instance is already running — exiting.")
             return 0
 
         try:
-            pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir)
+            pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir, alerter=alerter)
             pipeline.run()
         finally:
             fcntl.flock(lock_file, fcntl.LOCK_UN)
@@ -187,6 +232,15 @@ def main():
         return 0
     except Exception as e:
         logging.error(f"Pipeline execution failed: {e}", exc_info=True)
+        # Alert only for failures run() did not already report -- a bad
+        # DATA_DIR, a missing SUBSCRIPTIONS, a construction error. Without the
+        # flag one crash would push twice under two different fingerprints.
+        if alerter is not None and not (pipeline is not None and pipeline.alerted):
+            stage = pipeline.stage if pipeline is not None else STAGE_STARTUP
+            alerter.mark_failing(f"{type(e).__name__}:{stage}", str(e))
+            alerter.send(f"{type(e).__name__}:{stage}",
+                         f"Pipeline failed: {stage}",
+                         f"{type(e).__name__}: {e}", priority="high")
         return 1
 
 
