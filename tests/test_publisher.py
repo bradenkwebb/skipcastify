@@ -205,12 +205,13 @@ def test_backlog_episode_keeps_original_url(pub, tmp_path):
     assert pub._notify.sent == []          # not a failure, so no alert
 
 
-def test_tombstoned_episode_is_not_relisted_or_reuploaded(pub, tmp_path):
-    """The bug tombstones exist to prevent.
+def test_evicted_episode_reverts_to_its_original_audio(pub, tmp_path):
+    """After eviction the item stays, pointing back at the original audio.
 
-    Retention deletes the object from R2 but the processed .mp3 stays on
-    local disk, so without a tombstone the next run would upload it again
-    and re-list it forever.
+    Withdrawing it would be tidier, but episodes are often still in progress
+    past the retention window and a vanishing item can drop out of a
+    listening queue. The tombstone still does its main job: stopping the
+    processed .mp3 that is still on local disk from being uploaded again.
     """
     write_audio(tmp_path, "processed", EP1, size=2048)
     key = pub.audio_key(SLUG, EP1)
@@ -221,8 +222,10 @@ def test_tombstoned_episode_is_not_relisted_or_reuploaded(pub, tmp_path):
     pub.client.puts.clear()
     publish(pub, [_entry()])
 
-    assert key not in pub.client.keys          # not re-uploaded
-    assert "Ep 1" not in feed_xml(pub)         # and no longer listed
+    title, _guid, url = _items(pub)[0]
+    assert title == "Ep 1"                              # still listed
+    assert url == "https://cdn.example.com/ep1.mp3"     # original audio
+    assert key not in pub.client.keys                   # but not re-uploaded
 
 
 # --- retention and the storage cap ---------------------------------------
@@ -506,16 +509,21 @@ def test_guid_is_stable_across_the_fallback_to_r2_transition(pub, tmp_path):
     assert after[1] is not None
 
 
-def test_guid_survives_age_out(pub, tmp_path):
-    """Identity is also stable for an episode that falls back to backlog."""
+def test_guid_is_unchanged_when_an_episode_is_evicted(pub, tmp_path):
+    """The R2 -> original switch must not look like a new episode.
+
+    This is what makes reverting safe rather than disruptive: the app keeps
+    the episode, and anything already downloaded, because identity held.
+    """
     write_audio(tmp_path, "processed", EP1, size=2048)
     publish(pub, [_entry()])
-    fresh_guid = _items(pub)[0][1]
+    on_r2 = _items(pub)[0]
+    assert on_r2[2].startswith("https://pods.example.com/audio/")
 
-    os.utime(Path(tmp_path) / "podcasts" / "processed" / SLUG / EP1,
-             (time.time() - 92 * 86400,) * 2)
     pub.manifest.record_delete([pub.audio_key(SLUG, EP1)])
-    pub.manifest._doc["objects"].pop(pub.audio_key(SLUG, EP1))   # no tombstone
     publish(pub, [_entry()])
+    evicted = _items(pub)[0]
 
-    assert _items(pub)[0][1] == fresh_guid
+    assert evicted[2] == "https://cdn.example.com/ep1.mp3"   # audio switched back
+    assert evicted[1] == on_r2[1]                            # identity did not
+    assert evicted[1] is not None

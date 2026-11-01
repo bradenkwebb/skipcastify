@@ -36,11 +36,12 @@ The `audio/` prefix must stay as-is — the bucket's lifecycle rule (delete afte
 | processed audio uploaded | R2 URL |
 | downloaded, unprocessed, < `R2_FALLBACK_HOURS` | withheld |
 | downloaded, unprocessed, past that window | original URL, alerted once |
-| published once, then aged out of R2 | withheld |
+| published once, then evicted from R2 | original URL, same guid |
 | never downloaded (pre-go-live backlog) | original URL |
 
-So a published feed is a rolling 14-day window of ad-free episodes, plus
-whatever predates go-live still pointing at its original audio.
+So a published feed is a rolling 14-day window of ad-free episodes, with
+everything outside that window — the pre-go-live backlog and episodes that have
+aged out of it alike — still listed against its original audio.
 
 Two of those rows are deliberate choices worth stating:
 
@@ -49,9 +50,12 @@ Two of those rows are deliberate choices worth stating:
   After `R2_FALLBACK_HOURS` the episode appears with the original audio anyway,
   because a permanently missing episode is worse than an honest one with ads —
   and an alert fires so the failure isn't silent.
-- **Once an episode ages out of R2 it stops being listed**, rather than
-  reverting to the original URL. It had a clean version; quietly swapping in the
-  ad-ful one later would be surprising.
+- **Once an episode is evicted from R2 it reverts to its original audio**
+  rather than disappearing. Withdrawing the item would be the tidier story, but
+  episodes are often still in progress well past the retention window, and an
+  item vanishing can drop one out of a listening queue. Because the guid never
+  changes, the app keeps the episode — and whatever it has already downloaded —
+  and only a fresh download would pick up the version with ads.
 
 ## Free-tier guardrails
 

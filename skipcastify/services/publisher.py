@@ -23,12 +23,15 @@ state                                        enclosure
 processed audio uploaded                     R2 URL (the normal case)
 downloaded, unprocessed, younger than 6h     withheld — still being worked on
 downloaded, unprocessed, 6h to 14d           original URL, alerted once
-published once, then aged out of R2          withheld — stops being listed
+published once, then evicted from R2         original URL, same guid
 never downloaded (pre-go-live backlog)       original URL
 ===========================================  ==================================
 
 A published feed is therefore a rolling retention-window of ad-free episodes,
-plus whatever predates go-live still pointing at its original audio.
+with everything outside that window — both the pre-go-live backlog and
+episodes that have aged out of it — still listed against its original audio.
+An episode's guid never changes as it moves between those states, so a podcast
+app sees one episode throughout rather than a new one each time.
 """
 
 import hashlib
@@ -101,9 +104,17 @@ class R2FeedManager(FeedManager):
         key = pub.audio_key(slug, ep_filename)
 
         if pub.manifest.is_tombstoned(key):
-            # Published once and since aged out of R2. The spec says stop
-            # listing it rather than quietly reverting to the ad-ful original.
-            return None
+            # Published once, then evicted — by retention, or by the cap making
+            # room for something newer. Keep listing it with its original
+            # audio rather than withdrawing the item: the guid is unchanged, so
+            # a podcast app keeps the episode and any copy already downloaded
+            # instead of dropping it from the queue. Braden often has episodes
+            # in progress well past the retention window.
+            #
+            # The tombstone still does its main job here, which is to stop the
+            # processed file on local disk being uploaded all over again.
+            url, length = self._original_audio_url(entry)
+            return url, length, None
 
         processed = os.path.join(pub.data_dir, 'podcasts', 'processed', slug, ep_filename)
         if os.path.exists(processed):
