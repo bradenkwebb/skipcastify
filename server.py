@@ -61,4 +61,10 @@ def serve_episode(token, podcast_name, filename):
 if __name__ == '__main__':
     # threaded=True so a slow episode download doesn't block feed/artwork/other
     # requests — podcast apps open several connections at once.
-    app.run(host='0.0.0.0', port=5000, threaded=True)
+    #
+    # Loopback by default: tailscale serve proxies localhost:5000, so binding
+    # every interface exposes the server to the LAN for no benefit. Override
+    # with BIND_HOST=0.0.0.0 if it ever needs to be reachable directly.
+    app.run(host=os.environ.get('BIND_HOST', '127.0.0.1'),
+            port=int(os.environ.get('BIND_PORT', '5000')),
+            threaded=True)
