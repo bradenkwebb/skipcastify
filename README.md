@@ -92,32 +92,14 @@ and never runs that block:
 uv run gunicorn --workers 2 --threads 4 --bind 127.0.0.1:5000 --timeout 60 server:app
 ```
 
-`systemd/skipcastify-server.service` runs exactly that. Two details there are
-deliberate:
+`systemd/skipcastify-server.service` runs exactly that. gunicorn's access log
+is off because the legacy `/episodes/<token>/` routes carry `EPISODE_TOKEN`;
+`server.py` logs each request itself with secrets scrubbed:
 
-- **`--threads`, not just more workers.** A sync worker notifies the arbiter
-  only between requests, so streaming a 90 MB episode for longer than
-  `--timeout` would get the worker killed mid-download; and one request at a
-  time means two downloads block the dashboard. `--threads > 1` selects the
-  `gthread` worker, which has neither problem.
-- **No gunicorn access log — the app logs requests itself.** The
-  `/episodes/<token>/` and `/artwork/<token>/` routes carry `EPISODE_TOKEN` in
-  the path, and gunicorn's access log would write the raw request line,
-  persisting a credential to journald for the life of the journal. So
-  `server.py` logs one INFO line per request through Python logging instead,
-  with the path and query string passed through `scrub_secrets` first:
-
-  ```
-  INFO in server: GET /episodes/<EPISODE_TOKEN>/show/ep.mp3 -> 404 0.7ms
-  INFO in server: GET /dashboard -> 401 0.1ms
-  INFO in server: GET /dashboard -> 200 5.5ms user=bwebb
-  ```
-
-  Rejected requests are logged too, so failed logins are visible. The Basic
-  Auth *username* is recorded; the password and the `Authorization` header
-  never are. A logging filter scrubs error records as well, since Flask logs
-  `Exception on {path}` and gunicorn logs `Error handling request {uri}` when
-  a request fails.
+```
+INFO in server: GET /episodes/<EPISODE_TOKEN>/show/ep.mp3 -> 404 0.7ms
+INFO in server: GET /dashboard -> 200 5.5ms user=bwebb
+```
 
 The server listens on **loopback only** and is reached over the tailnet via
 `tailscale serve`, which terminates TLS:

@@ -49,11 +49,7 @@ SECRET_ENV_VARS = (
 # Tokens that live in a URL rather than in our environment — chiefly the
 # private Substack feed token, which arrives from upstream.opml and is not an
 # env var we could match on.
-# `<` is excluded from both value patterns so that scrubbing is idempotent:
-# without it, a second pass over an already-scrubbed string matches the
-# `<REDACTED` inside its own replacement and appends another `>` each time.
-# That happens in practice — server.py scrubs a request path at the point of
-# logging, and a logging filter scrubs the formatted record again.
+# `<` is excluded so re-scrubbing a `<REDACTED>` string is a no-op.
 _QUERY_TOKEN = re.compile(
     r"\b(private|token|api[_-]?key|key|auth|signature|sig)=[^\s&\"'><]+", re.I)
 _PATH_TOKEN = re.compile(r"/(private|s)/[^\s/\"'><]+", re.I)

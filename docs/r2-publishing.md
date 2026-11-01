@@ -312,11 +312,6 @@ accident.
 
 ### Redeploying the server
 
-The app runs under gunicorn (`server:app`). gunicorn's own access log is off
-because the legacy `/episodes/<token>/` routes carry `EPISODE_TOKEN` in the
-path and it would write the request line raw; `server.py` logs one scrubbed
-line per request instead. See the README for the format.
-
 ```
 cd ~/skipcastify && uv sync          # gunicorn lives in .venv
 sudo cp systemd/skipcastify-server.service /etc/systemd/system/
@@ -324,13 +319,8 @@ sudo systemctl daemon-reload
 sudo systemctl restart skipcastify-server
 ```
 
-`uv sync` is not optional on the first deploy after gunicorn was added: the
-unit's `ExecStart` points at `.venv/bin/gunicorn`, and systemd reports a
-missing executable as a start failure.
-
-For a code-only change, `sudo systemctl reload skipcastify-server` re-execs
-the workers without dropping the listening socket. It does **not** re-read
-`EnvironmentFile`, so a change to `.env` still needs `restart`.
+For a code-only change, `sudo systemctl reload skipcastify-server` starts fresh
+workers without dropping the socket. `.env` changes need `restart`.
 
 ## Getting the feed URLs onto a phone
 

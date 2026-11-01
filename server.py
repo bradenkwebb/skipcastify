@@ -23,23 +23,8 @@ _publish_to_r2 = os.environ.get("PUBLISH_TO_R2", "false").lower() == "true"
 
 
 class RedactSecrets(logging.Filter):
-    """Last-resort scrub for log records nobody here formatted.
-
-    Two things write a request path to the error log without being asked:
-
-      * Flask logs ``Exception on {request.path} [{method}]`` for any
-        unhandled view exception (flask/app.py log_exception);
-      * gunicorn's handle_error logs ``Error handling request {method} {uri}``
-        (gunicorn/workers/base.py).
-
-    The legacy ``/episodes/<token>/`` and ``/artwork/<token>/`` routes carry
-    EPISODE_TOKEN in the path, so either one would put it in journald, where
-    it persists for the life of the journal.
-
-    This covers log *messages*. A traceback that embeds a secret in an
-    exception argument is not rewritten, so this is a safety net under the
-    request log below, not a substitute for scrubbing at the point of use.
-    """
+    """Scrub secrets from log messages Flask and gunicorn format on errors
+    (both include the request path). Tracebacks are not rewritten."""
 
     def __init__(self, scrubber=scrub_secrets) -> None:
         super().__init__()
@@ -49,28 +34,19 @@ class RedactSecrets(logging.Filter):
         try:
             message = record.getMessage()
         except Exception:
-            # A malformed record must not raise out of a filter: that turns a
-            # logging call anywhere in the process into an exception.
+            # Never raise from a filter.
             return True
         scrubbed = self._scrub(message)
         if scrubbed != message:
-            # The args are folded into the message above, so they must not be
-            # applied a second time by the formatter.
+            # Args are already folded into the message.
             record.msg = scrubbed
             record.args = ()
         return True
 
 
 def install_log_redaction(scrubber=scrub_secrets) -> RedactSecrets:
-    """Attach RedactSecrets wherever a request path could be formatted.
-
-    A filter on a logger only sees records logged *on that logger*:
-    propagation runs an ancestor's handlers, not its filters. So this attaches
-    to the two loggers known to format a request path — Flask's app logger and
-    ``gunicorn.error``, which sets ``propagate = False`` and would otherwise
-    bypass anything on the root — and to whatever handlers exist, which is
-    what catches a record propagated up from any other module.
-    """
+    """Attach RedactSecrets to the Flask, gunicorn.error and root loggers and
+    their handlers (logger filters don't apply to propagated records)."""
     redactor = RedactSecrets(scrubber)
     for logger in (app.logger, logging.getLogger("gunicorn.error"),
                    logging.getLogger()):
@@ -80,13 +56,8 @@ def install_log_redaction(scrubber=scrub_secrets) -> RedactSecrets:
     return redactor
 
 
-# Accessing app.logger is what makes Flask attach its stderr handler, so this
-# has to come before the level is set below.
 install_log_redaction()
-
-# gunicorn configures only its own loggers, leaving the root logger with no
-# handlers — so Flask's logger is NOTSET, inherits WARNING from the root, and
-# would drop every INFO line of the request log below. Set it explicitly.
+# Under gunicorn the root logger stays at WARNING; the request log is INFO.
 app.logger.setLevel(logging.INFO)
 
 
@@ -107,16 +78,7 @@ def _ago(when: float) -> str:
     return f"{seconds / 86400:.0f}d ago"
 
 
-# --- request log ----------------------------------------------------------
-#
-# This replaces gunicorn's access log rather than supplementing it. gunicorn
-# would write the raw request line, and the legacy /episodes/<token>/ and
-# /artwork/<token>/ routes carry EPISODE_TOKEN in the path, so its access log
-# would persist a credential to journald for the life of the journal. Logging
-# here instead means the path goes through scrub_secrets first.
-#
-# 401s are logged too, deliberately: a tailnet-only service still wants
-# failed-login visibility, and that is the one line you would go looking for.
+# Request log, in place of gunicorn's access log so paths get scrubbed.
 
 
 @app.before_request
@@ -133,8 +95,7 @@ def _log_request(response):
     if request.query_string:
         target += "?" + scrub_secrets(request.query_string.decode('latin-1'))
 
-    # The username only. Never the password, and never the Authorization
-    # header, which is the password in a trivially reversible encoding.
+    # Username only, never the password or Authorization header.
     auth = request.authorization
     who = f" user={auth.username}" if auth and auth.username else ""
 
@@ -231,17 +192,7 @@ def serve_episode(token, podcast_name, filename):
 
 
 if __name__ == '__main__':
-    # Local development only. In production this app is served by gunicorn
-    # (see systemd/skipcastify-server.service), which imports `server:app`
-    # directly and never reaches this block.
-    #
-    # threaded=True so a slow episode download doesn't block feed/artwork/other
-    # requests — podcast apps open several connections at once. The gunicorn
-    # unit keeps that property with --threads rather than sync workers.
-    #
-    # Loopback by default: tailscale serve proxies localhost:5000, so binding
-    # every interface exposes the server to the LAN for no benefit. Override
-    # with BIND_HOST=0.0.0.0 if it ever needs to be reachable directly.
+    # Local development only; production runs gunicorn (see systemd/).
     app.run(host=os.environ.get('BIND_HOST', '127.0.0.1'),
             port=int(os.environ.get('BIND_PORT', '5000')),
             threaded=True)
