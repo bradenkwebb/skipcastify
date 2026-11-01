@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -125,15 +125,22 @@ def daily_series(events: list[dict]) -> list[dict]:
         by_day_eps[d] += 1
         by_day_feeds[d].add(ev.get("feed_slug"))
         by_day_admin[d] += _ad_ms(ev) / 60000.0
-    return [
-        {
+    if not by_day_eps:
+        return []
+    # One row per calendar day through today, so idle stretches show as gaps.
+    day = date.fromisoformat(min(by_day_eps))
+    end = max(date.today(), date.fromisoformat(max(by_day_eps)))
+    rows = []
+    while day <= end:
+        d = day.isoformat()
+        rows.append({
             "date": d,
-            "episodes": by_day_eps[d],
-            "feeds": len(by_day_feeds[d]),
-            "ad_minutes": round(by_day_admin[d], 1),
-        }
-        for d in sorted(by_day_eps)
-    ]
+            "episodes": by_day_eps.get(d, 0),
+            "feeds": len(by_day_feeds.get(d, ())),
+            "ad_minutes": round(by_day_admin.get(d, 0.0), 1),
+        })
+        day += timedelta(days=1)
+    return rows
 
 
 def ad_signatures(events: list[dict]) -> list[dict]:

@@ -138,3 +138,14 @@ def test_payload_includes_runs_and_recent_episodes(tmp_path):
     assert p["runs"][0]["started"] == "x"
     (ep,) = p["recent_episodes"]
     assert ep["ad_minutes"] == 1.0 and ep["ad_pct"] == 10.0 and ep["ts"].startswith("2026-11-01")
+
+
+def test_daily_series_fills_idle_days_through_today():
+    from datetime import date, timedelta
+    today = date.today()
+    first = today - timedelta(days=3)
+    ev = {"event": "episode_complete", "feed_slug": "s", "spans": []}
+    rows = analytics.daily_series([{**ev, "ts": first.isoformat() + "T10:00:00"}])
+    assert [r["date"] for r in rows] == [(first + timedelta(days=i)).isoformat() for i in range(4)]
+    assert [r["episodes"] for r in rows] == [1, 0, 0, 0]
+    assert analytics.daily_series([]) == []
