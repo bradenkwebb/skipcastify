@@ -1,7 +1,9 @@
 import os
 from functools import wraps
-from flask import Flask, send_from_directory, abort, request, Response
+from flask import Flask, send_from_directory, abort, request, Response, jsonify, render_template
 from dotenv import load_dotenv
+
+from skipcastify.services import analytics
 
 load_dotenv()
 
@@ -45,6 +47,18 @@ def serve_artwork(token, filename):
     if not os.path.exists(os.path.join(path, filename)):
         return abort(404)
     return send_from_directory(path, filename)
+
+
+@app.route('/dashboard')
+@require_auth
+def dashboard():
+    return render_template('dashboard.html')
+
+
+@app.route('/api/stats.json')
+@require_auth
+def stats_json():
+    return jsonify(analytics.build_payload(data_dir))
 
 
 @app.route('/episodes/<token>/<podcast_name>/<path:filename>')

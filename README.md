@@ -61,7 +61,7 @@ All runtime config lives in `.env` (never committed):
 | `DATA_DIR` | Root data directory (e.g. `data`) |
 | `SUBSCRIPTIONS` | Path to upstream OPML file |
 | `SERVER_BASE_URL` | Public HTTPS base URL (e.g. Tailscale Funnel URL) |
-| `FEED_USERNAME` / `FEED_PASSWORD` | HTTP Basic Auth credentials for the feed server |
+| `FEED_USERNAME` / `FEED_PASSWORD` | HTTP Basic Auth credentials for the feed server and the `/dashboard` web UI |
 | `EPISODE_TOKEN` | Secret token appended to episode URLs |
 | `EPISODE_LIMIT` | Max episodes to download per feed per run (default: 5) |
 | `ENABLE_PROCESSING` | Set `true` to enable ad removal (default: `false`) |
