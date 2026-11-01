@@ -184,7 +184,7 @@ Remove `PROCESS_SLUGS` (or leave it empty) to process all feeds.
 
 ## Ad detection
 
-Transcription uses [OpenAI Whisper](https://github.com/openai/whisper) (`base` model by default). The transcript is split into ~10-minute overlapping windows, each sent to the configured LLM.
+Transcription uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (`base` model, int8, `WHISPER_THREADS` CPU threads); see [docs/faster-whisper.md](docs/faster-whisper.md). The transcript is split into ~10-minute overlapping windows, each sent to the configured LLM.
 
 The LLM prompt is in `skipcastify/llm_prompts/identify_ads_prompt.txt` and can be edited independently of the code. It instructs the model to return a JSON array of ad spans. Segments classified as `ADVERTISEMENT` or `SPONSOR` are removed; `INTRO` and `OUTRO` are kept.
 
