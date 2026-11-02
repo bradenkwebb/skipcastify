@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -115,7 +115,7 @@ def feed_summary(events: list[dict]) -> list[dict]:
     return sorted(rows, key=lambda r: r["total_ad_minutes"], reverse=True)
 
 
-def daily_series(events: list[dict]) -> list[dict]:
+def daily_series(events: list[dict], start: Optional[date] = None) -> list[dict]:
     """Per-day throughput: episodes processed, distinct feeds, ad minutes."""
     by_day_eps: dict[str, int] = defaultdict(int)
     by_day_feeds: dict[str, set] = defaultdict(set)
@@ -125,15 +125,22 @@ def daily_series(events: list[dict]) -> list[dict]:
         by_day_eps[d] += 1
         by_day_feeds[d].add(ev.get("feed_slug"))
         by_day_admin[d] += _ad_ms(ev) / 60000.0
-    return [
-        {
+    if not by_day_eps and start is None:
+        return []
+    # One row per calendar day through today, so idle stretches show as gaps.
+    day = start or date.fromisoformat(min(by_day_eps))
+    end = max([date.today()] + [date.fromisoformat(d) for d in by_day_eps])
+    rows = []
+    while day <= end:
+        d = day.isoformat()
+        rows.append({
             "date": d,
-            "episodes": by_day_eps[d],
-            "feeds": len(by_day_feeds[d]),
-            "ad_minutes": round(by_day_admin[d], 1),
-        }
-        for d in sorted(by_day_eps)
-    ]
+            "episodes": by_day_eps.get(d, 0),
+            "feeds": len(by_day_feeds.get(d, ())),
+            "ad_minutes": round(by_day_admin.get(d, 0.0), 1),
+        })
+        day += timedelta(days=1)
+    return rows
 
 
 def ad_signatures(events: list[dict]) -> list[dict]:
@@ -229,15 +236,23 @@ def feed_status(runs: list[dict]) -> list[dict]:
     return sorted(status.values(), key=lambda r: r["feed_slug"])
 
 
-def build_payload(data_dir: str) -> dict:
-    """One JSON blob with everything the dashboard needs."""
+def build_payload(data_dir: str, days: Optional[int] = None) -> dict:
+    """One JSON blob with everything the dashboard needs.
+
+    days limits the episode stats to the last N days; runs are unaffected.
+    """
     events = load_events(data_dir)
+    start = None
+    if days:
+        start = date.today() - timedelta(days=days - 1)
+        events = [e for e in events if e.get("ts", "") >= start.isoformat()]
     runs = recent_runs(data_dir, 500)
     return {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "days": days,
         "overview": overview(events),
         "feeds": feed_summary(events),
-        "daily": daily_series(events),
+        "daily": daily_series(events, start),
         "signatures": ad_signatures(events),
         "drop_candidates": drop_candidates(events),
         "recent_episodes": recent_episodes(events),
