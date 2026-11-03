@@ -214,3 +214,145 @@ class TestSchwabPrerollMustNotRemove:
         """Fixing the pre-roll must not start eating the programme."""
         assert not any_overlap(preroll_llm_spans, _NEWS_STARTS + 2_000, 10 ** 9), \
             f"News content past {_NEWS_STARTS}ms was flagged. Spans: {preroll_llm_spans}"
+
+
+# --- the Claude/Schwab mid-roll pod miss, found 2026-11-03 ---------------
+#
+# Same episode as the pre-roll case above, and the bigger miss of the two:
+# 71.2s of the mid-roll pod shipped in the published episode.
+#
+# The pod runs 1041.4s-1237.2s (196s): Cheekies/Coca-Cola -> a Schwab brand
+# ad -> Claude -> Wise. Production cut [1041.4-1108.4] and [1179.7-1237.2]
+# and kept everything between, which is the Schwab "choice matters" read in
+# full plus the entire Claude pitch up to its CTA.
+#
+# No single section holds the pod: it is 196s long and the section overlap is
+# only 30s. Section 1 (570-1170s) holds its first 133s and section 2
+# (1140-1740s) its last 99s, so the union of the two calls did cover it and
+# complete detection was available. What happened instead is that each call
+# dropped the part of the pod nearest its own section edge: section 1 ended
+# its span mid-Schwab and section 2 started its span at the Claude CTA,
+# skipping the 41.4s of Claude pitch that opens that window.
+#
+# So there is one fixture per section, each rebased so the section starts at
+# 0. The two trailing segments that would spill past 600000ms are dropped,
+# which only moves section 1's cut-off ~10s earlier — the real section also
+# ended mid-Claude-ad.
+
+_MIDROLL_SEC1_FIXTURE = (Path(__file__).parent / "fixtures"
+                         / "global-news-trump_endorsement-midroll_sec1_transcript.json")
+_MIDROLL_SEC2_FIXTURE = (Path(__file__).parent / "fixtures"
+                         / "global-news-trump_endorsement-midroll_sec2_transcript.json")
+
+# section 1 (fixture offset 568540ms)
+_M1_COKE_POD = (472_819, 539_900)        # caught in production
+_M1_SCHWAB_BRAND = (539_900, 558_420)    # kept; "that's just a small taste of
+                                         # what Schwab offers... Visit Schwab.com"
+_M1_CLAUDE_TO_EDGE = (558_780, 595_180)  # kept; runs to the window edge
+_M1_NEWS_ENDS = 470_000
+
+# section 2 (fixture offset 1138280ms)
+_M2_CLAUDE_PITCH = (0, 41_380)           # kept; the window opens inside the ad
+_M2_CLAUDE_CTA_AND_WISE = (41_380, 98_920)   # all that was caught
+_M2_NEWS_STARTS = 98_920
+
+
+def _spans_for(fixture: Path, episode: str):
+    if not fixture.exists():
+        pytest.skip(f"Fixture not found: {fixture}")
+    with open(fixture) as f:
+        raw = json.load(f)
+    from skipcastify.services.audio_processor import AudioProcessor, Segment
+    segments = [Segment(start=s["start"], end=s["end"], text=s["text"]) for s in raw]
+    processor = AudioProcessor("data")
+    with tempfile.TemporaryDirectory() as tmp:
+        return processor._run_section_llm(segments, tmp, episode_name=episode)
+
+
+@pytest.fixture(scope="module")
+def midroll_sec1_spans():
+    return _spans_for(_MIDROLL_SEC1_FIXTURE, _PREROLL_EPISODE + "_midroll_sec1")
+
+
+@pytest.fixture(scope="module")
+def midroll_sec2_spans():
+    return _spans_for(_MIDROLL_SEC2_FIXTURE, _PREROLL_EPISODE + "_midroll_sec2")
+
+
+class TestMidrollPodTrailingEdge:
+    """Section 1: the pod continues to the end of the window.
+
+    The two edge tests are xfail(strict=False) on purpose. Over four runs of
+    this fixture, two stopped the span at 533920 (mid-Schwab, even earlier
+    than production did) and two caught both the Schwab read and the Claude
+    ad. A strict xfail would XPASS half the time and a plain assert would go
+    red half the time; a non-strict xfail reports which way each run went
+    without either. The intermittency is itself the finding — the trailing
+    edge of a section is where this detector is unreliable.
+    """
+
+    @pytest.mark.xfail(strict=False, reason="trailing-edge miss, ~50% of runs")
+    def test_the_schwab_brand_ad_is_flagged(self, midroll_sec1_spans):
+        """The 18.5s Schwab read that shipped."""
+        assert covered(midroll_sec1_spans, *_M1_SCHWAB_BRAND, tolerance_ms=2_000), \
+            f"Schwab brand ad {_M1_SCHWAB_BRAND} not flagged. Spans: {midroll_sec1_spans}"
+
+    @pytest.mark.xfail(strict=False, reason="trailing-edge miss, ~50% of runs")
+    def test_the_claude_ad_running_past_the_window_is_flagged(self, midroll_sec1_spans):
+        """An ad that is still going when the window ends is still an ad."""
+        assert covered(midroll_sec1_spans, *_M1_CLAUDE_TO_EDGE, tolerance_ms=2_000), \
+            f"Claude ad {_M1_CLAUDE_TO_EDGE} not flagged. Spans: {midroll_sec1_spans}"
+
+    def test_the_coke_pod_is_still_caught(self, midroll_sec1_spans):
+        """Must not regress: this much production got right."""
+        assert covered(midroll_sec1_spans, *_M1_COKE_POD), \
+            f"Coca-Cola pod {_M1_COKE_POD} not detected. Spans: {midroll_sec1_spans}"
+
+
+class TestMidrollPodTrailingEdgeMustNotRemove:
+    def test_the_midterms_news_is_kept(self, midroll_sec1_spans):
+        assert not any_overlap(midroll_sec1_spans, 0, _M1_NEWS_ENDS), \
+            f"News content before {_M1_NEWS_ENDS}ms was flagged. Spans: {midroll_sec1_spans}"
+
+
+class TestMidrollPodLeadingEdge:
+    """Section 2: the window opens 41.4s into the Claude ad."""
+
+    @pytest.mark.xfail(strict=True,
+                       reason="leading-edge miss: the span starts at the CTA "
+                              "segment and is never expanded back through the "
+                              "pitch that opens the window (7/7 runs)")
+    def test_the_claude_pitch_opening_the_section_is_flagged(self, midroll_sec2_spans):
+        """41.4s of Claude pitch, from the first line of the window to the CTA.
+
+        Rule 6 of the prompt already says to expand backward from a hard CTA
+        through the whole contiguous lead-in, and the CTA is right there at
+        41380. It is not applied when the lead-in reaches the start of the
+        window — every run returns exactly one span, [41380-98920].
+
+        Already tried and rejected: adding a rule to the prompt spelling out
+        that the window is one slice of a longer episode, that it may open
+        mid-ad, and that start_ms then belongs at the first segment rather
+        than at the CTA. Three more runs, same single [41380-98920] span. So
+        the leading edge does not yield to a stated rule; it would need a
+        worked example, or a text-aware second pass over the gaps between
+        flagged spans. Do not re-run that experiment.
+        """
+        assert covered(midroll_sec2_spans, *_M2_CLAUDE_PITCH, tolerance_ms=2_000), \
+            f"Claude pitch {_M2_CLAUDE_PITCH} not flagged. Spans: {midroll_sec2_spans}"
+
+    def test_the_claude_cta_and_wise_ad_are_caught(self, midroll_sec2_spans):
+        """Must not regress: this is the span production returned."""
+        assert covered(midroll_sec2_spans, *_M2_CLAUDE_CTA_AND_WISE,
+                       tolerance_ms=2_000), \
+            f"Claude CTA + Wise {_M2_CLAUDE_CTA_AND_WISE} not detected. " \
+            f"Spans: {midroll_sec2_spans}"
+
+
+class TestMidrollPodLeadingEdgeMustNotRemove:
+    def test_the_gaza_report_is_kept(self, midroll_sec2_spans):
+        """The news resumes inside the last ad segment, so the guard starts
+        just past it."""
+        assert not any_overlap(midroll_sec2_spans, _M2_NEWS_STARTS + 2_000, 10 ** 9), \
+            f"News content past {_M2_NEWS_STARTS}ms was flagged. " \
+            f"Spans: {midroll_sec2_spans}"
