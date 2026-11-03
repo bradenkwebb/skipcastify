@@ -10,7 +10,7 @@ from typing import Optional
 
 from skipcastify.services.analytics import load_events
 
-LABELS = ("ad", "self_promo", "uncertain", "intro_outro")
+LABELS = ("ad", "self_promo", "intro_outro")
 FORMAT_VERSION = 2
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 

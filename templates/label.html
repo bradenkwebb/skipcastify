@@ -8,7 +8,7 @@
   :root {
     --bg: #0f1116; --panel: #181b23; --panel2: #1f2430; --line: #2a2f3a;
     --fg: #e6e9ef; --muted: #8b93a3; --accent: #5b9dff;
-    --ad: #ff6b6b; --self_promo: #b48cff; --uncertain: #f5b942; --intro_outro: #3cc8c8;
+    --ad: #ff6b6b; --self_promo: #b48cff; --intro_outro: #3cc8c8; --warn: #f5b942;
     --cut: rgba(230,233,239,.6);
   }
   * { box-sizing: border-box; }
@@ -39,7 +39,8 @@
   #save { font-size: 12px; min-width: 70px; text-align: right; }
 
   #wrap { flex: 1; display: flex; min-height: 0; }
-  #rows { flex: 1; overflow-y: auto; outline: none; user-select: none; padding-bottom: 40vh; }
+  /* Padding lets the first and last rows reach the vertical center. */
+  #rows { flex: 1; overflow-y: auto; outline: none; user-select: none; position: relative; padding: 50vh 0; }
   #mini { width: 56px; flex: none; border-left: 1px solid var(--line); cursor: pointer; display: block; }
   .row { display: grid; grid-template-columns: 58px 8px 5px 1fr auto; gap: 0 8px; padding: 2px 12px 2px 6px;
          align-items: stretch; border-left: 3px solid transparent; }
@@ -49,11 +50,11 @@
   .row .b, .row .p { border-radius: 2px; }
   .row .tag { font-size: 11px; padding-top: 2px; white-space: nowrap; }
   .row .tag.miss { color: var(--ad); }
-  .row .tag.over { color: var(--uncertain); }
+  .row .tag.over { color: var(--warn); }
   .row.sel { background: rgba(91,157,255,.15); }
   .row.cur { border-left-color: var(--accent); background: rgba(91,157,255,.24); }
   .row.playing .t { color: var(--fg); font-weight: 700; }
-  .row.match .x { text-decoration: underline var(--uncertain) 2px; }
+  .row.match .x { text-decoration: underline var(--warn) 2px; }
   body.nopred .row .p, body.nopred .row .tag { visibility: hidden; }
 
   #picker { flex: 1; overflow-y: auto; padding: 12px 16px 60px; max-width: 1100px; width: 100%; margin: 0 auto; }
@@ -66,7 +67,7 @@
   .ep .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .badge { font-size: 11px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .badge.done { color: #46c98b; border-color: rgba(70,201,139,.5); }
-  .badge.wip { color: var(--uncertain); border-color: rgba(245,185,66,.5); }
+  .badge.wip { color: var(--warn); border-color: rgba(245,185,66,.5); }
 
   #find { display: none; padding: 4px 8px; background: var(--panel); color: var(--fg);
           border: 1px solid var(--accent); border-radius: 6px; width: 220px; }
@@ -91,7 +92,7 @@
   <span class="tools" id="tools" hidden>
     <button id="bPred" title="Toggle predictions (p)">Predictions <kbd>p</kbd></button>
     <button id="bFill" title="Replace labels with the pipeline's cuts (P)">Start from cuts <kbd>P</kbd></button>
-    <button id="bRev" title="Mark the episode fully labeled (R)">Reviewed <kbd>R</kbd></button>
+    <button id="bRev" title="Mark the whole episode fully labeled, so unlabeled lines count as content (R)">Reviewed <kbd>R</kbd></button>
     <button id="bHelp">Keys <kbd>?</kbd></button>
     <span id="save" class="muted"></span>
   </span>
@@ -109,14 +110,15 @@
     <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>prev / next boundary</td><td><kbd>Esc</kbd></td><td>collapse selection</td></tr>
     <tr><td><kbd>/</kbd></td><td>find text</td><td><kbd>n</kbd> <kbd>N</kbd></td><td>next / prev match</td></tr>
     <tr><td>click, drag, <kbd>⇧</kbd>click</td><td>select rows</td><td>minimap</td><td>click or drag to jump</td></tr>
+    <tr><td>scroll</td><td>moves the centered cursor</td><td><kbd>⇧</kbd>scroll</td><td>extend selection</td></tr>
   </table>
   <h3>Label</h3>
   <table>
     <tr><td><kbd>1</kbd></td><td>ad (third-party)</td><td><kbd>2</kbd></td><td>self-promo / house ad</td></tr>
-    <tr><td><kbd>3</kbd></td><td>uncertain</td><td><kbd>4</kbd></td><td>intro / outro / credits</td></tr>
+    <tr><td><kbd>3</kbd></td><td>intro / outro / credits</td><td></td><td></td></tr>
     <tr><td><kbd>0</kbd> / <kbd>⌫</kbd></td><td>back to content</td><td><kbd>u</kbd> <kbd>^z</kbd> · <kbd>^r</kbd> <kbd>^⇧z</kbd></td><td>undo · redo</td></tr>
     <tr><td><kbd>,</kbd> <kbd>.</kbd> / <kbd>⌥←</kbd> <kbd>⌥→</kbd></td><td>nudge span start ∓0.5s</td><td><kbd>&lt;</kbd> <kbd>&gt;</kbd> / <kbd>⌥⇧←</kbd> <kbd>⌥⇧→</kbd></td><td>nudge span end ∓0.5s</td></tr>
-    <tr><td><kbd>R</kbd></td><td>mark reviewed</td><td><kbd>P</kbd></td><td>start from the pipeline's cuts</td></tr>
+    <tr><td><kbd>R</kbd></td><td>mark the whole episode reviewed</td><td><kbd>P</kbd></td><td>start from the pipeline's cuts</td></tr>
   </table>
   <h3>Listen (raw audio, off until you press play)</h3>
   <table>
@@ -125,7 +127,7 @@
   </table>
   <p class="muted" style="margin:12px 0 0">Saves automatically. Stripe right of the label bar = what the pipeline cut
     (whole Whisper lines it touched). <span style="color:var(--ad)">missed</span> = labeled ad left in;
-    <span style="color:var(--uncertain)">cut</span> = removed but not labeled ad.</p>
+    <span style="color:var(--warn)">cut</span> = removed but not labeled ad.</p>
 </div></div>
 
 <script>
@@ -133,8 +135,7 @@ const EP = {{ episode|tojson }};
 const LABELS = [
   {key: 'ad', n: '1', name: 'Ad'},
   {key: 'self_promo', n: '2', name: 'Self-promo'},
-  {key: 'uncertain', n: '3', name: 'Uncertain'},
-  {key: 'intro_outro', n: '4', name: 'Intro/outro'},
+  {key: 'intro_outro', n: '3', name: 'Intro/outro'},
 ];
 const COLOR = {};
 for (const l of LABELS) COLOR[l.key] = getComputedStyle(document.documentElement).getPropertyValue('--' + l.key).trim();
@@ -315,7 +316,17 @@ function move(d, extend) {
   cur = Math.max(0, Math.min(S.length - 1, cur + d));
   if (!extend) anchor = cur;
   lastNudged = null;
-  paintSel(); rowEls[cur].scrollIntoView({block: 'nearest'});
+  paintSel(); centerCur();
+}
+function centerCur() {
+  const box = $('rows'), el = rowEls[cur];
+  box.scrollTop = el.offsetTop + el.offsetHeight / 2 - box.clientHeight / 2;
+}
+function rowAtCenter() {
+  const box = $('rows'), y = box.scrollTop + box.clientHeight / 2;
+  let lo = 0, hi = rowEls.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; rowEls[m].offsetTop <= y ? lo = m : hi = m - 1; }
+  return lo;
 }
 function jumpBoundary(d) {
   const key = i => labelAt(i) + '|' + (showPred && predCut[i] ? 1 : 0);
@@ -344,15 +355,15 @@ function changed() {
     el.querySelector('.p').style.background = predCut[i] ? 'var(--cut)' : 'none';
     const adMs = overlap(ads, [[r.start, r.end]]), lab = labelAt(i), tag = el.querySelector('.tag');
     if (adMs > d / 2 && !predCut[i]) { tag.className = 'tag miss'; tag.textContent = 'missed'; }
-    else if (predCut[i] && lab !== 'ad' && lab !== 'uncertain' && (spans.length || reviewed)) { tag.className = 'tag over'; tag.textContent = 'cut'; }
+    else if (predCut[i] && lab !== 'ad' && (spans.length || reviewed)) { tag.className = 'tag over'; tag.textContent = 'cut'; }
     else { tag.className = 'tag'; tag.textContent = ''; }
   });
   const adMs = total(ads), missed = adMs - overlap(ads, cut);
-  const over = total(cut) - overlap(cut, ofLabel('ad', 'uncertain'));
+  const over = total(cut) - overlap(cut, ads);
   const cutTxt = PRED_N ? `pipeline cut <b>${fmt(total(cut))}</b>` : '<span class="muted">no pipeline cuts</span>';
   $('stats').innerHTML = !spans.length && !reviewed ? `${cutTxt} · <span class="muted">not labeled yet</span>`
     : `labeled ad <b>${fmt(adMs)}</b> · ${cutTxt}` + (PRED_N ? ` · <span style="color:var(--ad)">missed <b>${fmt(missed)}</b></span>`
-      + ` · <span style="color:var(--uncertain)">wrongly cut <b>${fmt(over)}</b></span>` : '');
+      + ` · <span style="color:var(--warn)">wrongly cut <b>${fmt(over)}</b></span>` : '');
   $('bRev').classList.toggle('on', reviewed);
   paintSel();
   queueSave();
@@ -440,8 +451,7 @@ function drawMini() {
 function miniJump(e) {
   const ms = (e.offsetY / $('mini').clientHeight) * dur;
   let i = S.findIndex(r => r.end > ms); if (i < 0) i = S.length - 1;
-  cur = anchor = i; paintSel();
-  rowEls[i].scrollIntoView({block: 'center'});
+  cur = anchor = i; paintSel(); centerCur();
 }
 
 // ---------- find ----------
@@ -454,7 +464,7 @@ function runFind() {
 function nextMatch(d) {
   if (!matches.length) return toast('No matches');
   const i = d > 0 ? (matches.find(m => m > cur) ?? matches[0]) : ([...matches].reverse().find(m => m < cur) ?? matches[matches.length - 1]);
-  cur = anchor = i; paintSel(); rowEls[i].scrollIntoView({block: 'center'});
+  cur = anchor = i; paintSel(); centerCur();
 }
 
 function prefill() {
@@ -486,7 +496,7 @@ async function editor() {
     + (HAS_AUDIO ? '' : '<span class="muted" style="font-size:12px">no raw audio</span>')
     + '<span id="stats"></span>';
   $('bFill').disabled = !PRED_N;
-  render(); setPred(showPred); changed();
+  render(); setPred(showPred); changed(); centerCur();
   loaded = true; $('save').textContent = d.spans.length || d.reviewed ? 'saved' : '';
   $('rows').focus();
   bindEditor();
@@ -498,7 +508,7 @@ function bindEditor() {
   box.addEventListener('mousedown', e => {
     const el = e.target.closest('.row'); if (!el) return;
     const i = +el.dataset.i;
-    if (e.target.classList.contains('t')) { cur = anchor = i; paintSel(); play(S[i].start, null); return; }
+    if (e.target.classList.contains('t')) { cur = anchor = i; paintSel(); centerCur(); play(S[i].start, null); return; }
     cur = i; if (!e.shiftKey) anchor = i;
     dragging = true; lastNudged = null; paintSel();
   });
@@ -506,8 +516,18 @@ function bindEditor() {
     if (!dragging || !(e.buttons & 1)) return;
     const el = e.target.closest('.row'); if (el && +el.dataset.i !== cur) { cur = +el.dataset.i; paintSel(); }
   });
-  addEventListener('mouseup', () => dragging = false);
-  box.addEventListener('scroll', () => requestAnimationFrame(drawMini));
+  addEventListener('mouseup', () => { if (dragging) { dragging = false; centerCur(); } });
+  let shiftHeld = false;
+  addEventListener('keydown', e => shiftHeld = e.shiftKey);
+  addEventListener('keyup', e => shiftHeld = e.shiftKey);
+  // Scrolling moves the text under a fixed, centered cursor.
+  box.addEventListener('scroll', () => {
+    if (!dragging) {
+      const i = rowAtCenter();
+      if (i !== cur) { cur = i; if (!shiftHeld) anchor = i; lastNudged = null; paintSel(); }
+    }
+    requestAnimationFrame(drawMini);
+  });
   addEventListener('resize', drawMini);
   let miniDrag = false;
   $('mini').addEventListener('mousedown', e => { miniDrag = true; miniJump(e); });

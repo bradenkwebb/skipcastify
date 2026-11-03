@@ -77,6 +77,7 @@ def test_empty_reviewed_save_records_no_ads(data):
 @pytest.mark.parametrize('bad', [
     [{'start_ms': 5, 'end_ms': 1, 'label': 'ad'}],
     [{'start_ms': 0, 'end_ms': 1, 'label': 'ADVERTISEMENT'}],
+    [{'start_ms': 0, 'end_ms': 1, 'label': 'uncertain'}],
     [{'start_ms': 0, 'label': 'ad'}],
     'nope',
 ])
