@@ -5,16 +5,23 @@ import requests
 from pathlib import Path
 import logging
 
+from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.utils import safe_filename, slugify, load_subscriptions
 
 logger = logging.getLogger(__name__)
 
+# A backlog bigger than this is reported, because it means something stopped
+# the pipeline for a while and the catch-up will run hot for a bit.
+BACKLOG_ALERT_THRESHOLD = 10
+
 
 class EpisodeDownloader:
-    def __init__(self, config_path: str, data_dir: str, exclude_host: str = None, episode_limit: int = 5):
+    def __init__(self, config_path: str, data_dir: str, exclude_host: str = None,
+                 episode_limit: int = 5, alerter=None):
         self.data_dir = data_dir
         self.episode_limit = episode_limit
         self.subscription_urls = load_subscriptions(config_path, exclude_host)
+        self.alerter = alerter if alerter is not None else Alerter(data_dir)
 
     def _seen_path(self) -> Path:
         return Path(self.data_dir) / "seen_episodes.json"
@@ -121,16 +128,26 @@ class EpisodeDownloader:
             ]
 
             # Guard against feed-platform migrations (e.g. Art19 → Libsyn) that
-            # rewrite every <guid>. When that happens the entire backlog suddenly
-            # looks "new" and we would re-download it a few episodes per run. If a
-            # large fraction of the feed diverges at once, treat it as an ID-scheme
-            # change and re-baseline the seen set instead of downloading everything.
-            if (feed_seen and len(unseen) > self.episode_limit
-                    and len(unseen) >= 0.5 * len(feed.entries)):
+            # rewrite every <guid>. When that happens the whole feed suddenly
+            # looks new and we would re-download it a few episodes per run.
+            #
+            # The test is whether ANY current entry is still recognised, not
+            # what fraction looks new. A migration rewrites every id, so the
+            # seen set stops matching the feed entirely. Downtime leaves the
+            # older entries matching perfectly and only recent ones unseen.
+            #
+            # The previous version keyed on "more than half the feed is
+            # unseen", which cannot tell those apart — and on 2026-11-01 it
+            # read a four-month outage as a migration, marked 290 Global News
+            # episodes seen and downloaded none of them. A whole backlog was
+            # dropped on the strength of a log line nobody reads.
+            recognised = len(feed.entries) - len(unseen)
+            if (feed_seen and recognised == 0
+                    and len(feed.entries) > self.episode_limit):
                 logger.warning(
-                    f"{podcast_title}: {len(unseen)}/{len(feed.entries)} entries appear new — "
-                    "likely a GUID change from a feed migration. Re-baselining seen set, "
-                    "downloading nothing this run."
+                    f"{podcast_title}: none of {len(feed.entries)} entries match the "
+                    f"{len(feed_seen)} ids we have seen — treating it as an id change "
+                    "and re-baselining. Downloading nothing this run."
                 )
                 for entry in feed.entries:
                     try:
@@ -138,8 +155,30 @@ class EpisodeDownloader:
                     except Exception as e:
                         logger.warning(f"Could not derive ID for entry in '{podcast_title}': {e}")
                 seen[subscription_url] = feed_seen
+                # Loud, not just logged. This silently discards everything the
+                # feed currently offers, so it is the one decision here that
+                # must never again pass unnoticed.
+                self.alerter.send(
+                    f"rebaseline:{slug}", "Podcast feed ids changed",
+                    f"{podcast_title}: none of its {len(feed.entries)} entries "
+                    f"match what we have seen, so they were all marked seen and "
+                    f"none downloaded. If this was not a feed migration, episodes "
+                    f"have been skipped.", priority="high")
                 results.append({"feed": slug, "status": "rebaselined"})
                 continue
+
+            # A real backlog: the seen set still matches the feed, so these are
+            # genuinely new episodes. Work through them episode_limit at a time
+            # — undownloaded ones stay unseen, so later runs pick up the rest
+            # rather than losing them.
+            if len(unseen) > BACKLOG_ALERT_THRESHOLD:
+                logger.info(f"{podcast_title}: {len(unseen)} episodes behind, "
+                            f"taking {self.episode_limit} this run")
+                self.alerter.send(
+                    f"backlog:{slug}", "Podcast backlog being worked through",
+                    f"{podcast_title} is {len(unseen)} episodes behind and is "
+                    f"catching up {self.episode_limit} per run. Expect the box "
+                    f"to run warm until it clears.")
 
             new_entries = unseen[:self.episode_limit]
 

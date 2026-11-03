@@ -47,7 +47,8 @@ class Pipeline:
 
         exclude_host = urlparse(server_base_url).hostname
         self.feed_manager = FeedManager(server_base_url, data_dir, episode_token)
-        self.downloader = EpisodeDownloader(config_path, data_dir, exclude_host, episode_limit)
+        self.downloader = EpisodeDownloader(config_path, data_dir, exclude_host,
+                                           episode_limit, alerter=self.alerter)
         self.processor = AudioProcessor(data_dir)
 
     def _audio_size(self) -> int:
