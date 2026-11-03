@@ -114,3 +114,103 @@ class TestMustNotRemove:
         """Podcast credits and outro should be kept."""
         assert not any_overlap(llm_spans, 1_902_000, 1_935_000), \
             f"BBC outro [1902000-1935000ms] was falsely flagged. Spans: {llm_spans}"
+
+
+# --- the Schwab pre-roll miss, 2026-11-02 --------------------------------
+#
+# Episode: trump_celebrates_shock_endorsement_ahead_of_us_midterms
+#
+# The pre-roll pod is BBC notice -> Odoo -> Charles Schwab. In the published
+# episode the 19.2s Schwab pitch survived and only its CTA was cut, so the ad
+# shipped. Braden confirmed it should have been caught.
+#
+# The saved raw response from that run shows why, and it is not what the
+# symptom suggests. The model returned three spans and every one of them was
+# a URL line: [0-3420], [16560-18600] ("Join Odo today at Odo.com") and
+# [41740-44840] ("Listen at Schwab.com slash Washington Wise"). It matched
+# CTAs, not ads. The Odoo *body* was only removed because merge_nearby_spans
+# bridged the 13.1s hole to the CTA; the Schwab CTA sat 21s from the previous
+# span, over the 15s merge gap, so its body stayed in.
+#
+# That degradation is NOT reproducible. Same prompt, same model, same section,
+# temperature 0, five consecutive runs: all five cover the Schwab pitch in
+# full. So this is a guard against the detector dropping back to URL matching,
+# not a known-failing case — which is worth having precisely because the
+# failure was transient and nothing would otherwise notice it recurring.
+#
+# The fixture is section 0 exactly as the pipeline builds it (0-600000ms),
+# because a 151s clip around the pod was caught correctly even on the first
+# try; the degradation only appeared at full section size.
+
+_PREROLL_FIXTURE = (Path(__file__).parent / "fixtures"
+                    / "global-news-trump_endorsement-preroll_transcript.json")
+_PREROLL_EPISODE = "global-news-podcast-trump_celebrates_shock_endorsement_ahead_of_us_midterms"
+
+_ODOO = (5_980, 20_720)
+_SCHWAB_PITCH = (21_660, 40_860)      # kept; this is the miss
+_SCHWAB_CTA = (41_740, 44_840)        # all that was caught
+_NEWS_STARTS = 50_000
+
+
+@pytest.fixture(scope="module")
+def preroll_segments():
+    if not _PREROLL_FIXTURE.exists():
+        pytest.skip(f"Fixture not found: {_PREROLL_FIXTURE}")
+    with open(_PREROLL_FIXTURE) as f:
+        raw = json.load(f)
+    from skipcastify.services.audio_processor import Segment
+    return [Segment(start=s["start"], end=s["end"], text=s["text"]) for s in raw]
+
+
+@pytest.fixture(scope="module")
+def preroll_llm_spans(preroll_segments):
+    from skipcastify.services.audio_processor import AudioProcessor
+    processor = AudioProcessor("data")
+    with tempfile.TemporaryDirectory() as tmp:
+        return processor._run_section_llm(preroll_segments, tmp,
+                                          episode_name=_PREROLL_EPISODE)
+
+
+class TestSchwabPrerollMustDetect:
+    def test_the_schwab_pitch_is_flagged(self, preroll_llm_spans):
+        """The 19.2s that shipped on 2026-11-02.
+
+        Fails if the detector goes back to matching only the CTA line.
+        """
+        assert covered(preroll_llm_spans, *_SCHWAB_PITCH, tolerance_ms=2_000), \
+            f"Schwab pitch {_SCHWAB_PITCH} not flagged. Spans: {preroll_llm_spans}"
+
+    def test_the_whole_preroll_pod_is_one_unbroken_span(self, preroll_llm_spans):
+        """No holes. A hole is what postprocessing then has to paper over, and
+        whether it manages to depends on an arbitrary 15s merge gap."""
+        assert covered(preroll_llm_spans, 0, _SCHWAB_CTA[1], tolerance_ms=2_000), \
+            f"Pre-roll pod has a hole. Spans: {preroll_llm_spans}"
+
+    def test_the_ad_bodies_are_detected_not_just_their_urls(self, preroll_llm_spans):
+        """The specific 2026-11-02 failure: every returned span was a URL line.
+
+        Detection that only finds CTAs leaves the actual pitch to be rescued
+        by a distance heuristic, which is how the Schwab read got through.
+        """
+        longest = max((s["end_ms"] - s["start_ms"] for s in preroll_llm_spans),
+                      default=0)
+        assert longest > 10_000, (
+            f"No span longer than 10s — the detector is matching CTAs rather "
+            f"than ads. Spans: {preroll_llm_spans}")
+
+    def test_the_odoo_ad_is_still_caught(self, preroll_llm_spans):
+        """Must not regress."""
+        assert covered(preroll_llm_spans, *_ODOO), \
+            f"Odoo ad {_ODOO} not detected. Spans: {preroll_llm_spans}"
+
+    def test_the_schwab_cta_is_still_caught(self, preroll_llm_spans):
+        """Must not regress: this much the detector already gets right."""
+        assert any_overlap(preroll_llm_spans, *_SCHWAB_CTA), \
+            f"Schwab CTA {_SCHWAB_CTA} not detected. Spans: {preroll_llm_spans}"
+
+
+class TestSchwabPrerollMustNotRemove:
+    def test_the_news_bulletin_is_kept(self, preroll_llm_spans):
+        """Fixing the pre-roll must not start eating the programme."""
+        assert not any_overlap(preroll_llm_spans, _NEWS_STARTS + 2_000, 10 ** 9), \
+            f"News content past {_NEWS_STARTS}ms was flagged. Spans: {preroll_llm_spans}"
