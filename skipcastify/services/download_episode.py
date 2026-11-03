@@ -38,6 +38,13 @@ class EpisodeDownloader:
         with open(self._seen_path(), "w") as f:
             json.dump({k: sorted(v) for k, v in seen.items()}, f, indent=2)
 
+    def _safe_entry_id(self, entry) -> str | None:
+        """_entry_id, or None for an entry we cannot identify at all."""
+        try:
+            return self._entry_id(entry)
+        except Exception:
+            return None
+
     def _entry_id(self, entry) -> str:
         """Return a stable identifier for a feed entry (guid preferred, audio URL as fallback)."""
         eid = entry.get("id") or entry.get("guid")
@@ -122,10 +129,22 @@ class EpisodeDownloader:
                 results.append({"feed": slug, "status": "baselined"})
                 continue
 
-            unseen = [
-                entry for entry in feed.entries
-                if self._entry_id(entry) not in feed_seen
-            ]
+            # _entry_id raises for an entry with neither a guid nor an
+            # enclosure — a text-only post in an otherwise normal feed. Inside
+            # the comprehension that exception escaped download_latest and took
+            # the whole download stage with it, so one malformed entry in one
+            # feed stopped every other feed from being checked, on every run.
+            # An entry we cannot identify cannot be tracked, so skip it.
+            unseen = []
+            for entry in feed.entries:
+                try:
+                    entry_id = self._entry_id(entry)
+                except Exception as e:
+                    logger.warning(f"Skipping an entry of '{podcast_title}' with no "
+                                   f"usable id: {e}")
+                    continue
+                if entry_id not in feed_seen:
+                    unseen.append(entry)
 
             # Guard against feed-platform migrations (e.g. Art19 → Libsyn) that
             # rewrite every <guid>. When that happens the whole feed suddenly
@@ -141,11 +160,12 @@ class EpisodeDownloader:
             # read a four-month outage as a migration, marked 290 Global News
             # episodes seen and downloaded none of them. A whole backlog was
             # dropped on the strength of a log line nobody reads.
-            recognised = len(feed.entries) - len(unseen)
+            identified = sum(1 for e in feed.entries if self._safe_entry_id(e))
+            recognised = identified - len(unseen)
             if (feed_seen and recognised == 0
-                    and len(feed.entries) > self.episode_limit):
+                    and identified > self.episode_limit):
                 logger.warning(
-                    f"{podcast_title}: none of {len(feed.entries)} entries match the "
+                    f"{podcast_title}: none of {identified} identifiable entries match the "
                     f"{len(feed_seen)} ids we have seen — treating it as an id change "
                     "and re-baselining. Downloading nothing this run."
                 )
@@ -160,7 +180,7 @@ class EpisodeDownloader:
                 # must never again pass unnoticed.
                 self.alerter.send(
                     f"rebaseline:{slug}", "Podcast feed ids changed",
-                    f"{podcast_title}: none of its {len(feed.entries)} entries "
+                    f"{podcast_title}: none of its {identified} entries "
                     f"match what we have seen, so they were all marked seen and "
                     f"none downloaded. If this was not a feed migration, episodes "
                     f"have been skipped.", priority="high")

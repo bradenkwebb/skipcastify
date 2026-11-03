@@ -208,3 +208,41 @@ def test_up_to_date_when_nothing_is_new(downloader, tmp_path):
 
     assert result[0]["status"] == "up_to_date"
     assert downloader.downloaded == []
+
+
+# --- one bad entry must not stop everything ------------------------------
+
+class UnidentifiableEntry:
+    """A text-only post: no guid, no enclosure, so no stable id exists."""
+
+    def __init__(self, title="A blog post"):
+        self.title = title
+        self.enclosures = []
+
+    def get(self, key, default=None):
+        return default
+
+
+def test_an_entry_with_no_id_is_skipped_not_fatal(downloader, tmp_path):
+    """It used to escape download_latest and take the whole stage with it, so
+    one malformed entry in one feed stopped every feed, on every run."""
+    entries = [FakeEntry("ep0"), UnidentifiableEntry(), FakeEntry("ep1")]
+    seed_seen(tmp_path, set())
+
+    result = run(downloader, entries)
+
+    assert sorted(downloader.downloaded) == ["ep0", "ep1"]
+    assert result[0]["status"] == "downloaded"
+
+
+def test_unidentifiable_entries_do_not_trigger_a_re_baseline(downloader, tmp_path, alerts):
+    """They are never recognised, so counting them would make a healthy feed
+    of mostly text posts look like an id migration."""
+    entries = [FakeEntry(f"ep{i}") for i in range(8)] + \
+              [UnidentifiableEntry(f"post {i}") for i in range(20)]
+    seed_seen(tmp_path, {f"ep{i}" for i in range(8)})
+
+    result = run(downloader, entries)
+
+    assert result[0]["status"] == "up_to_date"
+    assert alerts.sent == []
