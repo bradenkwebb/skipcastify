@@ -84,9 +84,10 @@ class GroundTruthStore:
             with open(label_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            labels = []
-            for item in data.get('ads', []):
-                labels.append(GroundTruthLabel.from_dict(item))
+            labels = [GroundTruthLabel.from_dict(item) for item in data.get('ads', [])]
+            # v2 files come from the /label GUI; only "ad" spans should be cut.
+            labels += [GroundTruthLabel(s['start_ms'], s['end_ms'], 'ADVERTISEMENT')
+                       for s in data.get('spans', []) if s.get('label') == 'ad']
             
             logger.info(f"Loaded {len(labels)} ground-truth labels for {episode_name}")
             return labels
