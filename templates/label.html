@@ -39,8 +39,7 @@
   #save { font-size: 12px; min-width: 70px; text-align: right; }
 
   #wrap { flex: 1; display: flex; min-height: 0; }
-  /* Padding lets the first and last rows reach the vertical center. */
-  #rows { flex: 1; overflow-y: auto; outline: none; user-select: none; position: relative; padding: 50vh 0; }
+  #rows { flex: 1; overflow-y: auto; outline: none; user-select: none; position: relative; }
   #mini { width: 56px; flex: none; border-left: 1px solid var(--line); cursor: pointer; display: block; }
   .row { display: grid; grid-template-columns: 58px 8px 5px 1fr auto; gap: 0 8px; padding: 2px 12px 2px 6px;
          align-items: stretch; border-left: 3px solid transparent; }
@@ -318,6 +317,8 @@ function move(d, extend) {
   lastNudged = null;
   paintSel(); centerCur();
 }
+// Half a panel of padding lets the first and last rows reach the center.
+function padRows() { const h = $('wrap').clientHeight / 2; $('rows').style.padding = `${h}px 0`; }
 function centerCur() {
   const box = $('rows'), el = rowEls[cur];
   box.scrollTop = el.offsetTop + el.offsetHeight / 2 - box.clientHeight / 2;
@@ -496,7 +497,7 @@ async function editor() {
     + (HAS_AUDIO ? '' : '<span class="muted" style="font-size:12px">no raw audio</span>')
     + '<span id="stats"></span>';
   $('bFill').disabled = !PRED_N;
-  render(); setPred(showPred); changed(); centerCur();
+  render(); setPred(showPred); changed(); padRows(); centerCur();
   loaded = true; $('save').textContent = d.spans.length || d.reviewed ? 'saved' : '';
   $('rows').focus();
   bindEditor();
@@ -528,7 +529,7 @@ function bindEditor() {
     }
     requestAnimationFrame(drawMini);
   });
-  addEventListener('resize', drawMini);
+  addEventListener('resize', () => { padRows(); centerCur(); drawMini(); });
   let miniDrag = false;
   $('mini').addEventListener('mousedown', e => { miniDrag = true; miniJump(e); });
   $('mini').addEventListener('mousemove', e => { if (miniDrag && (e.buttons & 1)) miniJump(e); });
