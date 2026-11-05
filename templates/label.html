@@ -106,7 +106,6 @@
 </header>
 <div id="legend" hidden></div>
 <div id="done" hidden><b>✓ Reviewed</b>
-  <a class="btn" id="doneBack" href="/label">← Episodes <kbd>b</kbd></a>
   <a class="btn" id="doneNext" hidden></a>
   <span class="muted" style="font-size:12px">press R to un-mark</span></div>
 <div id="picker" hidden><input id="filter" placeholder="Filter episodes…  ( / to focus, j/k or ↑/↓, enter to open )"><div id="eps"></div></div>
@@ -514,7 +513,7 @@ async function go(url) {
 
 async function editor() {
   $('wrap').hidden = $('legend').hidden = $('tools').hidden = $('back').hidden = false;
-  $('back').href = $('doneBack').href = '/label?from=' + encodeURIComponent(EP);
+  $('back').href = '/label?from=' + encodeURIComponent(EP);
   $('title').textContent = EP;
   $('title').title = EP;
   const d = await (await fetch(`/api/label/${encodeURIComponent(EP)}.json`)).json();
@@ -583,7 +582,7 @@ function bindEditor() {
   $('legend').addEventListener('click', e => { const c = e.target.closest('.chip[data-l]'); if (c) applyLabel(c.dataset.l || null); });
   $('bPred').onclick = () => setPred(!showPred);
   $('bFill').onclick = prefill;
-  for (const id of ['back', 'doneBack', 'doneNext'])
+  for (const id of ['back', 'doneNext'])
     $(id).addEventListener('click', e => { e.preventDefault(); go($(id).href); });
   $('bRev').onclick = () => { snapshot(); reviewed = !reviewed; changed(); };
   $('bHelp').onclick = () => $('help').classList.add('show');
