@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 from skipcastify.services.audio_processor import AudioProcessor
 from skipcastify.services.download_episode import EpisodeDownloader
+from skipcastify.services.labeling import label_path
 from skipcastify.services.generate_feeds import FeedManager
 from skipcastify.services.run_log import RunRecord, append_run
 from skipcastify.services.state_manager import StateManager
@@ -60,6 +61,9 @@ class Pipeline:
                 total += sum(f.stat().st_size for f in base.rglob('*.mp3'))
         return total
 
+    def _labeled(self, raw_file: Path) -> bool:
+        return label_path(self.data_dir, raw_file.stem).exists()
+
     def _cleanup_old_episodes(self):
         """Storage-based retention: delete oldest audio files when usage exceeds
         the high-water mark, stopping once we're back under the low-water mark.
@@ -70,6 +74,7 @@ class Pipeline:
           3. Oldest processed files only as a last resort
 
         Only .mp3 files are ever deleted — transcripts and other metadata are kept.
+        Raw audio of hand-labeled episodes is never deleted: labels are timed to it.
         """
         raw_base = Path(self.data_dir) / 'podcasts' / 'raw'
         processed_base = Path(self.data_dir) / 'podcasts' / 'processed'
@@ -86,6 +91,8 @@ class Pipeline:
             for raw_file in sorted(raw_base.rglob('*.mp3'), key=lambda f: f.stat().st_mtime):
                 if total <= self.storage_low_water:
                     break
+                if self._labeled(raw_file):
+                    continue
                 counterpart = processed_base / raw_file.parent.name / raw_file.name
                 if counterpart.exists():
                     size = raw_file.stat().st_size
@@ -98,6 +105,8 @@ class Pipeline:
             for f in sorted(raw_base.rglob('*.mp3'), key=lambda f: f.stat().st_mtime):
                 if total <= self.storage_low_water:
                     break
+                if self._labeled(f):
+                    continue
                 size = f.stat().st_size
                 f.unlink()
                 total -= size
