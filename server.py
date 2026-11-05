@@ -3,10 +3,10 @@ import os
 import time
 from functools import wraps
 from flask import (Flask, send_from_directory, abort, request, Response,
-                   jsonify, make_response, render_template)
+                   jsonify, make_response, render_template, send_file)
 from dotenv import load_dotenv
 
-from skipcastify.services import analytics
+from skipcastify.services import analytics, labeling
 from skipcastify.services.published_feeds import published_feeds
 from skipcastify.utils.alerts import scrub_secrets
 
@@ -181,6 +181,51 @@ def stats_json():
     if days is not None and days <= 0:
         days = None
     return jsonify(analytics.build_payload(data_dir, days))
+
+
+@app.route('/label')
+@app.route('/label/<episode>')
+@require_auth
+def label_page(episode=None):
+    if episode is not None and not labeling.valid_episode(data_dir, episode):
+        return abort(404)
+    return render_template('label.html', episode=episode)
+
+
+@app.route('/api/label/episodes.json')
+@require_auth
+def label_episodes():
+    return jsonify(labeling.list_episodes(data_dir))
+
+
+@app.route('/api/label/<episode>.json', methods=['GET', 'PUT'])
+@require_auth
+def label_episode(episode):
+    if not labeling.valid_episode(data_dir, episode):
+        return abort(404)
+    if request.method == 'GET':
+        return jsonify(labeling.load_episode(data_dir, episode))
+    # Browsers attach Basic auth cross-site; a custom header forces a CORS
+    # preflight, which this server never approves.
+    if request.headers.get('X-Skipcastify') != '1' or not request.is_json:
+        return abort(403)
+    body = request.get_json(silent=True) or {}
+    try:
+        doc = labeling.save_labels(data_dir, episode, body.get('spans'), body.get('reviewed', False))
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    return jsonify(doc)
+
+
+@app.route('/api/label/<episode>/audio')
+@require_auth
+def label_audio(episode):
+    if not labeling.valid_episode(data_dir, episode):
+        return abort(404)
+    path = labeling.raw_audio_path(data_dir, episode)
+    if path is None:
+        return abort(404)
+    return send_file(path, mimetype='audio/mpeg', conditional=True)
 
 
 @app.route('/episodes/<token>/<podcast_name>/<path:filename>')

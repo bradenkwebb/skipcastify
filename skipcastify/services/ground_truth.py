@@ -25,6 +25,8 @@ import json
 
 logger = logging.getLogger(__name__)
 
+CUT_LABELS = {"ad", "self_promo"}
+
 
 class GroundTruthLabel:
     """A manually-labeled ground-truth ad span."""
@@ -84,9 +86,10 @@ class GroundTruthStore:
             with open(label_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            labels = []
-            for item in data.get('ads', []):
-                labels.append(GroundTruthLabel.from_dict(item))
+            labels = [GroundTruthLabel.from_dict(item) for item in data.get('ads', [])]
+            # v2 files come from the /label GUI; labels say what a span is, CUT_LABELS what gets removed.
+            labels += [GroundTruthLabel(s['start_ms'], s['end_ms'], 'ADVERTISEMENT')
+                       for s in data.get('spans', []) if s.get('label') in CUT_LABELS]
             
             logger.info(f"Loaded {len(labels)} ground-truth labels for {episode_name}")
             return labels
