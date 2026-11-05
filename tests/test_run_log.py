@@ -1,5 +1,7 @@
 import json
 
+import time
+
 import pytest
 
 import pipeline
@@ -44,7 +46,8 @@ class _Feed:
 
 
 def _entry(i):
-    return {"id": f"e{i}", "title": f"Ep {i}", "enclosures": [{"href": f"https://x/{i}.mp3"}]}
+    return {"id": f"e{i}", "title": f"Ep {i}", "enclosures": [{"href": f"https://x/{i}.mp3"}],
+            "published_parsed": time.gmtime()}
 
 
 class _E(dict):
