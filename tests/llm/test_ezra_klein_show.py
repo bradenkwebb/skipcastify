@@ -170,3 +170,108 @@ class TestMidrollPodMustNotRemove:
         assert not any_overlap(midroll_llm_spans, _CONTENT_AFTER_START + 2_000,
                                10 ** 9), (
             f"Editorial after the pod was flagged. Spans: {midroll_llm_spans}")
+
+
+# --- episode 3: NYT house ads, the_end_of_trumpism -----------------------
+#
+# Braden's ruling changed on 2026-11-05. In June and again on 2026-11-03 the
+# call was that NYT self-promotion could stay, on the grounds that it promotes
+# the publisher rather than a third party. After hearing this episode he
+# reversed it: the spot "was quite long and not read by the host. I would have
+# preferred if it were removed." So house ads are now cut.
+#
+# This episode shipped with two of them, both classified as content:
+#   [0-32479]          32.5s pre-roll read by the NYT's publisher, appealing
+#                      for news subscriptions. No URL, no promo code, and it
+#                      generously tells you to support your local paper too.
+#   [1276820-1332480]  55.7s mid-roll read by Anna Martin promoting the shows
+#                      tab in the NYT app. No URL either — "it's in the New
+#                      York Times app" is the whole CTA — and it spends its
+#                      first 20 seconds riffing on the phrase "wherever you
+#                      get your podcasts", which Example E of the prompt
+#                      protects as editorial.
+#
+# Both were invisible to the old prompt: 3 runs each, zero spans returned.
+# That is not a boundary or a merge-gap problem, it was policy — the prompt
+# treated a network promoting its own shows as editorial cross-promotion
+# unless there was sponsor attribution, a partner URL or a promo code, and a
+# house ad has none of those by definition.
+#
+# Rule 7 plus Examples J and K now cover it. Both cases are plain guards
+# rather than xfails because the fix ships with them: 5/5 runs on the pre-roll
+# and 3/3 on the app promo after the change.
+#
+# One fixture per section, each rebased so the section starts at 0.
+
+_PREROLL_HOUSE_FIXTURE = _FIXTURES / "ezra-klein-end_of_trumpism-publisher_preroll_transcript.json"
+_MIDROLL_HOUSE_FIXTURE = _FIXTURES / "ezra-klein-end_of_trumpism-app_promo_midroll_transcript.json"
+_HOUSE_EPISODE = "the-ezra-klein-show-the_end_of_trumpism"
+
+_PUBLISHER_SPOT = (0, 32_479)
+_PUBLISHER_EDITORIAL_STARTS = 58_980
+
+# section 2, fixture offset 1135600ms
+_APP_PROMO = (141_220, 196_880)
+_APP_PROMO_EDITORIAL_STARTS = 204_180   # "Okay, can I riff for one second?"
+
+
+@pytest.fixture(scope="module")
+def publisher_preroll_spans():
+    segments = _load_segments(_PREROLL_HOUSE_FIXTURE)
+    return _detect(segments, _HOUSE_EPISODE + "_publisher_preroll")
+
+
+@pytest.fixture(scope="module")
+def app_promo_spans():
+    segments = _load_segments(_MIDROLL_HOUSE_FIXTURE)
+    return _detect(segments, _HOUSE_EPISODE + "_app_promo")
+
+
+class TestPublisherPrerollMustDetect:
+    def test_the_publisher_spot_is_flagged(self, publisher_preroll_spans):
+        """A produced spot by the publisher, not the host, asking you to
+        subscribe. Public-interest framing is not a defence."""
+        assert covered(publisher_preroll_spans, *_PUBLISHER_SPOT, tolerance_ms=2_000), \
+            f"Publisher pre-roll {_PUBLISHER_SPOT} not flagged. Spans: {publisher_preroll_spans}"
+
+
+class TestPublisherPrerollMustNotRemove:
+    def test_the_episode_opening_is_kept(self, publisher_preroll_spans):
+        """Editorial starts at 58980 ("The Big Ten is real...") and the rest of
+        this section is the interview. Cutting a house ad must not start eating
+        the show."""
+        assert not any_overlap(publisher_preroll_spans,
+                               _PUBLISHER_EDITORIAL_STARTS + 2_000, 10 ** 9), \
+            f"Editorial past {_PUBLISHER_EDITORIAL_STARTS}ms was flagged. " \
+            f"Spans: {publisher_preroll_spans}"
+
+
+class TestAppPromoMustDetect:
+    def test_the_app_promo_is_flagged(self, app_promo_spans):
+        """55.7s promoting the publisher's own app, with no URL and no sponsor."""
+        assert covered(app_promo_spans, *_APP_PROMO, tolerance_ms=2_000), \
+            f"NYT app promo {_APP_PROMO} not flagged. Spans: {app_promo_spans}"
+
+    def test_the_wherever_you_get_your_podcasts_opening_is_included(self, app_promo_spans):
+        """The spot opens with 20s of riffing on "wherever you get your
+        podcasts" before naming the app. Example E protects that phrase in a
+        host's outro; it must not protect a produced spot built around it."""
+        assert covered(app_promo_spans, _APP_PROMO[0], _APP_PROMO[0] + 20_000,
+                       tolerance_ms=2_000), \
+            f"The opening of the house ad was not flagged. Spans: {app_promo_spans}"
+
+
+class TestAppPromoMustNotRemove:
+    def test_the_conversation_after_the_promo_is_kept(self, app_promo_spans):
+        """The ad's closing line and "Okay, can I riff for one second?" share a
+        Whisper segment, so the guard starts after it."""
+        assert not any_overlap(app_promo_spans,
+                               _APP_PROMO_EDITORIAL_STARTS + 2_000, 10 ** 9), \
+            f"Conversation past {_APP_PROMO_EDITORIAL_STARTS}ms was flagged. " \
+            f"Spans: {app_promo_spans}"
+
+    def test_the_conversation_before_the_promo_is_kept(self, app_promo_spans):
+        """141220ms in, the window opens on the interview — 2.3 minutes of it
+        before the house ad starts."""
+        assert not any_overlap(app_promo_spans, 0, _APP_PROMO[0] - 2_000), \
+            f"Conversation before the house ad was flagged. Spans: {app_promo_spans}"
