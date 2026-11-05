@@ -1,0 +1,557 @@
+[
+ {
+  "start": 0,
+  "end": 5860,
+  "text": "new ways of working. Comcast business keeps you totally in step with secure AI back,"
+ },
+ {
+  "start": 6040,
+  "end": 11020,
+  "text": "networking built to power the way modern business gets things done today, in more than 100"
+ },
+ {
+  "start": 11040,
+  "end": 17700,
+  "text": "countries around the world. That's some serious muscle. And get this, Comcast business powers over 90"
+ },
+ {
+  "start": 17700,
+  "end": 24020,
+  "text": "percent of the Fortune 500 and millions of small businesses. Behind it all, network engineers,"
+ },
+ {
+  "start": 24500,
+  "end": 30260,
+  "text": "cybersecurity specialists, support teams, thousands of experts answering your call at 2am,"
+ },
+ {
+  "start": 30740,
+  "end": 38080,
+  "text": "like its 2pm, always on, always ready. That's a lot of coffee. One partner powering how business"
+ },
+ {
+  "start": 38080,
+  "end": 43980,
+  "text": "gets done for companies of every size all around the globe. When you add it all up, no one does"
+ },
+ {
+  "start": 43980,
+  "end": 50200,
+  "text": "business like Comcast business. All right, quick quiz for the hiring managers out there. What's"
+ },
+ {
+  "start": 50200,
+  "end": 55300,
+  "text": "worse, being understaffed or being poorly staffed? Well, that's a trick question because both"
+ },
+ {
+  "start": 55300,
+  "end": 61020,
+  "text": "are recipes for chaos. Either way, just say to yourself, this is a job for indeed sponsored jobs."
+ },
+ {
+  "start": 61500,
+  "end": 65040,
+  "text": "You'll get matched with candidates that meet the skills, certifications, and everything else you're"
+ },
+ {
+  "start": 65200,
+  "end": 71440,
+  "text": "looking for. Or go a different way and get no traction. Seriously, sponsored jobs post directly"
+ },
+ {
+  "start": 71440,
+  "end": 76800,
+  "text": "on Indeed are 95 percent more likely to report a higher than non-sponsored jobs. It really is a"
+ },
+ {
+  "start": 76800,
+  "end": 80820,
+  "text": "no-brainer. Spend less time searching and more time actually interviewing candidates who check"
+ },
+ {
+  "start": 80820,
+  "end": 85700,
+  "text": "all your boxes. Less stress, less time, more results. When you need the right person to cut through"
+ },
+ {
+  "start": 85700,
+  "end": 90760,
+  "text": "the chaos, this is a job for indeed sponsored jobs. And listeners of this show will get a $75"
+ },
+ {
+  "start": 90760,
+  "end": 96360,
+  "text": "sponsored job credit to help your job get the premium status it deserves at indeed.com slash podcast."
+ },
+ {
+  "start": 96600,
+  "end": 102900,
+  "text": "Just go to indeed.com slash podcast right now indeed.com slash podcast terms and conditions apply."
+ },
+ {
+  "start": 103180,
+  "end": 106340,
+  "text": "Need to hire this is a job for indeed sponsored jobs."
+ },
+ {
+  "start": 107340,
+  "end": 112080,
+  "text": "I feel like we've been talking about this for many, many years now, but there's this persistent"
+ },
+ {
+  "start": 112080,
+  "end": 118320,
+  "text": "tension between all the consumer sentiment surveys where people report how they're feeling about"
+ },
+ {
+  "start": 118320,
+  "end": 124820,
+  "text": "the economy. Those have been very bad for many years now versus the actual numbers in the economy"
+ },
+ {
+  "start": 124820,
+  "end": 130620,
+  "text": "on consumer spending and other things that look pretty good. Do you have a story you tell yourself"
+ },
+ {
+  "start": 130620,
+  "end": 137100,
+  "text": "for as you know as a forecaster a story to explain that discrepancy. Slightly high-tech. I think some"
+ },
+ {
+  "start": 137100,
+  "end": 141900,
+  "text": "of the consumer confidence polling is not very good. You know the good thing about election goals."
+ },
+ {
+  "start": 141900,
+  "end": 147520,
+  "text": "I don't think that's a hot take by the way. Like we've been talking about it for a while. The"
+ },
+ {
+  "start": 147520,
+  "end": 151980,
+  "text": "best practice is a polling. We had an article that's a little bit of a guest author named Joel"
+ },
+ {
+  "start": 151980,
+  "end": 156440,
+  "text": "Worthheimer who has been on our podcast. He's great. Yeah and clearly I think the University of"
+ },
+ {
+  "start": 156440,
+  "end": 161800,
+  "text": "Michigan survey changed the composition to online in a way that just has like way too many"
+ },
+ {
+  "start": 161800,
+  "end": 166340,
+  "text": "Democrats in the sample. So like ironically like ironically like the complaint that people make about"
+ },
+ {
+  "start": 166340,
+  "end": 171540,
+  "text": "election pollsters which is more or less false. We can talk about that more. It is kind of true of"
+ },
+ {
+  "start": 171540,
+  "end": 177080,
+  "text": "these consumer sentiment surveys that like for better or worse election polls get a dose of"
+ },
+ {
+  "start": 177080,
+  "end": 182320,
+  "text": "reality every two years. Election polls are made in an environment where pollsters are actively"
+ },
+ {
+  "start": 182320,
+  "end": 189000,
+  "text": "fearful of missing particularly missing high on Democrats right. So that's why like let's talk"
+ },
+ {
+  "start": 189000,
+  "end": 193080,
+  "text": "people talk about like what's just been like polls and prediction markets. Polls kind of"
+ },
+ {
+  "start": 193080,
+  "end": 199140,
+  "text": "are prediction markets right. We're polling averages are at least right. Okay a poll is a data informed"
+ },
+ {
+  "start": 200100,
+  "end": 206280,
+  "text": "opinion at this point right. Yeah because this is because you have to wait a year. The pollster has"
+ },
+ {
+  "start": 206280,
+  "end": 211220,
+  "text": "to do so much modeling right. Is this what you're getting at that. So like Maris released a poll"
+ },
+ {
+  "start": 211220,
+  "end": 216540,
+  "text": "of Maine last week and the tap line number let me say right in my head said it's a toy Jackson."
+ },
+ {
+  "start": 217040,
+  "end": 221060,
+  "text": "The Democrat in Maine is up nine points which would be a very good result for Democrats. The average"
+ },
+ {
+  "start": 221060,
+  "end": 225420,
+  "text": "our average have been like D plus three in that state right. That's their registered voter poll."
+ },
+ {
+  "start": 226240,
+  "end": 231960,
+  "text": "They applied a likely voter model that brought that lead down to plus two. Yeah people self correct"
+ },
+ {
+  "start": 231960,
+  "end": 237540,
+  "text": "for the Democratic bias right. Yeah there's no way they're personal math just I don't want to get"
+ },
+ {
+  "start": 237540,
+  "end": 242280,
+  "text": "too deep in the weeds in those odd lots like the math doesn't their the math doesn't make sense right."
+ },
+ {
+  "start": 242740,
+  "end": 247160,
+  "text": "They decided what result they felt comfortable with and reverse engineered. You see we just okay we"
+ },
+ {
+  "start": 247160,
+  "end": 251840,
+  "text": "don't have to get into the math but what you're saying is they had a poll that said Troye Jackson"
+ },
+ {
+  "start": 251840,
+  "end": 257040,
+  "text": "was up nine percent but in our likely voter models two percent and what you're saying what Nate"
+ },
+ {
+  "start": 257040,
+  "end": 262280,
+  "text": "Silver is saying is like I don't know how you got from nine to two. No and the governor's"
+ },
+ {
+  "start": 262280,
+  "end": 267280,
+  "text": "face in from 11 to zero like the math literally doesn't add up and like so it's like okay so this"
+ },
+ {
+  "start": 267280,
+  "end": 272420,
+  "text": "is your poll on zero opinion yeah is the way I see it and like and we're aggregating opinions and so"
+ },
+ {
+  "start": 272420,
+  "end": 275880,
+  "text": "like on the one hand when you see a poll like that I'm like I'd have existential doubt about"
+ },
+ {
+  "start": 275880,
+  "end": 281740,
+  "text": "the accuracy of polling for sure right on the other hand if you have a model that's like a consensus"
+ },
+ {
+  "start": 282840,
+  "end": 287260,
+  "text": "thermometer that looks at the correlations and translates polls into probabilities like that's"
+ },
+ {
+  "start": 287260,
+  "end": 292260,
+  "text": "really what flipper my model is doing and like so like oh actually I kind of like that from"
+ },
+ {
+  "start": 292260,
+  "end": 297520,
+  "text": "modeling standpoint because it proves the kind of underlying hypothesis that like pollsters are"
+ },
+ {
+  "start": 297520,
+  "end": 304780,
+  "text": "rational actors and therefore although polls are imprecise instruments there is a lot of incentive"
+ },
+ {
+  "start": 304780,
+  "end": 312000,
+  "text": "not to systematically miss I got it so what you're saying is because you can look at the math and say"
+ },
+ {
+  "start": 312000,
+  "end": 318480,
+  "text": "look you can't really justify turning a plus nine into a plus two as someone who aggregates polls"
+ },
+ {
+  "start": 318480,
+  "end": 326920,
+  "text": "and then creates a model that can give you some sort of confidence that like confidence that errors"
+ },
+ {
+  "start": 327500,
+  "end": 331440,
+  "text": "in the long run if you have elections every two or four years will never be updated approved but"
+ },
+ {
+  "start": 331440,
+  "end": 337240,
+  "text": "confident the errors are symmetric in the yeah I get I get exactly the way you're saying so okay"
+ },
+ {
+  "start": 337240,
+  "end": 342220,
+  "text": "people don't pick up the phone like these two yeah I know you know certainly they don't recognize it"
+ },
+ {
+  "start": 342220,
+  "end": 347560,
+  "text": "and if someone calls me and asks for my political opinion I'm not way so then there's this vision"
+ },
+ {
+  "start": 347560,
+  "end": 352720,
+  "text": "well why don't we just create an AI replica of Tracy L away and an AI replica of Joe Weissethal"
+ },
+ {
+  "start": 352720,
+  "end": 362160,
+  "text": "and an AI replica of a high school educated oil worker in Texas and an AI replicated version of"
+ },
+ {
+  "start": 362160,
+  "end": 368100,
+  "text": "a HR professional who works for general motors and the Detroit suburbs and we just pull them"
+ },
+ {
+  "start": 368100,
+  "end": 371960,
+  "text": "and then we don't and they're always going to pick up the phone what's wrong with this this is the"
+ },
+ {
+  "start": 371960,
+  "end": 376060,
+  "text": "digital twin yeah the digital why don't we just create a digital twin of all the mayor so the problem"
+ },
+ {
+  "start": 376060,
+  "end": 380600,
+  "text": "is like and by the way I think these companies are smart I know some people that work for them right"
+ },
+ {
+  "start": 380600,
+  "end": 387020,
+  "text": "but like polling cannot be outsourced to AI agents right because it's one of the few sources of"
+ },
+ {
+  "start": 387600,
+  "end": 394000,
+  "text": "ground truth that we have anymore number one and also the models are kind of so if you ask"
+ },
+ {
+  "start": 394000,
+  "end": 401000,
+  "text": "a poll to create like a synthetic Hispanic respondent right 99% of their synthetic Hispanic"
+ },
+ {
+  "start": 401000,
+  "end": 405900,
+  "text": "respondents love soccer it's a bit like if you ask like Claude to pick a number from 0 to 10"
+ },
+ {
+  "start": 405900,
+  "end": 410320,
+  "text": "like always pick seven yeah it's a bit like I mean this gets into whole existential thing about how"
+ },
+ {
+  "start": 410320,
+  "end": 415480,
+  "text": "like large language models work and like they're kind of it's kind of the ideal type or something"
+ },
+ {
+  "start": 415480,
+  "end": 420540,
+  "text": "but like but no we need original data right models like flipper or prediction markets can"
+ },
+ {
+  "start": 420540,
+  "end": 426600,
+  "text": "aggregate that data but but you know because like voters aren't all that predictable you know I"
+ },
+ {
+  "start": 426600,
+  "end": 430460,
+  "text": "don't even like the kind of slicing and dicing that you see oh the Hispanic vote right well the"
+ },
+ {
+  "start": 430460,
+  "end": 434700,
+  "text": "Hispanic vote is younger Hispanics and older Hispanics people who have relatively new to the country"
+ },
+ {
+  "start": 434700,
+  "end": 438560,
+  "text": "and people who have been here for a long time right keeping Americans and Puerto Ricans and"
+ },
+ {
+  "start": 438560,
+  "end": 442980,
+  "text": "Mexican Americans and Dominicans and everything else and like those groups don't always agree with one"
+ },
+ {
+  "start": 442980,
+  "end": 448140,
+  "text": "another and people best at like the Hispanic vote is one of the most swinging demographics in"
+ },
+ {
+  "start": 448140,
+  "end": 455200,
+  "text": "in the United States and so like yeah it's just it's just overly reductive and kind of almost like"
+ },
+ {
+  "start": 455200,
+  "end": 460860,
+  "text": "a snake eating its tail yeah a little bit I feel like turnout in particular would be difficult for"
+ },
+ {
+  "start": 460860,
+  "end": 465660,
+  "text": "a digital twin to model like maybe you can come up with political preference based on demographics"
+ },
+ {
+  "start": 465660,
+  "end": 470820,
+  "text": "but like predicting whether someone is actually going to leave the house and vote seems particularly"
+ },
+ {
+  "start": 470820,
+  "end": 475520,
+  "text": "difficult to me but tell me if I'm wrong yeah we did a little simulation in South Carolina which is"
+ },
+ {
+  "start": 476060,
+  "end": 480460,
+  "text": "one of the more surprising races to be pulling closely and you know and one more frankly be a"
+ },
+ {
+  "start": 480460,
+  "end": 484560,
+  "text": "bit more surprised to Democrats one right but like you know what if black voters in South Carolina"
+ },
+ {
+  "start": 484560,
+  "end": 491780,
+  "text": "turned out at 2024 rates and white voters turned out at 2022 rates like that shifts the top lines by"
+ },
+ {
+  "start": 491780,
+  "end": 497340,
+  "text": "like 10 points right it's a deliberately extreme example and in South Carolina the white vote is very"
+ },
+ {
+  "start": 497340,
+  "end": 501960,
+  "text": "conservative but you know that's an example of like you know because you have had some midterms where"
+ },
+ {
+  "start": 501960,
+  "end": 507880,
+  "text": "2018 in particular you had some states getting up to presidential type turnout but if it's"
+ },
+ {
+  "start": 507880,
+  "end": 513700,
+  "text": "differential turnout that would we need that for a state like South Carolina to flip the Democrats"
+ },
+ {
+  "start": 513700,
+  "end": 519420,
+  "text": "at 14% in Mississippi on polymarket yeah that one's a little weird these are funny states these"
+ },
+ {
+  "start": 519420,
+  "end": 524960,
+  "text": "southern states are pretty funny yeah right because the top line votes are actually offered"
+ },
+ {
+  "start": 524960,
+  "end": 531420,
+  "text": "frequently fairly close it's just that every white we as a Republican and all the non-whites are not"
+ },
+ {
+  "start": 531420,
+  "end": 537100,
+  "text": "Republicans and so while it looks really close it's just like it's just purely demographics is"
+ },
+ {
+  "start": 537100,
+  "end": 541340,
+  "text": "no so we have a concept in a model that we call elasticity okay which is how sensitive is a"
+ },
+ {
+  "start": 541340,
+  "end": 546180,
+  "text": "state to changes in the national race and that's based on voter level micro data where we see"
+ },
+ {
+  "start": 546180,
+  "end": 551560,
+  "text": "people clustered at the tails or more in the middle and you know South Carolina especially like Louisiana"
+ },
+ {
+  "start": 551560,
+  "end": 558440,
+  "text": "Mississippi have very low elasticity so that's why so we are lower than polymarket and Democrats"
+ },
+ {
+  "start": 558440,
+  "end": 563180,
+  "text": "in in those states actually since you mentioned demographics can we talk about Jerry mandering"
+ },
+ {
+  "start": 563180,
+  "end": 569120,
+  "text": "for a second so to what degree do you see that I guess backfiring on the Republicans at this point"
+ },
+ {
+  "start": 569120,
+  "end": 573500,
+  "text": "so yeah a Jerry mander where you wind up with fewer seats than you would have under the regional maps"
+ },
+ {
+  "start": 573500,
+  "end": 578740,
+  "text": "is a dummy mander is a term for it this is an actual term it's in term we have terms for everything in"
+ },
+ {
+  "start": 578740,
+  "end": 586380,
+  "text": "politics only only poker players have more terms politics in Florida Ron DeSantis drew a map for"
+ },
+ {
+  "start": 586380,
+  "end": 590220,
+  "text": "kind of the presidential year based line in presidential years I expect Florida to remain a pretty"
+ },
+ {
+  "start": 590220,
+  "end": 597060,
+  "text": "red state right it's not robust for like a D plus nine climate where Florida goes from"
+ },
+ {
+  "start": 597580,
+  "end": 603140,
+  "text": "R plus 13 to R plus four or something right it wasn't designed for that and if Democrats kind of"
+ },
+ {
+  "start": 603140,
+  "end": 606720,
+  "text": "run the table in Florida then they could actually wind up with more seats than they would have"
+ }
+]
