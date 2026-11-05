@@ -1,0 +1,23 @@
+  /* Shared colors, included inline (the feeds page's CSP forbids external CSS). */
+  :root {
+    color-scheme: dark;
+    --bg: #0f1116; --panel: #181b23; --panel2: #1f2430; --line: #2a2f3a;
+    --fg: #e6e9ef; --muted: #8b93a3; --accent: #5b9dff; --on-accent: #fff;
+    --ad: #ff6b6b; --ok: #46c98b; --warn: #f5b942;
+    --self_promo: #b48cff; --intro_outro: #3cc8c8;
+    --cut: rgba(230,233,239,.6); --overlay: rgba(0,0,0,.6);
+    --sel: rgba(91,157,255,.15); --sel-strong: rgba(91,157,255,.24);
+    --ok-tint: rgba(70,201,139,.14); --ok-line: rgba(70,201,139,.45); --warn-line: rgba(245,185,66,.5);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: #f5f6f8; --panel: #ffffff; --panel2: #eceef2; --line: #d6dae1;
+      --fg: #1b1f27; --muted: #5d6573; --accent: #2b6cd8; --on-accent: #fff;
+      --ad: #d64040; --ok: #1a8f5a; --warn: #a86b0c;
+      --self_promo: #7a46d1; --intro_outro: #0f8484;
+      --cut: rgba(27,31,39,.45); --overlay: rgba(20,24,32,.35);
+      --sel: rgba(43,108,216,.1); --sel-strong: rgba(43,108,216,.18);
+      --ok-tint: rgba(26,143,90,.1); --ok-line: rgba(26,143,90,.45); --warn-line: rgba(168,107,12,.45);
+    }
+  }
