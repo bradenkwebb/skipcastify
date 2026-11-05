@@ -6,10 +6,7 @@
 <title>Skipcastify · Processing Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-  :root {
-    --bg: #0f1116; --panel: #181b23; --panel2: #1f2430; --line: #2a2f3a;
-    --fg: #e6e9ef; --muted: #8b93a3; --accent: #5b9dff; --ad: #ff6b6b; --ok: #46c98b;
-  }
+  {% include '_theme.css' %}
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
          font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -30,9 +27,9 @@
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
   button, select { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
     border-radius: 7px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
-  button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .badge { display: inline-block; background: rgba(70,201,139,.14); color: var(--ok);
-    border: 1px solid rgba(70,201,139,.4); border-radius: 999px; padding: 4px 12px; margin: 0 8px 8px 0; font-size: 13px; }
+  button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .badge { display: inline-block; background: var(--ok-tint); color: var(--ok);
+    border: 1px solid var(--ok-line); border-radius: 999px; padding: 4px 12px; margin: 0 8px 8px 0; font-size: 13px; }
   .muted { color: var(--muted); }
   /* ad-signature strips */
   #sigList { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
@@ -46,7 +43,7 @@
   .tbl tr:last-child td { border-bottom: 0; }
   .scroll { overflow-x: auto; }
   .ok { color: var(--ok); }
-  .warn { color: #f0b429; }
+  .warn { color: var(--warn); }
 </style>
 </head>
 <body>
@@ -161,6 +158,8 @@ function render() {
   renderSignatureSelector();
 }
 
+const css = name => getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim();
+
 function renderDaily() {
   const d = DATA.daily;
   if (dailyChart) dailyChart.destroy();
@@ -169,23 +168,25 @@ function renderDaily() {
       labels: d.map(x => x.date),
       datasets: [
         { type: 'bar', label: 'episodes', data: d.map(x => x.episodes),
-          backgroundColor: '#5b9dff', yAxisID: 'y', order: 2 },
+          backgroundColor: css('accent'), yAxisID: 'y', order: 2 },
         { type: 'line', label: 'ad minutes', data: d.map(x => x.ad_minutes),
-          borderColor: '#ff6b6b', backgroundColor: '#ff6b6b', yAxisID: 'y1', tension: .3, order: 1 },
+          borderColor: css('ad'), backgroundColor: css('ad'), yAxisID: 'y1', tension: .3, order: 1 },
       ],
     },
     options: {
-      plugins: { legend: { labels: { color: '#8b93a3' } } },
+      plugins: { legend: { labels: { color: css('muted') } } },
       scales: {
-        x: { ticks: { color: '#8b93a3' }, grid: { color: '#2a2f3a' } },
-        y: { position: 'left', beginAtZero: true, ticks: { color: '#8b93a3' }, grid: { color: '#2a2f3a' } },
-        y1: { position: 'right', beginAtZero: true, ticks: { color: '#8b93a3' }, grid: { drawOnChartArea: false } },
+        x: { ticks: { color: css('muted') }, grid: { color: css('line') } },
+        y: { position: 'left', beginAtZero: true, ticks: { color: css('muted') }, grid: { color: css('line') } },
+        y1: { position: 'right', beginAtZero: true, ticks: { color: css('muted') }, grid: { drawOnChartArea: false } },
       },
     },
   });
 }
 
+let lbMode = 'minutes';
 function setLeaderboard(mode) {
+  lbMode = mode;
   document.getElementById('btnMinutes').classList.toggle('active', mode === 'minutes');
   document.getElementById('btnPct').classList.toggle('active', mode === 'pct');
   const key = mode === 'minutes' ? 'total_ad_minutes' : 'avg_ad_pct';
@@ -196,14 +197,14 @@ function setLeaderboard(mode) {
     type: 'bar',
     data: {
       labels: rows.map(r => shorten(r.feed_slug)),
-      datasets: [{ label, data: rows.map(r => r[key]), backgroundColor: '#ff6b6b' }],
+      datasets: [{ label, data: rows.map(r => r[key]), backgroundColor: css('ad') }],
     },
     options: {
       indexAxis: 'y',
       plugins: { legend: { display: false } },
       scales: {
-        x: { beginAtZero: true, ticks: { color: '#8b93a3' }, grid: { color: '#2a2f3a' } },
-        y: { ticks: { color: '#e6e9ef', font: { size: 11 } }, grid: { display: false } },
+        x: { beginAtZero: true, ticks: { color: css('muted') }, grid: { color: css('line') } },
+        y: { ticks: { color: css('fg'), font: { size: 11 } }, grid: { display: false } },
       },
     },
   });
@@ -321,6 +322,10 @@ function renderEpisodes() {
 function shorten(slug) { return slug.length > 26 ? slug.slice(0, 24) + '…' : slug; }
 
 load();
+// Charts bake in colors when drawn, so redraw them when the system theme flips.
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+  if (DATA) { renderDaily(); setLeaderboard(lbMode); }
+});
 </script>
 </body>
 </html>
