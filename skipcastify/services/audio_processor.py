@@ -297,11 +297,13 @@ class AudioProcessor:
 
             # Stage 1: section-level LLM span identification
             logger.info("Running stage-1 LLM span identification...")
+            llm_answered = True
             try:
                 stage1_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name, feed_slug=feed_slug)
             except Exception as e:
                 logger.warning(f"Stage-1 LLM failed: {e}. Falling back to heuristic classification.")
                 stage1_spans = []
+                llm_answered = False
 
             # Stage 1b: code-level post-processing
             if stage1_spans:
@@ -320,7 +322,12 @@ class AudioProcessor:
 
             # Mark segments based on LLM results or heuristic fallback
             classifier = SegmentClassifier(use_ollama=False)
-            if llm_ad_spans:
+            if llm_answered:
+                # An empty span list is a real answer: this episode has no ads.
+                # Only an LLM that never answered at all hands over to the
+                # keyword heuristic, which is far too blunt to run unsupervised
+                # (a bare "ad", "code", "deal" or "offer" anywhere in ordinary
+                # conversation is enough to make it cut).
                 logger.info(f"LLM identified {len(llm_ad_spans)} ad spans. Marking overlapping segments...")
                 classified_segments = []
                 for seg in segments:
@@ -489,6 +496,8 @@ class AudioProcessor:
 
         sections = section_processor.make_sections_from_segments(segments)
         all_spans = []
+        sections_answered = 0
+        last_error = None
         
         # Start monitoring for this episode
         monitor = get_monitor()
@@ -531,7 +540,12 @@ class AudioProcessor:
             except Exception as e:
                 call_duration = time.time() - call_start
                 error_msg = str(e)
-                logger.warning(f"Ollama call failed for section {sec.start_ms}-{sec.end_ms}: {e}")
+                logger.warning(f"LLM call failed for section {sec.start_ms}-{sec.end_ms}: {e}")
+
+            if success:
+                sections_answered += 1
+            elif error_msg:
+                last_error = error_msg
 
             # Record metrics
             monitor.record_call(
@@ -581,6 +595,16 @@ class AudioProcessor:
         # Save and print monitoring summary
         monitor.save_episode_profile()
         monitor.print_episode_summary()
+
+        if sections and sections_answered == 0:
+            # Every call failed — a missing OPENAI_API_KEY, a dead API, nothing
+            # parseable. Returning [] here would be indistinguishable from "this
+            # episode has no ads", so say so loudly instead and let the caller
+            # decide what to do about it.
+            raise RuntimeError(
+                f"all {len(sections)} LLM section calls failed for {episode_name}"
+                + (f" (last error: {last_error})" if last_error else "")
+            )
 
         return all_spans
 
