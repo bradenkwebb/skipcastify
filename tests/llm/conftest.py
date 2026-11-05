@@ -3,6 +3,11 @@
 Each feed gets its own test file (test_<feed_slug>.py). Import `covered`
 and `any_overlap` from here; define `segments` and `llm_spans` fixtures
 in each test file directly.
+
+Comparing two prompts: interleave the arms round-robin, never one arm after
+the other. The model's dominant output mode drifts over hours on a pinned
+snapshot at temperature 0, so a sequential A/B measures the clock as much as
+the prompt — on 2026-11-05 it reversed the sign of two findings.
 """
 
 import pytest
