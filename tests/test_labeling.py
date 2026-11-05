@@ -63,9 +63,10 @@ def test_save_round_trip_and_ground_truth_compat(data):
     assert doc['reviewed'] and doc['version'] == 2
     assert [s['label'] for s in doc['spans']] == ['self_promo', 'ad']  # sorted
     assert c.get('/api/label/episodes.json', headers=AUTH).get_json()[0]['reviewed']
-    # The evaluator only sees spans meant to be cut.
+    # The evaluator sees ads and self-promo (both should be cut), not intro/outro.
+    labeling.save_labels(tmp, EP, spans + [{'start_ms': 9000, 'end_ms': 15000, 'label': 'intro_outro'}], True)
     gt = GroundTruthStore(str(tmp / 'labels' / 'ground_truth')).load_labels(EP)
-    assert [(g.start_ms, g.end_ms, g.label) for g in gt] == [(4000, 9000, 'ADVERTISEMENT')]
+    assert sorted((g.start_ms, g.end_ms) for g in gt) == [(0, 4000), (4000, 9000)]
 
 
 def test_empty_reviewed_save_records_no_ads(data):
