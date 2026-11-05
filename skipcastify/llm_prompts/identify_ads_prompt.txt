@@ -55,6 +55,14 @@ WHAT TO FLAG:
    An ad's lead-in can sound like a neutral consumer tip or public-health message (listing memory symptoms, explaining a medical condition, describing a relatable frustration) right up until the brand is named. A HARD CTA at the end is what signals the whole preceding contiguous block was an ad: an external URL, a promo code, an app-download prompt, or "visit / go to / use code X". Apply this backward expansion ONLY when such a hard CTA is present.
    Critically, this does NOT loosen the editorial guard: a bare recommendation to check out another show ("listen to the X Podcast", "available wherever you get your podcasts") with no URL, no promo code, and no sponsor attribution is NOT a CTA — it is editorial cross-promotion and must stay (see Examples C and E). Ordinary news reports and interview answers are never ad lead-ins, even when they mention a company or product.
 
+7. House ads (the publisher promoting itself): a network promoting its own products is still advertising when it is a produced spot rather than the host's aside. Flag a block when both hold:
+   - it is spoken by someone who is not the host of this episode, or is otherwise plainly a produced read — a named introduction like "This is <name>, I'm the publisher of <org>" or "Hey, it's <name> from <org>", a voice dropped into an ad slot; and
+   - it offers the publisher's own subscription, app, newsletter, games, store or other shows, or urges the listener to subscribe, download or support.
+   An institutional message from the publisher counts under the second bullet even when it is framed as public interest rather than a pitch: an appeal to subscribe, a case for supporting journalism, a note about the organisation itself. It still counts when it generously tells the listener to support some other publication too ("your local newspaper, a national paper, or ours"). What makes it an ad is that the publisher produced it and placed it in an ad slot, not whether it asks for money or names only itself.
+   No external sponsor, no promo code and no URL is required. "It's in the <org> app", "subscribe to the Times", "follow a show today" are CTAs. Such a spot occupies an ad slot and the listener did not ask for it, so it is an ad even though no third party paid for it.
+   Still NOT an ad, and this rule does not reach them: a brief mention in the host's own voice that offers nothing ("my email is...", "for more on this, listen to [show]"), the closing credits and staff name-checks, and any mention of the publisher inside the conversation itself. The test is a produced spot that offers something, not whether the publisher is named.
+   That carve-out is narrow. It does not apply when a URL, a promo code, a subscription or donation ask, or an app-download prompt is present: rule 1 governs those whoever reads them and whoever owns the product, so "for more, go to ourshow.com, and here's how to support us" is an ad even in the host's own voice in the outro. An email or postal address offered for listener feedback is not a CTA.
+
 ---
 
 FEW-SHOT EXAMPLES (do not include commentary in your output, just the JSON):
@@ -163,6 +171,72 @@ Expected JSON response:
 []
 
 Note: do NOT flag this. There is no "brought to you by", no "in partnership with", no external partner URL, and no promo code. "Available wherever you get your podcasts" alone is not a paid-ad signal — it is standard editorial phrasing that any host uses when recommending their own network's shows. The critical distinction from Examples D and H: those have explicit sponsor attribution ("brought to you by SnapDrive", "in partnership with iHeart's Ruby Studio") and partner-branded app links. This example has none of those. Absence of attribution = editorial cross-promotion, not an ad.
+
+Example J - House ad for the publisher's own app (no sponsor, no URL - still an ad):
+Transcript snippet:
+[1276000 - 1282000] Hey, it's Dana from The Chronicle. Wherever you get your podcasts. You've heard that line before, right?
+[1282000 - 1293000] But what if I told you you never have to hear it again? Okay, you caught me, I can't tell you that.
+[1293000 - 1303000] But I can tell you somewhere you might want to go. It's the shows tab in The Chronicle app.
+[1303000 - 1320000] Full episodes, new and classic, so much to listen to and watch. I think that's really special.
+[1320000 - 1333000] Find it wherever you get your - just kidding. It's in The Chronicle app. Explore the shows tab and follow a show today.
+[1333000 - 1340000] Okay, can I riff for one second? I would love you to riff.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 1276000,
+    "end_ms": 1333000,
+    "label": "ADVERTISEMENT",
+    "rationale": "House ad: a produced 57-second spot read by someone other than the host, promoting the publisher's own app. No third-party sponsor and no URL, but it sits in an ad slot and closes on a 'follow a show today' CTA. Editorial resumes at [1333000]."
+  }
+]
+
+Note: 'wherever you get your podcasts' appears here and is NOT what makes something editorial - compare Example E, which is a single line in the host's own voice inside the outro. This is a produced read by a guest voice whose whole purpose is to drive app installs. A produced read plus a first-party offer is the signal; the absence of an external sponsor, and the length of the spot, are not defences.
+
+Example K - Publisher's institutional appeal in the pre-roll slot (still a house ad):
+Transcript snippet:
+[0 - 5000] This is Dana Reyes. I'm the publisher of The Chronicle, and I'm also a former reporter
+[5000 - 9500] who's watched with alarm as our profession has shrunk in recent years.
+[9500 - 15000] Normally this is where I'd ask you to subscribe to The Chronicle. But today I'm encouraging
+[15000 - 21000] you to support any news organization dedicated to original reporting. Whether that's
+[21000 - 26000] your local newspaper, a national paper, or The Chronicle, what matters most is that
+[26000 - 31000] you subscribe to a real news organization doing first-hand, fact-based reporting.
+[31000 - 32500] And if you already do, thank you.
+[59000 - 65000] The Big Ten is real and the political map is fake. That is the lesson of Tuesday's midterm.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 0,
+    "end_ms": 32500,
+    "label": "ADVERTISEMENT",
+    "rationale": "House ad: a produced 32-second pre-roll read by the publisher, not the host, appealing for news subscriptions. Editorial opens at [59000]."
+  }
+]
+
+Note: this asks the listener to support journalism generally rather than pitching one product, and it never gives a URL or a promo code - and it is still an ad. It is a produced spot by a non-host voice in the pre-roll slot, promoting subscription to the publisher's own paper among others. Do not read 'public interest' framing, or the generosity of naming other newspapers, as editorial content.
+
+
+Example L - Short produced subscription offer opening an ad break (still a house ad):
+Transcript snippet:
+[132560 - 141780] If you're not a subscriber to The Chronicle we have some news for you you can explore the Chronicle for free
+[151200 - 156480] This message comes from Betteryield. Betteryield's Dan Egan talks about tax loss harvesting.
+[157020 - 171680] Tax loss harvesting is a tax management strategy. When you have a position that's gone down over time we intend to sell it.
+[173820 - 181540] Investing involves risk, performance not guaranteed. Betteryield does not offer tax advice.
+[183420 - 193280] I think that brings together a couple of interesting things here, because as you mentioned
+
+Expected JSON response:
+[
+  {
+    "start_ms": 132560,
+    "end_ms": 181540,
+    "label": "ADVERTISEMENT",
+    "rationale": "House ad opening a sponsor pod: a nine-second produced read offering free access to the publisher's own subscription, then a third-party sponsor read. One ad break; editorial resumes at [183420]."
+  }
+]
+
+Note: the nine-second opening line is a produced offer of the publisher's own subscription, not editorial, and it opens the break — the span starts there, not at the first third-party sponsor. It is short, it names no URL and no promo code, and the transcript is garbled; none of that makes it content. A gap of a few seconds between it and the sponsor read is the pause between two spots in the same break. The span still ends with the last ad segment: the interview line at [183420] follows immediately and is not part of it. Never extend a span through the segment that resumes the conversation, and never add a further span for it.
+
 
 Example D - Sponsored content insert sandwiched between ads:
 Transcript snippet:
