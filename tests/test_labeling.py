@@ -107,3 +107,24 @@ def test_feed_inferred_without_events(data):
     (tmp / 'metrics' / 'events.jsonl').unlink()
     d = c.get(f'/api/label/{EP}.json', headers=AUTH).get_json()
     assert d['has_audio'] and d['predictions'] == []
+
+
+def test_list_uses_feed_release_dates_and_durations(data):
+    c, tmp = data
+    (tmp / 'transcripts' / 'mypodcast-ep_2_transcript.json').write_text(json.dumps(SEGS))
+    (tmp / 'feeds' / 'mypodcast.xml').write_text(
+        '<rss><channel><title>t</title>'
+        '<item><title>Ep 1</title><pubDate>Mon, 02 Nov 2026 09:00:00 +0000</pubDate></item>'
+        '<item><title>Ep 2</title><pubDate>Mon, 05 Jan 2026 09:00:00 GMT</pubDate></item>'
+        '</channel></rss>')
+    with open(tmp / 'metrics' / 'events.jsonl', 'a') as f:
+        f.write(json.dumps({'event': 'episode_start', 'episode_name': EP, 'raw_duration_s': 3094.7}) + '\n')
+    eps = c.get('/api/label/episodes.json', headers=AUTH).get_json()
+    assert [(e['name'], e['released'][:10], e['duration_s']) for e in eps] == \
+        [(EP, '2026-11-02', 3094.7), ('mypodcast-ep_2', '2026-01-05', None)]
+
+
+def test_unknown_release_date_falls_back_to_transcribed(data):
+    c, _ = data
+    e = c.get('/api/label/episodes.json', headers=AUTH).get_json()[0]
+    assert e['released'] is None and e['date'] == e['transcribed']
