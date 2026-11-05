@@ -49,7 +49,7 @@ def test_episode_list_and_load(data):
     assert [(e['name'], e['feed'], e['has_predictions'], e['labeled_spans']) for e in eps] == \
         [(EP, 'mypodcast', True, None)]
     d = c.get(f'/api/label/{EP}.json', headers=AUTH).get_json()
-    assert d['segments'] == SEGS and d['has_audio'] and d['spans'] == []
+    assert d['segments'] == SEGS and d['has_audio'] and d['spans'] == [] and d['feed'] == 'mypodcast'
     assert d['predictions'] == [{'start_ms': 4100, 'end_ms': 8000, 'label': 'ADVERTISEMENT'}]
 
 

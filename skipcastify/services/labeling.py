@@ -94,6 +94,7 @@ def load_episode(data_dir, name: str) -> dict:
     labels = _read_labels(data_dir, name) or {}
     return {
         "name": name,
+        "feed": _feed_for(data_dir, name, completes),
         "segments": segments,
         "predictions": [{"start_ms": s["start_ms"], "end_ms": s["end_ms"], "label": s.get("label", "")}
                         for s in (ev or {}).get("spans", [])],
