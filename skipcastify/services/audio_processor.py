@@ -323,11 +323,8 @@ class AudioProcessor:
             # Mark segments based on LLM results or heuristic fallback
             classifier = SegmentClassifier(use_ollama=False)
             if llm_answered:
-                # An empty span list is a real answer: this episode has no ads.
-                # Only an LLM that never answered at all hands over to the
-                # keyword heuristic, which is far too blunt to run unsupervised
-                # (a bare "ad", "code", "deal" or "offer" anywhere in ordinary
-                # conversation is enough to make it cut).
+                # An empty span list is a real answer: no ads. Only an LLM
+                # that never answered hands over to the keyword heuristic.
                 logger.info(f"LLM identified {len(llm_ad_spans)} ad spans. Marking overlapping segments...")
                 classified_segments = []
                 for seg in segments:
@@ -597,10 +594,8 @@ class AudioProcessor:
         monitor.print_episode_summary()
 
         if sections and sections_answered == 0:
-            # Every call failed — a missing OPENAI_API_KEY, a dead API, nothing
-            # parseable. Returning [] here would be indistinguishable from "this
-            # episode has no ads", so say so loudly instead and let the caller
-            # decide what to do about it.
+            # Returning [] when nothing answered is indistinguishable from
+            # "this episode has no ads", so fail loudly instead.
             raise RuntimeError(
                 f"all {len(sections)} LLM section calls failed for {episode_name}"
                 + (f" (last error: {last_error})" if last_error else "")
