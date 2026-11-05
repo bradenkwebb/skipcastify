@@ -34,6 +34,7 @@
   #done { display: flex; gap: 10px; align-items: center; padding: 8px 16px; flex-wrap: wrap;
           background: rgba(70,201,139,.12); border-bottom: 1px solid rgba(70,201,139,.4); }
   #done b { color: #46c98b; }
+  body.locked #legend .chip[data-l], body.locked #bFill { opacity: .4; cursor: not-allowed; }
   #legend { display: flex; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--line);
             flex-wrap: wrap; align-items: center; }
   .chip { display: inline-flex; gap: 6px; align-items: center; padding: 3px 9px; border-radius: 999px;
@@ -107,7 +108,7 @@
 <div id="legend" hidden></div>
 <div id="done" hidden><b>✓ Reviewed</b>
   <a class="btn" id="doneNext" hidden></a>
-  <span class="muted" style="font-size:12px">press R to un-mark</span></div>
+  <span class="muted" style="font-size:12px">locked · press R to edit</span></div>
 <div id="picker" hidden><input id="filter" placeholder="Filter episodes…  ( / to focus, j/k or ↑/↓, enter to open )"><div id="eps"></div></div>
 <div id="wrap" hidden><div id="rows" tabindex="0"></div><canvas id="mini"></canvas></div>
 <div id="toast"></div>
@@ -128,7 +129,7 @@
     <tr><td><kbd>0</kbd> / <kbd>⌫</kbd></td><td>back to content</td><td><kbd>u</kbd> <kbd>^z</kbd> · <kbd>^r</kbd> <kbd>^⇧z</kbd></td><td>undo · redo</td></tr>
     <tr><td><kbd>,</kbd> <kbd>.</kbd> / <kbd>⌥←</kbd> <kbd>⌥→</kbd></td><td>nudge span start ∓0.5s</td><td><kbd>&lt;</kbd> <kbd>&gt;</kbd> / <kbd>⌥⇧←</kbd> <kbd>⌥⇧→</kbd></td><td>nudge span end ∓0.5s</td></tr>
     <tr><td><kbd>b</kbd></td><td>back to the episode list</td><td><kbd>Enter</kbd></td><td>next unreviewed episode (once reviewed)</td></tr>
-    <tr><td><kbd>R</kbd></td><td>mark the whole episode reviewed</td><td><kbd>P</kbd></td><td>start from the pipeline's cuts</td></tr>
+    <tr><td><kbd>R</kbd></td><td>mark the whole episode reviewed (locks edits)</td><td><kbd>P</kbd></td><td>start from the pipeline's cuts</td></tr>
   </table>
   <h3>Listen (raw audio, off until you press play)</h3>
   <table>
@@ -302,7 +303,10 @@ function setRange(a, b, label) {
   }
   spans = merged;
 }
+// Reviewed episodes are ground truth; edits need an explicit R first.
+function locked() { if (reviewed) toast('Reviewed — press R to edit'); return reviewed; }
 function applyLabel(label) {
+  if (locked()) return;
   const [i, j] = selRange();
   snapshot();
   setRange(S[i].start, S[j].end, label);
@@ -312,6 +316,7 @@ function applyLabel(label) {
 }
 
 function nudge(edge, delta) {
+  if (locked()) return;
   let sp = spanAtRow(cur);
   if (lastNudged && spans.includes(lastNudged)) sp = lastNudged;
   if (!sp) return toast('No labeled span on this line');
@@ -380,6 +385,7 @@ function changed() {
     : `labeled ad <b>${fmt(adMs)}</b> · ${cutTxt}` + (PRED_N ? ` · <span style="color:var(--ad)">missed <b>${fmt(missed)}</b></span>`
       + ` · <span style="color:var(--warn)">wrongly cut <b>${fmt(over)}</b></span>` : '');
   $('bRev').classList.toggle('on', reviewed);
+  document.body.classList.toggle('locked', reviewed);
   if ($('done').hidden === reviewed) { $('done').hidden = !reviewed; if (reviewed) findNext(); padRows(); centerCur(); }
   paintSel();
   queueSave();
@@ -484,6 +490,7 @@ function nextMatch(d) {
 }
 
 function prefill() {
+  if (locked()) return;
   if (!PRED_N) return toast('No pipeline cuts for this episode');
   if (spans.length && !confirm('Replace your labels with the pipeline\'s cuts? (undo with u)')) return;
   snapshot();
