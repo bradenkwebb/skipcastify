@@ -70,13 +70,20 @@
   #pickopts .sep { width: 12px; }
   #pickopts button { padding: 3px 10px; }
   .ep .f { color: var(--muted); font-size: 12px; white-space: nowrap; }
-  .ep .d { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; min-width: 78px; text-align: right; }
+  .ep .d { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
   .ep .d.approx { font-style: italic; opacity: .7; }
   .feed { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 4px; }
-  .ep { display: flex; gap: 10px; align-items: baseline; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+  .ep { display: grid; gap: 10px; grid-template-columns: 1fr 96px 64px 56px 92px; align-items: baseline; padding: 5px 10px; border-radius: 6px; cursor: pointer;
         border-left: 3px solid transparent; }
   .ep.cur { background: rgba(91,157,255,.2); border-left-color: var(--accent); }
-  .ep .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ep.wf { grid-template-columns: 210px 1fr 96px 64px 56px 92px; }
+  .ep.wf .f:first-child { overflow: hidden; text-overflow: ellipsis; }
+  .ep > :not(.n):not(:first-child) { justify-self: end; }
+  @media (max-width: 760px) {
+    .ep, .ep.wf { grid-template-columns: 1fr 96px 92px; }
+    .ep.wf .f:first-child, .ep > :nth-last-child(2), .ep > :nth-last-child(3) { display: none; }
+  }
+  .ep .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .badge { font-size: 11px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
   .badge.done { color: #46c98b; border-color: rgba(70,201,139,.5); }
   .badge.wip { color: var(--warn); border-color: rgba(245,185,66,.5); }
@@ -208,10 +215,11 @@ async function picker() {
       : e.labeled_spans != null ? `<span class="badge wip">${e.labeled_spans} spans</span>` : '';
     const date = e.released ? `<span class="d" title="released">${day(e.released)}</span>`
       : `<span class="d approx" title="release date unknown; transcribed ${day(e.transcribed)}">~${day(e.transcribed)}</span>`;
-    return `<div class="ep${i === cur ? ' cur' : ''}" data-i="${i}">`
-      + (withFeed ? `<span class="f">${esc(e.feed || '?')}</span>` : '')
-      + `<span class="n">${esc(pretty(e))}</span>${st}`
-      + (e.has_predictions ? '' : '<span class="badge">no cuts</span>')
+    // Fixed columns: [show] title | status | cuts | length | date
+    return `<div class="ep${withFeed ? ' wf' : ''}${i === cur ? ' cur' : ''}" data-i="${i}">`
+      + (withFeed ? `<span class="f" title="${esc(e.feed || '')}">${esc(e.feed || '?')}</span>` : '')
+      + `<span class="n">${esc(pretty(e))}</span><span>${st}</span>`
+      + `<span>${e.has_predictions ? '' : '<span class="badge">no cuts</span>'}</span>`
       + `<span class="f">${mins(e.duration_s)}</span>${date}</div>`;
   }
   function render() {
