@@ -4,11 +4,14 @@ pipeline cuts, and save hand-labeled spans to data/labels/ground_truth/."""
 import json
 import os
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Optional
 
 from skipcastify.services.analytics import load_events
+from skipcastify.utils.utils import safe_filename
 
 LABELS = ("ad", "self_promo", "intro_outro")
 FORMAT_VERSION = 2
@@ -29,12 +32,40 @@ def valid_episode(data_dir, name: str) -> bool:
         (_transcripts_dir(data_dir) / f"{name}_transcript.json").is_file()
 
 
+def _latest(events: list[dict], kind: str) -> dict:
+    return {ev["episode_name"]: ev for ev in events
+            if ev.get("event") == kind and ev.get("episode_name")}
+
+
 def _latest_completes(data_dir) -> dict:
-    out = {}
-    for ev in load_events(data_dir):
-        if ev.get("event") == "episode_complete" and ev.get("episode_name"):
-            out[ev["episode_name"]] = ev
-    return out
+    return _latest(load_events(data_dir), "episode_complete")
+
+
+_release_cache: dict = {}
+
+
+def release_dates(data_dir) -> dict:
+    """Episode name -> ISO pubDate, from the generated feeds; cached until they change."""
+    files = sorted(Path(data_dir).glob("feeds/*.xml"))
+    key = tuple((str(f), f.stat().st_mtime) for f in files)
+    if _release_cache.get("key") != key:
+        dates = {}
+        for f in files:
+            try:
+                channel = ET.parse(f).getroot().find("channel")
+            except ET.ParseError:
+                continue
+            for item in channel.findall("item") if channel is not None else []:
+                title, pub = item.findtext("title"), item.findtext("pubDate")
+                try:
+                    dt = parsedate_to_datetime(pub)
+                except (TypeError, ValueError):
+                    continue
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                dates[safe_filename(title, f.stem)[: -len(".mp3")]] = dt.isoformat()
+        _release_cache.update(key=key, dates=dates)
+    return _release_cache["dates"]
 
 
 def _feed_for(data_dir, name: str, completes: dict) -> Optional[str]:
@@ -68,21 +99,27 @@ def _read_labels(data_dir, name: str) -> Optional[dict]:
 
 
 def list_episodes(data_dir) -> list[dict]:
-    completes = _latest_completes(data_dir)
+    events = load_events(data_dir)
+    completes, starts = _latest(events, "episode_complete"), _latest(events, "episode_start")
+    released = release_dates(data_dir)
     out = []
     for path in _transcripts_dir(data_dir).glob("*_transcript.json"):
         name = path.name[: -len("_transcript.json")]
         ev = completes.get(name)
         labels = _read_labels(data_dir, name)
+        transcribed = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
         out.append({
             "name": name,
             "feed": _feed_for(data_dir, name, completes),
-            "transcribed": datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(),
+            "transcribed": transcribed,
+            "released": released.get(name),
+            "date": released.get(name) or transcribed,
+            "duration_s": (starts.get(name) or {}).get("raw_duration_s"),
             "has_predictions": ev is not None,
             "labeled_spans": len(labels.get("spans", [])) if labels else None,
             "reviewed": bool(labels and labels.get("reviewed")),
         })
-    out.sort(key=lambda e: e["transcribed"], reverse=True)
+    out.sort(key=lambda e: datetime.fromisoformat(e["date"]), reverse=True)
     return out
 
 
