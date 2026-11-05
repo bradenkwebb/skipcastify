@@ -10,8 +10,7 @@ from skipcastify.utils.utils import safe_filename, slugify, load_subscriptions
 
 logger = logging.getLogger(__name__)
 
-# A backlog bigger than this is reported, because it means something stopped
-# the pipeline for a while and the catch-up will run hot for a bit.
+# A backlog bigger than this is reported: the catch-up will run hot for a bit.
 BACKLOG_ALERT_THRESHOLD = 10
 
 
@@ -129,12 +128,8 @@ class EpisodeDownloader:
                 results.append({"feed": slug, "status": "baselined"})
                 continue
 
-            # _entry_id raises for an entry with neither a guid nor an
-            # enclosure — a text-only post in an otherwise normal feed. Inside
-            # the comprehension that exception escaped download_latest and took
-            # the whole download stage with it, so one malformed entry in one
-            # feed stopped every other feed from being checked, on every run.
-            # An entry we cannot identify cannot be tracked, so skip it.
+            # An unidentifiable entry (no guid, no enclosure) cannot be
+            # tracked, and must not take the whole download stage down with it.
             unseen = []
             for entry in feed.entries:
                 try:
@@ -146,20 +141,9 @@ class EpisodeDownloader:
                 if entry_id not in feed_seen:
                     unseen.append(entry)
 
-            # Guard against feed-platform migrations (e.g. Art19 → Libsyn) that
-            # rewrite every <guid>. When that happens the whole feed suddenly
-            # looks new and we would re-download it a few episodes per run.
-            #
-            # The test is whether ANY current entry is still recognised, not
-            # what fraction looks new. A migration rewrites every id, so the
-            # seen set stops matching the feed entirely. Downtime leaves the
-            # older entries matching perfectly and only recent ones unseen.
-            #
-            # The previous version keyed on "more than half the feed is
-            # unseen", which cannot tell those apart — and on 2026-11-01 it
-            # read a four-month outage as a migration, marked 290 Global News
-            # episodes seen and downloaded none of them. A whole backlog was
-            # dropped on the strength of a log line nobody reads.
+            # A feed migration rewrites every guid, so nothing is recognised;
+            # downtime still recognises the older entries. Test that, not what
+            # fraction looks new.
             identified = sum(1 for e in feed.entries if self._safe_entry_id(e))
             recognised = identified - len(unseen)
             if (feed_seen and recognised == 0
@@ -175,9 +159,8 @@ class EpisodeDownloader:
                     except Exception as e:
                         logger.warning(f"Could not derive ID for entry in '{podcast_title}': {e}")
                 seen[subscription_url] = feed_seen
-                # Loud, not just logged. This silently discards everything the
-                # feed currently offers, so it is the one decision here that
-                # must never again pass unnoticed.
+                # This discards everything the feed offers, so never let it
+                # pass unnoticed.
                 self.alerter.send(
                     f"rebaseline:{slug}", "Podcast feed ids changed",
                     f"{podcast_title}: none of its {identified} entries "
@@ -187,10 +170,8 @@ class EpisodeDownloader:
                 results.append({"feed": slug, "status": "rebaselined"})
                 continue
 
-            # A real backlog: the seen set still matches the feed, so these are
-            # genuinely new episodes. Work through them episode_limit at a time
-            # — undownloaded ones stay unseen, so later runs pick up the rest
-            # rather than losing them.
+            # A real backlog: the seen set still matches, so these are
+            # genuinely new. Undownloaded ones stay unseen for later runs.
             if len(unseen) > BACKLOG_ALERT_THRESHOLD:
                 logger.info(f"{podcast_title}: {len(unseen)} episodes behind, "
                             f"taking {self.episode_limit} this run")
