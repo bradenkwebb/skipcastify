@@ -521,11 +521,24 @@ function bindEditor() {
   let shiftHeld = false;
   addEventListener('keydown', e => shiftHeld = e.shiftKey);
   addEventListener('keyup', e => shiftHeld = e.shiftKey);
-  // Scrolling moves the text under a fixed, centered cursor.
+  // The wheel steps the cursor a line at a time so the centered bar never moves.
+  let wheelAcc = 0;
+  box.addEventListener('wheel', e => {
+    if (e.ctrlKey) return;  // pinch-zoom
+    e.preventDefault();
+    const d = (e.deltaY || (e.shiftKey ? e.deltaX : 0)) * (e.deltaMode === 1 ? 32 : 1);
+    if (Math.sign(d) !== Math.sign(wheelAcc)) wheelAcc = 0;
+    wheelAcc += d;
+    const steps = Math.trunc(wheelAcc / 32);
+    if (steps) { wheelAcc -= steps * 32; move(steps, e.shiftKey); }
+  }, {passive: false});
+  // Scrollbar drags still scroll freely; snap the middle line to center when they stop.
+  let snapTimer;
   box.addEventListener('scroll', () => {
     if (!dragging) {
       const i = rowAtCenter();
       if (i !== cur) { cur = i; if (!shiftHeld) anchor = i; lastNudged = null; paintSel(); }
+      clearTimeout(snapTimer); snapTimer = setTimeout(centerCur, 150);
     }
     requestAnimationFrame(drawMini);
   });
