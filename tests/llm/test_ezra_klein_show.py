@@ -131,9 +131,7 @@ class TestMidrollPodMustDetect:
     """Both of these were xfail(strict=True) known misses until 2026-11-05.
 
     Example L of the prompt, added for the 9.2s NYT offer in the same episode,
-    fixed them as a side effect: the pod is now caught from its first word in
-    5/5 runs, so the markers are gone. The cost is in
-    TestMidrollPodMustNotRemove below, and it is not settled.
+    fixed them as a side effect: 8/8 runs with it, 0/8 without.
     """
 
     def test_pod_is_caught_from_its_first_word(self, midroll_llm_spans):
@@ -162,25 +160,22 @@ class TestMidrollPodMustNotRemove:
         assert not any_overlap(midroll_llm_spans, 0, _CONTENT_BEFORE_END - 2_000), (
             f"Editorial before the pod was flagged. Spans: {midroll_llm_spans}")
 
-    @pytest.mark.xfail(strict=False, reason="regression introduced with "
-                                            "Example L: 20.2s of the interview "
-                                            "is flagged in ~half of runs")
+    @pytest.mark.xfail(strict=False, reason="pre-existing span-edge defect: "
+                                            "18.2s of the interview is flagged "
+                                            "in some runs, Example L or not")
     def test_editorial_after_the_pod_kept(self, midroll_llm_spans):
         """Musk-Trump alliance discussion, resuming at 3:26 in the clip.
 
-        Measured 2026-11-05: once the prompt catches this pod from its first
-        word, it also emits a third span [205100-226760] covering the whole of
-        Klein's next question, in roughly half of runs (4/7 on one variant,
-        2/5 on another, 0/3 on the prompt that does not catch the pod at all).
-
-        This is a real defect and it is awaiting Braden's call, because the
-        alternative is leaving the 9.2s NYT offer in: deleting Example L
-        removes both the fix and this over-reach. The structural shape is a
-        tiled chain of adjacent spans, so the proper fix is the text-aware
-        span-edge trim already on the list, not more prompt text. Already
-        tried and rejected: a boundary sentence in Example L's note (still
-        2/5) and a "return one span per ad break" instruction in the Notes
-        (dropped pod detection to 2/6). Do not re-run those.
+        The model emits a further span [205100-226760] over Klein's next
+        question, 18.2s past the pod. Measured 2026-11-05 with both prompt
+        arms interleaved round-robin, 8 rounds: kept 7/8 with Example L and
+        2/8 without it, so the defect is not Example L's and removing the
+        example makes it worse. An earlier sequential measurement said the
+        opposite and was confounded by drift in the model's dominant output
+        mode; see the note in conftest.py. The fix is the text-aware span-edge
+        trim, not prompt text: already rejected are a boundary sentence in
+        Example L's note (still 2/5) and a "return one span per ad break"
+        instruction (dropped pod detection to 2/6). Do not re-run those.
         """
         assert not any_overlap(midroll_llm_spans, _CONTENT_AFTER_START + 2_000,
                                10 ** 9), (
