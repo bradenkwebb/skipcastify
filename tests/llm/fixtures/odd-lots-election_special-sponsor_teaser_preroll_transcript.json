@@ -1,0 +1,547 @@
+[
+ {
+  "start": 0,
+  "end": 4980,
+  "text": "Finance is increasingly being built on digital rails, but as the adoption of"
+ },
+ {
+  "start": 4980,
+  "end": 9560,
+  "text": "virtual assets tokenization and stable coins grows, can regulation not only"
+ },
+ {
+  "start": 9560,
+  "end": 13740,
+  "text": "keep pace but help accelerate it, find out more later in the podcast."
+ },
+ {
+  "start": 15400,
+  "end": 19580,
+  "text": "At Verbo we understand that even the best of plans sometimes need a little"
+ },
+ {
+  "start": 19580,
+  "end": 24200,
+  "text": "support, so we plan for the plot twists. Every booking is automatically backed by"
+ },
+ {
+  "start": 24200,
+  "end": 29980,
+  "text": "our Verbo Care Guarantee, giving you confidence from the very start. When"
+ },
+ {
+  "start": 29980,
+  "end": 34720,
+  "text": "before you stay through the moments in between and after your trip because a"
+ },
+ {
+  "start": 34720,
+  "end": 40020,
+  "text": "great trip starts with peace of mind and maybe a good playlist, but we've got"
+ },
+ {
+  "start": 40020,
+  "end": 41440,
+  "text": "the peace of mind part covered."
+ },
+ {
+  "start": 44280,
+  "end": 48780,
+  "text": "This is the Bloomberg Tech Minute brought to you by Chachi PT. I'm Carol Masser."
+ },
+ {
+  "start": 49120,
+  "end": 53620,
+  "text": "Getting hired at SpaceX requires exceptional ability and may include having"
+ },
+ {
+  "start": 53620,
+  "end": 57980,
+  "text": "Elon Musk review a candidate's resume. So writes Bloomberg Business Week's Lauren"
+ },
+ {
+  "start": 57980,
+  "end": 62140,
+  "text": "Grush. She reports that the company culture is defined by Musk and job"
+ },
+ {
+  "start": 62140,
+  "end": 66320,
+  "text": "candidates must understand that a commitment to SpaceX means adhering to this"
+ },
+ {
+  "start": 66320,
+  "end": 71680,
+  "text": "culture and exhibiting loyalty to Elon Musk. To get hired, candidates must"
+ },
+ {
+  "start": 71680,
+  "end": 76400,
+  "text": "demonstrate their achievements from past jobs and hands-on experience matters more"
+ },
+ {
+  "start": 76400,
+  "end": 80740,
+  "text": "to recruiters than advanced degrees, with the company looking for people with raw"
+ },
+ {
+  "start": 80740,
+  "end": 85600,
+  "text": "innate intelligence. A spokesperson for SpaceX didn't respond to request for comment"
+ },
+ {
+  "start": 85600,
+  "end": 89760,
+  "text": "on its recruiting and hiring practices, but according to recruiters, advisors,"
+ },
+ {
+  "start": 89960,
+  "end": 94400,
+  "text": "and those who've interviewed for jobs there, it's the space exploration dream that draws"
+ },
+ {
+  "start": 94400,
+  "end": 99900,
+  "text": "people to the company and Musk invokes that dream regularly to remind workers why they're there."
+ },
+ {
+  "start": 100240,
+  "end": 103260,
+  "text": "Prospective Hires are told that the job will require stamina,"
+ },
+ {
+  "start": 103600,
+  "end": 106000,
+  "text": "including in job ads that candidates quote,"
+ },
+ {
+  "start": 106460,
+  "end": 109980,
+  "text": "must be willing to work extended hours and weekends as needed."
+ },
+ {
+  "start": 110360,
+  "end": 114260,
+  "text": "One major perk for all that hard work, employees access to equity."
+ },
+ {
+  "start": 114260,
+  "end": 118640,
+  "text": "Either the right to buy shares or payment in the form of restricted stock units that"
+ },
+ {
+  "start": 118640,
+  "end": 125460,
+  "text": "vest over time. That's the Bloomberg Tech Minute brought to you by ChachiPT. Get started at ChachiPT.com."
+ },
+ {
+  "start": 145640,
+  "end": 150440,
+  "text": "Hello and welcome to another episode of the AdLots podcast. I'm Joe Weissanthal."
+ },
+ {
+  "start": 150780,
+  "end": 155560,
+  "text": "And I'm Tracy Alloway. Tracy, I'm often say I'm kind of I'm really glad we're not political"
+ },
+ {
+  "start": 155560,
+  "end": 162500,
+  "text": "reporters. Oh, I know. I know. I'm glad that I wake up every morning and thank God."
+ },
+ {
+  "start": 162740,
+  "end": 167060,
+  "text": "We didn't go down the app, but here's the problem. I've said this many times. Here's the problem."
+ },
+ {
+  "start": 167440,
+  "end": 172580,
+  "text": "And we've been writing about this. We did in Chicago. We had that conversation with James Robinson"
+ },
+ {
+  "start": 172580,
+  "end": 178880,
+  "text": "and stuff like that. I sort of think politics unfortunately does matter. And actually, even if we wanted"
+ },
+ {
+  "start": 178880,
+  "end": 185640,
+  "text": "to say like, no, look, I just covered Mark. I just covered the economy. Unfortunately, I'm coming to"
+ },
+ {
+  "start": 185640,
+  "end": 189980,
+  "text": "the conclusion that not only do politics matter, they're probably going to keep mattering more and more."
+ },
+ {
+  "start": 190140,
+  "end": 194900,
+  "text": "Everything is politics now. You can't get away from it. Yeah. And certainly this week. So we're"
+ },
+ {
+  "start": 194900,
+  "end": 200760,
+  "text": "recording this on October 29th. The episode is going to come out on November 3rd. It's election day special."
+ },
+ {
+  "start": 200760,
+  "end": 205460,
+  "text": "That's right. It's a pretty big election day special. It's a pretty big week for politics."
+ },
+ {
+  "start": 206020,
+  "end": 212160,
+  "text": "So we should talk to put it mildly. I know. Anyway, let's just jump right to it. Joining us here on"
+ },
+ {
+  "start": 212160,
+  "end": 218060,
+  "text": "our election day special Nate Silver. Everyone knows him. Founder of the Silver Bulletin newsletter."
+ },
+ {
+  "start": 218560,
+  "end": 224300,
+  "text": "Famous for 538 modeling elections. Knowing a lot about polling and data and all that's of Nate."
+ },
+ {
+  "start": 224540,
+  "end": 228840,
+  "text": "Thank you for joining our election day. Of course. Thanks, Joe. Thanks, Tracy. Let's just talk about like"
+ },
+ {
+  "start": 228840,
+  "end": 235960,
+  "text": "how unpopular is President Trump right now as if October 29th or election day into what degree?"
+ },
+ {
+  "start": 236280,
+  "end": 240700,
+  "text": "I mean, midterms historically pretty bad for the party and power, but just get a big picture."
+ },
+ {
+  "start": 241060,
+  "end": 245800,
+  "text": "How historically unpopular is President Trump and what is the knock on effects for various"
+ },
+ {
+  "start": 245800,
+  "end": 250840,
+  "text": "Republican candidates and competitive races? Yeah. So Trump's approval rating is at about 37%."
+ },
+ {
+  "start": 250840,
+  "end": 255980,
+  "text": "By some measures, that's the worst approval rating for President Adam midterms since Harry Truman,"
+ },
+ {
+  "start": 255980,
+  "end": 261480,
+  "text": "I think, in 1946. So I'm getting that right. And remember, we had a midterm in 2018 where Trump"
+ },
+ {
+  "start": 261480,
+  "end": 266120,
+  "text": "and Republicans lost 41 house seats when he was somewhat less unpopular and were gased and cost"
+ },
+ {
+  "start": 266120,
+  "end": 272120,
+  "text": "430, a gallon or whatever it is. So look, I kind of call this the rock versus the hard place"
+ },
+ {
+  "start": 272740,
+  "end": 279860,
+  "text": "election right. The background conditions like couldn't be better for Democrats, right? The"
+ },
+ {
+  "start": 279860,
+  "end": 285480,
+  "text": "historical trends in midterms, voter anxiety about the economy, the Iran War, Trump's the lame duck"
+ },
+ {
+  "start": 285480,
+  "end": 289240,
+  "text": "and 80 years old. They've done really well and with turnout, they're doing well in early voting"
+ },
+ {
+  "start": 289240,
+  "end": 294980,
+  "text": "so far. They had a very good year in 2025 with New Jersey and Virginia. It's really very consistent"
+ },
+ {
+  "start": 294980,
+  "end": 297700,
+  "text": "indicators. I mean, they might have a couple of problems. Some of their candidates are seen as too far"
+ },
+ {
+  "start": 297700,
+  "end": 302520,
+  "text": "left, right? So that's kind of the rock. And the hard place is yeah, they'll probably win the house."
+ },
+ {
+  "start": 302860,
+  "end": 306720,
+  "text": "They'll probably pick up some governorships and stay watch sliteers, but they do have to win"
+ },
+ {
+  "start": 306720,
+  "end": 312040,
+  "text": "in some really red states just how the math works to win the Senate, right? States as Rand is Texas."
+ },
+ {
+  "start": 312040,
+  "end": 318700,
+  "text": "Yeah. Kansas, Alaska, South Carolina's in play if you believe the polls. So it's kind of this big,"
+ },
+ {
+  "start": 318960,
+  "end": 323320,
+  "text": "I mean, it's a while like I would say I'm a little bit anxious, not just for the implication of"
+ },
+ {
+  "start": 323320,
+  "end": 328460,
+  "text": "the country, but because like it's kind of become a tricky race for like models and polls and"
+ },
+ {
+  "start": 328460,
+  "end": 334100,
+  "text": "forecast, right? There's no there's no gimmie. You either have to lie and say it's a toss up. It's"
+ },
+ {
+  "start": 334100,
+  "end": 338840,
+  "text": "not you can't that's not an honest answer at this point, right? That's hedging. But you have to"
+ },
+ {
+  "start": 338840,
+  "end": 345540,
+  "text": "take a kind of leap of faith that the Democrat could win in Texas. You have to kind of take a leap"
+ },
+ {
+  "start": 345540,
+  "end": 352600,
+  "text": "of faith on some of this stuff. And a probabilistically leap of faith. But at this point, it would be a"
+ },
+ {
+  "start": 352600,
+  "end": 359740,
+  "text": "really bad night for pollsters if Democrats don't win the Senate. Okay. Just to sort of test our"
+ },
+ {
+  "start": 359740,
+  "end": 365640,
+  "text": "priors a little bit. Everyone's treating this as a referendum on Trump, which kind of like makes me"
+ },
+ {
+  "start": 365750,
+  "end": 370270,
+  "text": "nervous when everyone's doing the same thing. But in your view, is that an accurate way to measure it?"
+ },
+ {
+  "start": 370390,
+  "end": 376250,
+  "text": "Like do we have hardcore evidence that people are voting on Trump rather than voting on a local"
+ },
+ {
+  "start": 376250,
+  "end": 381250,
+  "text": "representative? I think the best evidence is that Trump is no longer featured in Republican campaign"
+ },
+ {
+  "start": 381250,
+  "end": 386170,
+  "text": "commercials, right? Trump is not being talked about anymore on Republican podcasts. However,"
+ },
+ {
+  "start": 386430,
+  "end": 395730,
+  "text": "Trump himself is trying to make himself like the main character of this story when I don't think"
+ },
+ {
+  "start": 396370,
+  "end": 400950,
+  "text": "was it in Dallas just after Labor Day. And like that's when Republican polls kind of went from"
+ },
+ {
+  "start": 400950,
+  "end": 406590,
+  "text": "bad to worse. I don't think that's the main cause or necessarily even a secondary cause. But yeah,"
+ },
+ {
+  "start": 406690,
+  "end": 411370,
+  "text": "I mean, the behavior you'd expect if people are being kind of game theory optimal, is that Trump is"
+ },
+ {
+  "start": 411370,
+  "end": 416690,
+  "text": "taking a backseat and trying to let his more moderate candidates distance themselves a little bit."
+ },
+ {
+  "start": 416770,
+  "end": 422050,
+  "text": "And instead we've seen the opposite, right? I mean, if Trump hadn't endorsed Ken Paxton in Texas,"
+ },
+ {
+  "start": 422050,
+  "end": 427890,
+  "text": "I'm not sure that James Talibiko would have a slight lead there. If Trump hadn't chosen to go"
+ },
+ {
+  "start": 427890,
+  "end": 434070,
+  "text": "to work with Iran, I tend to think the Senate would be a toss up and not lean, lean D. So, no,"
+ },
+ {
+  "start": 434170,
+  "end": 439050,
+  "text": "he's the central character. And it's also kind of like, it's kind of like the last time Trump is on"
+ },
+ {
+  "start": 439550,
+  "end": 445910,
+  "text": "the ballot, barring extra constitutional shenanigans. Yeah, which who knows? Now, this gets to the"
+ },
+ {
+  "start": 445910,
+  "end": 450990,
+  "text": "question of like, could it be a bad night for pollsters? And there is this seems to this view"
+ },
+ {
+  "start": 450990,
+  "end": 458930,
+  "text": "has congealed in the general public that starting at least in 2016, pollsters always overestimate"
+ },
+ {
+  "start": 459510,
+  "end": 464310,
+  "text": "Democrats. Yeah, I think your view is that that's actually just factually incorrect. But why do you"
+ },
+ {
+  "start": 464310,
+  "end": 469570,
+  "text": "tell us about what we know about polling error? So, what we know number one is that polling errors"
+ },
+ {
+  "start": 469570,
+  "end": 475150,
+  "text": "are correlated. That if a poll misses high on the Democrat in Iowa, probably in a similar state"
+ },
+ {
+  "start": 475150,
+  "end": 479290,
+  "text": "like Kansas or Nebraska, all three states are competitive this year. Good chance, you'll have a"
+ },
+ {
+  "start": 479290,
+  "end": 485790,
+  "text": "correlated error. Okay. So therefore, you cannot look at individual races as a Monte Carlo random. Yeah."
+ },
+ {
+  "start": 486170,
+  "end": 491150,
+  "text": "But a, they're less correlated in midterms than in presidential years because you have different"
+ },
+ {
+  "start": 491150,
+  "end": 495410,
+  "text": "candidates on the ballot and every state. That's important. In 2020, we saw this kind of really big"
+ },
+ {
+  "start": 495410,
+  "end": 500030,
+  "text": "red wave in like New York, New Jersey, Tri-State area. Yeah. And we're focused really well on Florida."
+ },
+ {
+  "start": 500030,
+  "end": 504910,
+  "text": "The rest of the map was relatively good for Democrats, John Fetterman one and people like that,"
+ },
+ {
+  "start": 504910,
+  "end": 511230,
+  "text": "giving that Biden had like a 39% approval rating. You know, number two, we have had systematic"
+ },
+ {
+  "start": 511230,
+  "end": 518610,
+  "text": "polling errors under estimated Trump in 2016, 2020, 2024, a little bit more modest, but still"
+ },
+ {
+  "start": 518610,
+  "end": 522750,
+  "text": "direction the same, right? In every election in the Trump era where Trump has not on the ballot,"
+ },
+ {
+  "start": 523030,
+  "end": 527190,
+  "text": "you have not had that error. And in fact, in like New Jersey and Virginia last year, you had a massive"
+ },
+ {
+  "start": 528350,
+  "end": 532430,
+  "text": "underestimation of Democrats in governor's races. And so like, first of all, it could all be"
+ },
+ {
+  "start": 532430,
+  "end": 537170,
+  "text": "noise, right? If you like, code up a, you know, have Claude or whatever, her GPT,"
+ },
+ {
+  "start": 537750,
+  "end": 542010,
+  "text": "code up a sim to just show you like what random polling error looks like in the past 20 elections,"
+ },
+ {
+  "start": 542010,
+  "end": 546790,
+  "text": "it looks kind of like, you know, it's impossible to distinguish it, right? But one story might be that like"
+ },
+ {
+  "start": 546790,
+  "end": 553830,
+  "text": "Trump has this kind of magical power to attract low turnout voters that also happen to be"
+ },
+ {
+  "start": 554370,
+  "end": 559950,
+  "text": "hard for pollsters to reach. Yeah. And where they get screened out as being unlikely voters,"
+ },
+ {
+  "start": 560690,
+  "end": 566190,
+  "text": "those voters don't seem to want to show up for like a Roger Marshall and Kansas or Ken Paxson"
+ },
+ {
+  "start": 566190,
+  "end": 571610,
+  "text": "in Texas, right? It seems very, you know, Trump got a lot of young men last year who flipped to 2024,"
+ },
+ {
+  "start": 571610,
+  "end": 578570,
+  "text": "who flipped to him. Young men don't usually turn out or watch the NFL or whatever, right? And like,"
+ },
+ {
+  "start": 578610,
+  "end": 582230,
+  "text": "there's a consistent story where like conveniently this problem of like these missing voters"
+ },
+ {
+  "start": 582870,
+  "end": 587150,
+  "text": "aren't an issue if they don't vote. This was actually going to be my next question,"
+ },
+ {
+  "start": 587250,
+  "end": 592590,
+  "text": "but like what are you seeing in terms of early signs of turnout? And then what, what are the chances"
+ },
+ {
+  "start": 592590,
+  "end": 600310,
+  "text": "that a former Trump voter actually votes Democrat rather than just decides not to show up?"
+ }
+]
