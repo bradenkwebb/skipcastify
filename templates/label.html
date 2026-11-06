@@ -101,14 +101,14 @@
 <body>
 <header>
   <h1><a href="/label" style="color:inherit">🎧 Label</a></h1>
-  <a id="back" class="btn" href="/label" hidden>← Episodes <kbd>b</kbd></a>
+  <a id="back" class="btn" href="/label" title="Back to episodes (b)" hidden>← Episodes</a>
   <span id="title" class="muted"></span>
-  <input id="find" placeholder="find text…  (enter / esc)">
+  <input id="find" placeholder="find text…" title="Find text (/); Enter jumps, Esc closes">
   <span class="tools" id="tools" hidden>
-    <button id="bPred" title="Toggle predictions (p)">Predictions <kbd>p</kbd></button>
-    <button id="bFill" title="Replace labels with the pipeline's cuts (P)">Start from cuts <kbd>P</kbd></button>
-    <button id="bRev" title="Mark the whole episode fully labeled, so unlabeled lines count as content (R)">Reviewed <kbd>R</kbd></button>
-    <button id="bHelp">Keys <kbd>?</kbd></button>
+    <button id="bPred" title="Toggle predictions (p)">Predictions</button>
+    <button id="bFill" title="Replace labels with the pipeline's cuts (P)">Start from cuts</button>
+    <button id="bRev" title="Mark the whole episode fully labeled, so unlabeled lines count as content (R)">Reviewed</button>
+    <button id="bHelp" title="Keyboard shortcuts (?)">Keys</button>
     <span id="save" class="muted"></span>
   </span>
   <a href="/dashboard" style="font-size:13px">dashboard →</a>
@@ -116,15 +116,15 @@
 <div id="legend" hidden></div>
 <div id="done" hidden><b>✓ Reviewed</b>
   <a class="btn" id="doneNext" hidden></a>
-  <span class="muted" style="font-size:12px">locked · press R to edit</span></div>
+  <span class="muted" style="font-size:12px" title="Press R to unlock">locked</span></div>
 <div id="picker" hidden>
   <div id="pickbar">
-    <input id="filter" placeholder="Filter episodes…  ( / to focus, j/k or ↑/↓, enter to open )">
+    <input id="filter" placeholder="Filter episodes…" title="Focus with /; j/k or ↑/↓ to move, Enter to open">
     <div id="pickopts">
-      <span class="muted">Sort <kbd>s</kbd></span>
+      <span class="muted" title="Cycle with s">Sort</span>
       <button data-sort="show">By show</button><button data-sort="new">Newest</button><button data-sort="old">Oldest</button>
       <span class="sep"></span>
-      <span class="muted">Show <kbd>f</kbd></span>
+      <span class="muted" title="Cycle with f">Show</span>
       <button data-st="all">All</button><button data-st="todo">To do</button><button data-st="wip">In progress</button><button data-st="done">Reviewed</button>
       <span id="counts" class="muted" style="margin-left:auto"></span>
     </div>
@@ -568,7 +568,7 @@ async function findNext() {
   nextEp = eps.find(e => e.feed === FEED) || eps.find(e => e.has_predictions) || null;
   const a = $('doneNext');
   a.hidden = !nextEp;
-  if (nextEp) { a.href = '/label/' + encodeURIComponent(nextEp.name); a.innerHTML = `Next: ${esc(nextEp.name)} → <kbd>Enter</kbd>`; }
+  if (nextEp) { a.href = '/label/' + encodeURIComponent(nextEp.name); a.title = 'Open next (Enter)'; a.innerHTML = `Next: ${esc(nextEp.name)} →`; }
 }
 async function go(url) {
   clearTimeout(saveTimer);
