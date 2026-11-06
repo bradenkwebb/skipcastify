@@ -47,3 +47,9 @@ def test_eval_runs_reviewed_episodes_and_interleaves_arms(tmp_path, monkeypatch)
     assert {r["episode"] for r in rows} == {"show-a"}
     assert sorted((r["arm"] == str(p1), r["missed_ms"]) for r in rows) == [(False, 9000), (False, 9000), (True, 5000), (True, 5000)]
     assert "| p1.txt | 2 | 5.0 | 0.0 | 44.4% | 100.0% | 0 |" in (out / "summary.md").read_text()
+
+
+def test_dated_snapshot_uses_family_price():
+    from skipcastify.services.llm_utils import price_for
+    assert price_for("gpt-4o-mini-2024-07-18") == price_for("gpt-4o-mini") != price_for("gpt-4o")
+    assert price_for("gpt-4o-mini")["input"] > 0 and price_for("unknown")["input"] == 0
