@@ -12,7 +12,8 @@ compare prompts; the arms are interleaved round-robin so drift hits all equally.
     uv run python scripts/eval_ads.py --episode odd-lots --runs 1
 
 Results go to data/evals/<timestamp>/: results.jsonl (one row per call, with
-spans), summary.md, and metrics/events.jsonl (LLM cost; kept off the dashboard).
+spans), summary.md, metrics/events.jsonl (LLM cost) and llm_profiles/, all kept
+off the dashboard.
 """
 
 import argparse
@@ -29,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dotenv import load_dotenv  # noqa: E402
 
 from skipcastify.services import labeling, span_postprocess  # noqa: E402
+from skipcastify.services.llm_monitor import get_monitor  # noqa: E402
 from skipcastify.services.ad_eval import score  # noqa: E402
 from skipcastify.services.audio_processor import DEFAULT_PROMPT_PATH, AudioProcessor, Segment  # noqa: E402
 
@@ -59,7 +61,7 @@ def detect(segments, name: str, prompt: str) -> list[dict]:
 
 def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: float) -> str:
     sec = lambda ms: f"{ms / 1000:.1f}"  # noqa: E731
-    out = [f"# Ad-detection eval, {len(episodes)} reviewed episodes, LLM cost ${cost:.2f}", ""]
+    out = [f"# Ad-detection eval, {len(episodes)} reviewed episodes, LLM cost ${cost:.3f}", ""]
     out += ["| prompt | runs | missed s/run | wrongly cut s/run | recall | precision | errors |", "|---|---|---|---|---|---|---|"]
     for arm in arms:
         ok = [r for r in rows if r["arm"] == arm and "error" not in r]
@@ -101,6 +103,8 @@ def main(argv=None) -> int:
     out = Path(args.out) if args.out else data_dir / "evals" / datetime.now().strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
     os.environ["DATA_DIR"] = str(out)  # LLM cost events land here, not on the dashboard
+    get_monitor().profile_dir = out / "llm_profiles"
+    get_monitor().profile_dir.mkdir(exist_ok=True)
     data = {ep: load(data_dir, ep) for ep in episodes}
 
     rows = []
