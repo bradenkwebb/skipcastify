@@ -1,0 +1,46 @@
+name: llm-regression
+# Paid, nondeterministic LLM tests: run only when detection changes, never a required check.
+on:
+  pull_request:
+    paths:
+      - skipcastify/llm_prompts/**
+      - skipcastify/services/span_postprocess.py
+      - skipcastify/services/section_processor.py
+      - skipcastify/services/llm_utils.py
+      - tests/llm/**
+      - .github/workflows/llm-regression.yml
+  workflow_dispatch:
+concurrency:
+  group: llm-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  llm:
+    # Fork PRs get no secrets.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LLM_PROVIDER: openai
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o-mini' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install
+      - run: uv sync --locked
+      - name: Check for the API key
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::Add an OPENAI_API_KEY repository secret to run these tests."
+            exit 1
+          fi
+      - name: LLM regression tests
+        run: |
+          set -o pipefail
+          uv run pytest tests/llm --run-llm -q -rfxX 2>&1 | tee pytest.txt
+      - name: Summary
+        if: always()
+        run: |
+          { echo "### LLM regression ($OPENAI_MODEL)"; echo '```'; tail -n 60 pytest.txt 2>/dev/null; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -24,6 +24,12 @@ _OPENAI_PRICE: dict[str, dict[str, float]] = {
 }
 
 
+def price_for(model: str) -> dict[str, float]:
+    """Prices for a model or a dated snapshot of it (gpt-4o-mini-2024-07-18 -> gpt-4o-mini)."""
+    base = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model)
+    return _OPENAI_PRICE.get(base, {"input": 0.0, "output": 0.0})
+
+
 @dataclass
 class LLMResponse:
     text: str
@@ -80,7 +86,7 @@ def call_openai_chat(prompt: str) -> LLMResponse:
     if details is not None:
         cached_tokens = getattr(details, "cached_tokens", 0) or 0
 
-    prices = _OPENAI_PRICE.get(DEFAULT_OPENAI_MODEL, {"input": 0.0, "output": 0.0})
+    prices = price_for(DEFAULT_OPENAI_MODEL)
     cached_rate = prices.get("cached_input", prices["input"])
     uncached_tokens = prompt_tokens - cached_tokens
     cost_usd = (

@@ -9,7 +9,7 @@ import time
 from faster_whisper import WhisperModel
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from skipcastify.services.state_manager import StateManager
 from skipcastify.services.segment_classifier import SegmentClassifier
@@ -49,6 +49,9 @@ class Segment:
     start: int  # milliseconds
     end: int    # milliseconds
     text: str
+
+DEFAULT_PROMPT_PATH = os.path.join(os.path.dirname(__file__), '..', 'llm_prompts', 'identify_ads_prompt.txt')
+
 
 class AudioProcessor:
     def __init__(self, data_dir: str) -> None:
@@ -475,14 +478,14 @@ class AudioProcessor:
             logger.warning(f"Failed to save preview transcript: {e}")
 
 
-    def _run_section_llm(self, segments: List[Segment], transcripts_dir: str, episode_name: str, feed_slug: str = "") -> List[dict]:
+    def _run_section_llm(self, segments: List[Segment], transcripts_dir: str, episode_name: str, feed_slug: str = "",
+                         prompt_path: Optional[str] = None) -> List[dict]:
         """Run the section-level LLM on suspicious sections and return ad spans.
 
-        Returns a list of dicts with keys: start_ms, end_ms, label, rationale
+        Returns a list of dicts with keys: start_ms, end_ms, label, rationale.
+        prompt_path overrides the production prompt (used by scripts/eval_ads.py).
         """
-        prompt_path = os.path.join(os.path.dirname(__file__), '..', 'llm_prompts', 'identify_ads_prompt.txt')
-        # Normalize path
-        prompt_path = os.path.normpath(prompt_path)
+        prompt_path = os.path.normpath(prompt_path or DEFAULT_PROMPT_PATH)
 
         try:
             with open(prompt_path, 'r', encoding='utf-8') as f:
