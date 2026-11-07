@@ -7,6 +7,7 @@ from flask import (Flask, send_from_directory, abort, request, Response,
 from dotenv import load_dotenv
 
 from skipcastify.services import analytics, labeling
+from skipcastify.services.episode_detail import episode_detail
 from skipcastify.services.published_feeds import published_feeds
 from skipcastify.utils.alerts import scrub_secrets
 
@@ -142,6 +143,21 @@ def serve_artwork(token, filename):
 @require_auth
 def dashboard():
     return render_template('dashboard.html')
+
+
+@app.route('/dashboard/episode/<episode>')
+@require_auth
+def episode_page(episode):
+    if not labeling.valid_name(episode):
+        return abort(404)
+    return render_template('episode.html', episode=episode)
+
+
+@app.route('/api/episode/<episode>.json')
+@require_auth
+def episode_json(episode):
+    detail = episode_detail(data_dir, episode)
+    return jsonify(detail) if detail else abort(404)
 
 
 @app.route('/feeds')

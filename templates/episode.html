@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skipcastify · Episode</title>
+<style>
+  {% include '_theme.css' %}
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--accent); text-decoration: none; }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 650; }
+  main { padding: 20px 24px 60px; max-width: 1200px; margin: 0 auto; }
+  #title { font-size: 22px; font-weight: 650; margin: 0 0 2px; }
+  #sub { color: var(--muted); font-size: 14px; margin-bottom: 18px; overflow-wrap: anywhere; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .04em; margin: 32px 0 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card .v { font-size: 26px; font-weight: 650; }
+  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .muted { color: var(--muted); }
+  .lane { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 12px; }
+  .track { position: relative; height: 22px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+  .track .sp { position: absolute; top: 0; bottom: 0; opacity: .85; cursor: pointer; min-width: 2px; }
+  .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-left: 106px; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .tbl tr.hl td { background: var(--sel-strong); }
+  .scroll { overflow-x: auto; }
+  .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .edge { color: var(--muted); font-style: italic; }
+  button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 7px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
+  button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--ad); }
+  @media (max-width: 600px) { header, main { padding-left: 16px; padding-right: 16px; } .lane { grid-template-columns: 70px 1fr; } .axis { margin-left: 80px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/dashboard" style="color:inherit">🎧 Skipcastify</a></h1>
+  <a href="/dashboard">← dashboard</a>
+  <a id="labelLink" hidden>label this episode →</a>
+</header>
+<main>
+  <div id="title"></div>
+  <div id="sub"></div>
+  <div class="cards" id="cards"></div>
+
+  <h2>Timeline</h2>
+  <div class="panel" id="timeline"></div>
+
+  <div id="scoreWrap" hidden>
+    <h2>Against your labels</h2>
+    <div class="panel" id="score"></div>
+  </div>
+
+  <h2>Cuts <span class="muted" style="text-transform:none;letter-spacing:0">— latest run; reasons from the LLM's saved answers</span></h2>
+  <div class="panel scroll" id="cuts"></div>
+
+  <h2>Processing runs</h2>
+  <div class="panel scroll" id="runs"></div>
+</main>
+<audio id="au" preload="none"></audio>
+
+<script>
+const EP = {{ episode|tojson }};
+const LABEL_COLORS = { ad: 'var(--ad)', self_promo: 'var(--self_promo)', intro_outro: 'var(--intro_outro)' };
+const LABEL_NAMES = { ad: 'ad', self_promo: 'self-promo', intro_outro: 'intro/outro' };
+const $ = id => document.getElementById(id);
+let D = null;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function clock(ms) {
+  const t = Math.round(ms / 1000), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+}
+function secs(s) { return s == null ? '—' : s < 90 ? s.toFixed(1) + 's' : clock(s * 1000); }
+function when(ts) { return ts ? new Date(ts).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '—'; }
+function card(k, v) { return `<div class="card"><div class="v">${v}</div><div class="k">${k}</div></div>`; }
+
+async function load() {
+  const r = await fetch('/api/episode/' + encodeURIComponent(EP) + '.json', { credentials: 'same-origin' });
+  if (!r.ok) { $('title').innerHTML = `<span class="err">${r.status === 404 ? 'No such episode' : 'Failed to load: HTTP ' + r.status}</span>`; return; }
+  D = await r.json();
+  render();
+}
+
+function render() {
+  const L = D.latest || {};
+  document.title = 'Skipcastify · ' + (D.title || D.name);
+  $('title').textContent = D.title || D.name;
+  $('sub').innerHTML = [esc(D.feed || 'unknown feed'), D.released ? 'released ' + when(D.released) : null,
+    D.title ? `<span title="episode id">${esc(D.name)}</span>` : null].filter(Boolean).join(' · ');
+  if (D.has_transcript) { $('labelLink').href = '/label/' + encodeURIComponent(D.name); $('labelLink').hidden = false;
+    $('labelLink').textContent = D.labels ? (D.labels.reviewed ? 'labels (reviewed) →' : 'labels (in progress) →') : 'label this episode →'; }
+
+  const last = D.runs[0] || {};
+  $('cards').innerHTML = [
+    card('Length', L.original_duration_s ? clock(L.original_duration_s * 1000) : '—'),
+    card('Cut', L.ads_removed_s != null ? `${secs(L.ads_removed_s)} <span class="muted" style="font-size:15px">${(L.ads_pct ?? 0).toFixed(1)}%</span>` : '—'),
+    card('Cuts', D.cuts.length),
+    card('LLM cost, latest run', L.cost_usd != null ? '$' + L.cost_usd.toFixed(4) : '—'),
+    card('Transcription', last.transcribe_s != null ? `${secs(last.transcribe_s)} <span class="muted" style="font-size:15px">${esc(last.whisper_model || '')}</span>` : 'cached'),
+  ].join('');
+
+  renderTimeline(); renderScore(); renderCuts(); renderRuns();
+}
+
+function lane(name, spans, total, color, onclick) {
+  const blocks = spans.map((s, i) => `<div class="sp" ${onclick ? `data-i="${i}"` : ''}
+    title="${clock(s.start_ms)}–${clock(s.end_ms)}${s.label && LABEL_NAMES[s.label] ? ' · ' + LABEL_NAMES[s.label] : ''}"
+    style="left:${s.start_ms / total * 100}%;width:${(s.end_ms - s.start_ms) / total * 100}%;background:${color(s)}"></div>`).join('');
+  return `<div class="lane"><span class="muted">${name}</span><div class="track" ${onclick ? 'data-cuts' : ''}>${blocks}</div></div>`;
+}
+
+function renderTimeline() {
+  const total = ((D.latest || {}).original_duration_s || 0) * 1000
+    || Math.max(1, ...D.cuts.map(c => c.end_ms), ...((D.labels || {}).spans || []).map(s => s.end_ms));
+  let html = lane('Pipeline cut', D.cuts, total, () => 'var(--ad)', true);
+  if (D.labels) html += lane(D.labels.reviewed ? 'Your labels' : 'Labels (WIP)', D.labels.spans, total, s => LABEL_COLORS[s.label] || 'var(--muted)');
+  const ticks = [0, .25, .5, .75, 1].map(f => `<span>${clock(total * f)}</span>`).join('');
+  $('timeline').innerHTML = html + `<div class="axis">${ticks}</div>`;
+  $('timeline').querySelectorAll('[data-cuts] .sp').forEach(el => el.onclick = () => focusCut(+el.dataset.i));
+}
+
+function renderScore() {
+  const S = D.score;
+  $('scoreWrap').hidden = !S;
+  if (!S) return;
+  const pct = (a, b) => b ? ` (${(a / b * 100).toFixed(0)}%)` : '';
+  $('score').innerHTML = `
+    <div><b class="${S.missed_ms ? 'warn' : 'ok'}">Missed ${secs(S.missed_ms / 1000)}</b> of ${secs(S.truth_ms / 1000)} you labeled to cut${pct(S.missed_ms, S.truth_ms)}</div>
+    <div><b class="${S.wrong_ms ? 'warn' : 'ok'}">Wrongly cut ${secs(S.wrong_ms / 1000)}</b> of ${secs(S.cut_ms / 1000)} the pipeline cut${pct(S.wrong_ms, S.cut_ms)}</div>
+    <div class="muted" style="font-size:12px;margin-top:6px">Ads and self-promo count as should-cut; only transcribed time counts, and the pipeline removes whole transcript lines.</div>`;
+}
+
+function renderCuts() {
+  if (!D.cuts.length) { $('cuts').innerHTML = `<span class="muted">${D.latest ? 'Nothing was cut.' : 'Not processed yet.'}</span>`; return; }
+  const play = D.has_audio && D.has_transcript;
+  const rows = D.cuts.map((c, i) => `<tr id="cut${i}">
+    <td class="num">${play ? `<button data-play="${i}" title="Play the raw audio around this cut">▶</button> ` : ''}${clock(c.start_ms)}–${clock(c.end_ms)}</td>
+    <td class="num">${secs((c.end_ms - c.start_ms) / 1000)}</td>
+    <td>${c.rationales.length ? c.rationales.map(esc).join('<br>') : '<span class="muted">—</span>'}</td>
+    <td class="edge">${c.first_line ? '“' + esc(c.first_line) + '”' : ''}${c.last_line ? '<br>… “' + esc(c.last_line) + '”' : ''}</td></tr>`).join('');
+  $('cuts').innerHTML = `<table class="tbl"><tr><th>When</th><th>Length</th><th>Why</th><th>First and last line</th></tr>${rows}</table>`;
+  $('cuts').querySelectorAll('[data-play]').forEach(b => b.onclick = () => playCut(+b.dataset.play, b));
+}
+
+function renderRuns() {
+  if (!D.runs.length) { $('runs').innerHTML = '<span class="muted">No processing events recorded.</span>'; return; }
+  const rows = D.runs.map(r => `<tr>
+    <td class="num">${when(r.started)}</td>
+    <td>${r.completed ? '<span class="ok">completed</span>' : '<span class="warn">did not finish</span>'}</td>
+    <td class="num">${r.ads_removed_s != null ? secs(r.ads_removed_s) + ' in ' + r.span_count : '—'}</td>
+    <td class="num">${r.llm_calls}</td><td class="num">$${r.cost_usd.toFixed(4)}</td>
+    <td class="num">${r.transcribe_s != null ? secs(r.transcribe_s) + ' · ' + esc(r.whisper_model || '') : 'cached'}</td></tr>`).join('');
+  $('runs').innerHTML = `<table class="tbl"><tr><th>Started</th><th>Outcome</th><th>Cut</th><th>LLM calls</th><th>LLM cost</th><th>Transcription</th></tr>${rows}</table>`;
+}
+
+function focusCut(i) {
+  document.querySelectorAll('tr.hl').forEach(r => r.classList.remove('hl'));
+  const row = $('cut' + i); row.classList.add('hl');
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// Plays from 3s before the cut to 3s after it, so both edges are audible.
+let stopAt = null, playingBtn = null;
+function playCut(i, btn) {
+  const au = $('au');
+  if (playingBtn === btn && !au.paused) { au.pause(); return; }
+  if (!au.src) au.src = '/api/label/' + encodeURIComponent(D.name) + '/audio';
+  const c = D.cuts[i];
+  au.currentTime = Math.max(0, c.start_ms / 1000 - 3);
+  stopAt = c.end_ms / 1000 + 3;
+  if (playingBtn) playingBtn.classList.remove('on');
+  playingBtn = btn; btn.classList.add('on');
+  au.play();
+}
+$('au').addEventListener('timeupdate', e => { if (stopAt && e.target.currentTime >= stopAt) e.target.pause(); });
+$('au').addEventListener('pause', () => { if (playingBtn) playingBtn.classList.remove('on'); });
+
+load();
+</script>
+</body>
+</html>
