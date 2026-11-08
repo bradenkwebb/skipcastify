@@ -55,3 +55,36 @@ def test_missing_episode_and_fetch_failure_are_soft(client, monkeypatch):  # noq
     m = c.get('/api/episode/mypodcast-ep_1/meta.json', headers=AUTH).get_json()
     assert m['show'] is None and 'OSError' in m['error']
     assert c.get('/api/episode/.hidden/meta.json', headers=AUTH).status_code == 404
+
+
+def test_new_episode_refetches_but_only_after_a_while(client, monkeypatch):  # noqa: F811
+    c, tmp = client
+    calls = setup(tmp, monkeypatch)
+    (tmp / 'podcasts' / 'raw' / 'mypodcast' / 'mypodcast-ep_2.mp3').write_bytes(b'ID3')
+    c.get('/api/episode/mypodcast-ep_1/meta.json', headers=AUTH)
+    c.get('/api/episode/mypodcast-ep_2/meta.json', headers=AUTH)  # missing, but the copy is fresh
+    assert len(calls) == 1
+    url, (ts, summary) = next(iter(feed_meta._cache.items()))
+    feed_meta._cache[url] = (ts - feed_meta.MISS_REFRESH_S - 1, summary)  # copy now 10+ min old
+    c.get('/api/episode/mypodcast-ep_1/meta.json', headers=AUTH)  # present: still served from cache
+    assert len(calls) == 1
+    c.get('/api/episode/mypodcast-ep_2/meta.json', headers=AUTH)  # missing and old: refetch
+    assert len(calls) == 2
+
+
+def test_concurrent_requests_share_one_fetch(monkeypatch):
+    import threading
+    import time as _time
+    calls = []
+
+    def slow(url):
+        calls.append(url)
+        _time.sleep(0.2)
+        from tests.test_feed_meta import RSS
+        return RSS
+    monkeypatch.setattr(feed_meta, '_fetch', slow)
+    feed_meta._cache.clear()
+    threads = [threading.Thread(target=feed_meta.feed_summary, args=('https://u.example/rss', 'mypodcast')) for _ in range(4)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(calls) == 1
