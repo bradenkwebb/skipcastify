@@ -72,7 +72,7 @@
     <h2>About this episode</h2>
     <div class="panel"><div id="notes"></div><button id="notesMore" class="txt" hidden>Show more</button></div>
   </div>
-  <div id="metaErr" class="muted" style="font-size:12px;margin-top:10px" hidden></div>
+  <div id="metaErr" class="muted" style="font-size:12px;margin-top:10px">Loading show notes from the feed…</div>
 
   <h2>Timeline</h2>
   <div class="panel" id="timeline"></div>
@@ -246,7 +246,7 @@ async function loadMeta(pageLoaded) {
     M = await r.json();
   } catch (e) { M = { error: "couldn't load the show's feed" }; }
   await pageLoaded;  // fetched in parallel, applied after render() so it isn't overwritten
-  if (!D) return;
+  if (!D) { $('metaErr').hidden = true; return; }
   const S = M.show || {}, E = M.episode || {};
   const art = E.image || S.image;
   if (art && /^https?:\/\//.test(art)) { $('art').src = art; $('art').hidden = false; }
@@ -273,7 +273,8 @@ async function loadMeta(pageLoaded) {
     }
     $('aboutWrap').hidden = false;
   }
-  if (M.error) { $('metaErr').textContent = 'Show notes: ' + M.error + '.'; $('metaErr').hidden = false; }
+  if (M.error) $('metaErr').textContent = 'Show notes: ' + M.error + '.';
+  else $('metaErr').hidden = true;
 }
 
 loadMeta(load());
