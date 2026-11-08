@@ -3,7 +3,7 @@ import os
 import time
 from functools import wraps
 from flask import (Flask, send_from_directory, abort, request, Response,
-                   jsonify, make_response, render_template, send_file)
+                   jsonify, make_response, render_template, send_file, redirect)
 from dotenv import load_dotenv
 
 from skipcastify.services import analytics, labeling
@@ -138,6 +138,11 @@ def serve_artwork(token, filename):
     if not os.path.exists(os.path.join(path, filename)):
         return abort(404)
     return send_from_directory(path, filename)
+
+
+@app.route('/')
+def root():
+    return redirect('/dashboard')
 
 
 @app.route('/dashboard')
