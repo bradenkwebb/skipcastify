@@ -352,14 +352,22 @@ function setRange(a, b, label) {
     if (s.end_ms > b) out.push({...s, start_ms: b});
   }
   if (label) out.push({start_ms: a, end_ms: b, label});
-  out.sort((x, y) => x.start_ms - y.start_ms);
+  spans = mergeSpans(out);
+}
+function mergeSpans(list) {
   const merged = [];
-  for (const s of out) {
+  for (const s of [...list].sort((x, y) => x.start_ms - y.start_ms)) {
     const p = merged[merged.length - 1];
     if (p && p.label === s.label && gapEmpty(p.end_ms, s.start_ms)) p.end_ms = Math.max(p.end_ms, s.end_ms);
     else merged.push({...s});
   }
-  spans = merged;
+  return merged;
+}
+// Spans covering no line midpoint are invisible slivers (old labels left in the gaps between lines).
+function tidySpans() {
+  const before = JSON.stringify(spans);
+  spans = mergeSpans(spans.filter(s => S.some(r => { const m = (r.start + r.end) / 2; return m > s.start_ms && m < s.end_ms; })));
+  return JSON.stringify(spans) !== before;
 }
 // Reviewed episodes are ground truth; edits need an explicit R first.
 function locked() { if (reviewed) toast('Reviewed — press R to edit'); return reviewed; }
@@ -367,7 +375,9 @@ function applyLabel(label) {
   if (locked()) return;
   const [i, j] = selRange();
   snapshot();
-  setRange(S[i].start, S[j].end, label);
+  // Take the silent gaps on either side too, so no old label survives between lines.
+  setRange(i ? Math.min(S[i].start, S[i - 1].end) : S[i].start,
+           j < S.length - 1 ? Math.max(S[j].end, S[j + 1].start) : S[j].end, label);
   lastNudged = null;
   if (i === j) move(1, false);
   changed();
@@ -596,6 +606,7 @@ async function editor() {
   $('bFill').disabled = !PRED_N;
   render(); setPred(showPred); changed(); padRows(); centerCur();
   loaded = true; $('save').textContent = d.spans.length || d.reviewed ? 'saved' : '';
+  if (tidySpans()) { changed(); toast('Cleaned up leftover label slivers between lines'); }
   $('rows').focus();
   bindEditor();
 }
