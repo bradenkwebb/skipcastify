@@ -11,6 +11,9 @@ compare prompts; the arms are interleaved round-robin so drift hits all equally.
     uv run python scripts/eval_ads.py --prompt old.txt --prompt new.txt --runs 4
     uv run python scripts/eval_ads.py --episode odd-lots --runs 1
 
+Episodes listed in tests/llm/tuned_episodes.txt (the prompt was tuned on them)
+are reported apart from the rest, which are held-out.
+
 Results go to data/evals/<timestamp>/: results.jsonl (one row per call, with
 spans), summary.md, metrics/events.jsonl (LLM cost) and llm_profiles/, all kept
 off the dashboard.
@@ -59,10 +62,39 @@ def detect(segments, name: str, prompt: str) -> list[dict]:
     return span_postprocess.postprocess_spans(spans, segments) if spans else []
 
 
-def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: float) -> str:
-    sec = lambda ms: f"{ms / 1000:.1f}"  # noqa: E731
+TUNED_FILE = Path(__file__).resolve().parents[1] / "tests" / "llm" / "tuned_episodes.txt"
+
+
+def read_tuned(path: Path) -> set[str]:
+    if not path.is_file():
+        return set()
+    return {line.strip() for line in path.read_text().splitlines() if line.strip() and not line.startswith("#")}
+
+
+def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: float, tuned: set[str] = frozenset()) -> str:
     out = [f"# Ad-detection eval, {len(episodes)} reviewed episodes, LLM cost ${cost:.3f}", ""]
-    out += ["| prompt | runs | missed s/run | wrongly cut s/run | recall | precision | errors |", "|---|---|---|---|---|---|---|"]
+    groups = [("Held-out", "the honest number: the prompt never saw these", [e for e in episodes if e not in tuned]),
+              ("Tuned", "regression check: the prompt was tuned on these", [e for e in episodes if e in tuned])]
+    for name, note, eps in groups:
+        if eps:
+            out += [f"## {name}: {len(eps)} episode{'s' * (len(eps) != 1)} ({note})", ""]
+            out += _arm_table([r for r in rows if r["episode"] in eps], arms) + [""]
+    out += ["## Per episode, mean (min–max) seconds over runs", ""]
+    out += ["| episode | set | prompt | labeled to cut | missed | wrongly cut |", "|---|---|---|---|---|---|"]
+    sec = lambda ms: f"{ms / 1000:.1f}"  # noqa: E731
+    for ep in episodes:
+        for arm in arms:
+            ok = [r for r in rows if r["arm"] == arm and r["episode"] == ep and "error" not in r]
+            if not ok:
+                continue
+            col = lambda k: f"{sec(statistics.mean(r[k] for r in ok))} ({sec(min(r[k] for r in ok))}–{sec(max(r[k] for r in ok))})"  # noqa: E731
+            out.append(f"| {ep} | {'tuned' if ep in tuned else 'held-out'} | {Path(arm).name} | {sec(ok[0]['truth_ms'])} | {col('missed_ms')} | {col('wrong_ms')} |")
+    return "\n".join(out) + "\n"
+
+
+def _arm_table(rows: list[dict], arms: list[str]) -> list[str]:
+    sec = lambda ms: f"{ms / 1000:.1f}"  # noqa: E731
+    out = ["| prompt | runs | missed s/run | wrongly cut s/run | recall | precision | errors |", "|---|---|---|---|---|---|---|"]
     for arm in arms:
         ok = [r for r in rows if r["arm"] == arm and "error" not in r]
         runs = sorted({r["round"] for r in ok})
@@ -72,16 +104,7 @@ def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: floa
         precision = f"{(cut - wrong) / cut:.1%}" if cut else "-"
         errors = sum(1 for r in rows if r["arm"] == arm and "error" in r)
         out.append(f"| {Path(arm).name} | {len(runs)} | {sec(missed)} | {sec(wrong)} | {recall} | {precision} | {errors} |")
-    out += ["", "Per episode, mean (min–max) seconds over runs:", ""]
-    out += ["| episode | prompt | labeled to cut | missed | wrongly cut |", "|---|---|---|---|---|"]
-    for ep in episodes:
-        for arm in arms:
-            ok = [r for r in rows if r["arm"] == arm and r["episode"] == ep and "error" not in r]
-            if not ok:
-                continue
-            col = lambda k: f"{sec(statistics.mean(r[k] for r in ok))} ({sec(min(r[k] for r in ok))}–{sec(max(r[k] for r in ok))})"  # noqa: E731
-            out.append(f"| {ep} | {Path(arm).name} | {sec(ok[0]['truth_ms'])} | {col('missed_ms')} | {col('wrong_ms')} |")
-    return "\n".join(out) + "\n"
+    return out
 
 
 def main(argv=None) -> int:
@@ -92,6 +115,7 @@ def main(argv=None) -> int:
     ap.add_argument("--prompt", action="append", help="prompt file; repeat to compare (default: production prompt)")
     ap.add_argument("--episode", action="append", default=[], help="substring filter; repeatable")
     ap.add_argument("--out", help="output dir (default: <data-dir>/evals/<timestamp>)")
+    ap.add_argument("--tuned", default=str(TUNED_FILE), help="file listing tuned episodes, one per line")
     args = ap.parse_args(argv)
 
     data_dir = Path(args.data_dir).resolve()
@@ -129,7 +153,7 @@ def main(argv=None) -> int:
 
     events = out / "metrics" / "events.jsonl"
     cost = sum(json.loads(line).get("cost_usd", 0) for line in events.open()) if events.exists() else 0.0
-    summary = summarize(rows, arms, episodes, cost)
+    summary = summarize(rows, arms, episodes, cost, read_tuned(Path(args.tuned)))
     (out / "summary.md").write_text(summary)
     print("\n" + summary + f"\nWrote {out}")
     return 0
