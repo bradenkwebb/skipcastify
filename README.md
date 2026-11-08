@@ -81,6 +81,18 @@ All runtime config lives in `.env` (never committed):
 | `OLLAMA_MODEL` | Ollama model to use (default: `gemma4:e2b`) |
 | `STORAGE_HIGH_WATER_GB` | Start deleting audio above this threshold (default: 75) |
 | `STORAGE_LOW_WATER_GB` | Stop deleting once below this threshold (default: 50) |
+| `WHISPER_THREADS` | CPU threads for transcription; raise for faster, hotter runs (default: 2) |
+| `CPU_TEMP_THRESHOLD` | Wait for the CPU to drop below this °C before transcribing (default: 72) |
+| `EPISODE_COOLDOWN_S` | Pause between episodes in one run, to let the box cool (default: 120) |
+| `TWO_STAGE_LLM` | Set `true` to run a second LLM pass refining the spans (default: `false`) |
+| `NTFY_TOPIC` | ntfy topic for alerts; unset makes alerting a no-op |
+| `OVERCAST_PING` | Ping Overcast when a published feed changes (default: `true`) |
+
+Publishing to Cloudflare R2 adds `PUBLISH_TO_R2`, `PUBLIC_BASE_URL`,
+`PUBLIC_PATH_SECRET` and the `R2_*` variables (credentials, bucket, and the
+spend and retention caps). They are documented together with the publishing
+model in [docs/r2-publishing.md](docs/r2-publishing.md), and `.env.example`
+lists every one of them.
 
 ### Subscriptions
 
