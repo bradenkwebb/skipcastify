@@ -16,6 +16,14 @@
   header h1 { margin: 0; font-size: 20px; font-weight: 650; }
   main { padding: 20px 24px 60px; max-width: 1200px; margin: 0 auto; }
   #title { font-size: 22px; font-weight: 650; margin: 0 0 2px; }
+  #title a, #show a { color: inherit; }
+  #title a:hover, #show a:hover { color: var(--accent); }
+  #show { font-size: 13px; margin-bottom: 2px; }
+  .headrow { display: flex; gap: 16px; align-items: flex-start; }
+  #art { width: 84px; height: 84px; border-radius: 10px; object-fit: cover; flex: none; background: var(--panel2); }
+  #notes p { margin: 0 0 10px; overflow-wrap: anywhere; }
+  #notes.clip p:nth-child(n+5) { display: none; }
+  button.txt { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-size: 13px; }
   #sub { color: var(--muted); font-size: 14px; margin-bottom: 18px; overflow-wrap: anywhere; }
   h2 { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase;
        letter-spacing: .04em; margin: 32px 0 12px; }
@@ -54,9 +62,17 @@
   <a id="labelLink" hidden>label this episode →</a>
 </header>
 <main>
-  <div id="title"></div>
-  <div id="sub"></div>
+  <div class="headrow">
+    <img id="art" alt="" referrerpolicy="no-referrer" hidden>
+    <div><div id="show" class="muted"></div><div id="title"></div><div id="sub"></div></div>
+  </div>
   <div class="cards" id="cards"></div>
+
+  <div id="aboutWrap" hidden>
+    <h2>About this episode</h2>
+    <div class="panel"><div id="notes"></div><button id="notesMore" class="txt" hidden>Show more</button></div>
+  </div>
+  <div id="metaErr" class="muted" style="font-size:12px;margin-top:10px" hidden></div>
 
   <h2>Timeline</h2>
   <div class="panel" id="timeline"></div>
@@ -212,7 +228,55 @@ function playCut(i, btn) {
 $('au').addEventListener('timeupdate', e => { if (stopAt && e.target.currentTime >= stopAt) e.target.pause(); });
 $('au').addEventListener('pause', () => { if (playingBtn) playingBtn.classList.remove('on'); });
 
-load();
+// On-demand feed metadata; the page works without it.
+function linkEl(href, text) {
+  const a = document.createElement('a');
+  a.href = href; a.textContent = text; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  return a;
+}
+function setLinked(el, text, href) {
+  el.textContent = '';
+  if (text && href && /^https?:\/\//.test(href)) el.appendChild(linkEl(href, text)); else el.textContent = text || '';
+}
+async function loadMeta(pageLoaded) {
+  let M;
+  try {
+    const r = await fetch('/api/episode/' + encodeURIComponent(EP) + '/meta.json', { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    M = await r.json();
+  } catch (e) { M = { error: "couldn't load the show's feed" }; }
+  await pageLoaded;  // fetched in parallel, applied after render() so it isn't overwritten
+  if (!D) return;
+  const S = M.show || {}, E = M.episode || {};
+  const art = E.image || S.image;
+  if (art && /^https?:\/\//.test(art)) { $('art').src = art; $('art').hidden = false; }
+  if (S.title) {
+    setLinked($('show'), S.title, S.website);
+    if (S.author && S.author !== S.title) $('show').append(' · ' + S.author);
+  }
+  if (E.title) {
+    setLinked($('title'), E.title, E.link);
+    const n = [E.season && 'Season ' + E.season, E.episode && 'Episode ' + E.episode].filter(Boolean).join(', ');
+    if (n) $('sub').prepend(n + ' · ');
+  }
+  const notes = (E.notes && E.notes.length) ? E.notes : [];
+  if (notes.length) {
+    const box = $('notes');
+    for (const block of notes) {
+      const p = document.createElement('p');
+      for (const run of block) p.appendChild(run.href && /^https?:\/\//.test(run.href) ? linkEl(run.href, run.text) : document.createTextNode(run.text));
+      box.appendChild(p);
+    }
+    if (notes.length > 4) {
+      box.classList.add('clip'); $('notesMore').hidden = false;
+      $('notesMore').onclick = () => { const c = box.classList.toggle('clip'); $('notesMore').textContent = c ? 'Show more' : 'Show less'; };
+    }
+    $('aboutWrap').hidden = false;
+  }
+  if (M.error) { $('metaErr').textContent = 'Show notes: ' + M.error + '.'; $('metaErr').hidden = false; }
+}
+
+loadMeta(load());
 </script>
 </body>
 </html>

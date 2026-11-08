@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from skipcastify.services import analytics, labeling
 from skipcastify.services.episode_detail import episode_detail
+from skipcastify.services import feed_meta
 from skipcastify.services.published_feeds import published_feeds
 from skipcastify.utils.alerts import scrub_secrets
 
@@ -151,6 +152,16 @@ def episode_page(episode):
     if not labeling.valid_name(episode):
         return abort(404)
     return render_template('episode.html', episode=episode)
+
+
+@app.route('/api/episode/<episode>/meta.json')
+@require_auth
+def episode_meta_json(episode):
+    """Description and links from the show's live RSS feed, fetched on demand."""
+    if not labeling.valid_name(episode):
+        return abort(404)
+    feed = labeling._feed_for(data_dir, episode, labeling._latest_completes(data_dir))
+    return jsonify(feed_meta.episode_meta(data_dir, feed, episode))
 
 
 @app.route('/api/episode/<episode>.json')
