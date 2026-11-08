@@ -140,6 +140,17 @@ Cloudflare R2 instead — see [docs/r2-publishing.md](docs/r2-publishing.md).
 Tailscale Funnel is deliberately **not** used: it would accept inbound traffic
 from the public internet onto this box.
 
+### Dashboard and labeling
+
+Both are behind the same Basic Auth as the feeds:
+
+| Path | What it shows |
+|---|---|
+| `/dashboard` | run history, ad time removed, recent episodes, ad signatures |
+| `/dashboard/episode/<episode>` | one episode's cuts against its labels |
+| `/label`, `/label/<episode>` | the labeling UI that writes ground truth |
+| `/api/stats.json`, `/api/episode/<episode>.json` | the same data as JSON |
+
 ## Usage
 
 ### Automated pipeline (systemd timer)
@@ -218,7 +229,35 @@ Transcription uses [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (
 
 The LLM prompt is in `skipcastify/llm_prompts/identify_ads_prompt.txt` and can be edited independently of the code. It instructs the model to return a JSON array of ad spans. Segments classified as `ADVERTISEMENT` or `SPONSOR` are removed; `INTRO` and `OUTRO` are kept.
 
+An empty span list is a real answer, meaning the episode has no ads. The
+keyword heuristic in `segment_classifier.py` runs only when every LLM section
+call fails, never as a second opinion on an LLM that answered.
+
 LLM call profiles (latency, cost, spans found) are saved to `data/llm_profiles/` after each episode.
+
+### Ground truth and eval
+
+Hand-labeled spans live in `data/labels/ground_truth/<episode>_labels.json` and
+are written from the `/label` web UI, which plays the episode's audio against
+the pipeline's own cuts. `scripts/eval_ads.py` scores detection against those
+labels in seconds missed and seconds wrongly cut:
+
+```bash
+# every reviewed episode, 3 runs each
+uv run python scripts/eval_ads.py --runs 3
+
+# compare two prompts (arms interleaved; see below)
+uv run python scripts/eval_ads.py --prompt old.txt --prompt new.txt --runs 4
+```
+
+Results go to `data/evals/<timestamp>/`, outside the dashboard's view.
+
+**One measured answer is not the answer.** The model is non-deterministic at
+`temperature=0` on a pinned snapshot, and its dominant output shape drifts over
+hours, so a prompt comparison assembled from one arm after the other measures
+the clock as much as the prompt. Interleave the arms round-robin and take rates,
+not single runs — `eval_ads.py` does this, and `tests/llm/conftest.py` records
+the rule.
 
 ## Storage
 
@@ -241,3 +280,16 @@ uv run pytest --run-llm
 ```
 
 The LLM tests run ad detection against committed transcript fixtures for several feeds (one file per feed under `tests/llm/`) and assert both recall (known ads detected) and precision (no false positives on editorial or ad-free content, e.g. the Wisdom of the Masters negative tests).
+
+Known misses are recorded as `xfail(strict=False)`, not `strict=True`: output
+drift means a miss that reproduces all morning can pass in the afternoon, and a
+strict marker then fails the suite on an improvement.
+
+Two workflows run in CI:
+
+- `tests.yml` — the standard suite, on every pull request and on pushes to `dev`
+  and `main`
+- `llm-regression.yml` — the paid LLM tests, only when detection changes (the
+  prompt, `span_postprocess.py`, `section_processor.py`, `llm_utils.py` or
+  `tests/llm/`) or on manual dispatch. Deliberately **never** a required check,
+  and it gets no secrets on fork PRs.
