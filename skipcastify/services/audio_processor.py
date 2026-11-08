@@ -17,7 +17,7 @@ from skipcastify.models.content import ContentType
 from skipcastify.services import llm_utils
 from skipcastify.services import metrics
 from skipcastify.services import section_processor
-from skipcastify.services import span_postprocess
+from skipcastify.services import cut_policy, span_postprocess
 from skipcastify.services.segment_classifier import ClassifiedSegment
 from skipcastify.services.llm_monitor import get_monitor
 from skipcastify.services.transcript_cache import TranscriptCache
@@ -308,6 +308,9 @@ class AudioProcessor:
                 stage1_spans = []
                 llm_answered = False
 
+            # Per-feed policy decides which labels go, before merging so a kept spot isn't swallowed.
+            stage1_spans, kept_spans = cut_policy.split(stage1_spans, feed_slug)
+
             # Stage 1b: code-level post-processing
             if stage1_spans:
                 stage1_spans = span_postprocess.postprocess_spans(stage1_spans, segments)
@@ -392,6 +395,8 @@ class AudioProcessor:
                 span_count=len(llm_ad_spans),
                 spans=[{"start_ms": s["start_ms"], "end_ms": s["end_ms"], "label": s["label"]}
                        for s in llm_ad_spans],
+                kept_spans=[{"start_ms": s["start_ms"], "end_ms": s["end_ms"], "label": s["label"]}
+                            for s in kept_spans],
             )
 
             # Save classification results for debugging

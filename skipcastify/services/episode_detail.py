@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from skipcastify.services import labeling
+from skipcastify.services import cut_policy, labeling
 from skipcastify.services.ad_eval import score
 from skipcastify.services.analytics import load_events
 from skipcastify.services.llm_utils import parse_json_array_from_text
@@ -28,7 +28,7 @@ def _runs(events: list[dict]) -> list[dict]:
             run.update(transcribe_s=ev.get("duration_s"), whisper_model=ev.get("model"))
         elif kind == "episode_complete":
             run.update(completed=ev.get("ts"), ads_removed_s=ev.get("ads_removed_s"),
-                       span_count=ev.get("span_count"), spans=ev.get("spans", []),
+                       span_count=ev.get("span_count"), spans=ev.get("spans", []), kept_spans=ev.get("kept_spans", []),
                        original_duration_s=ev.get("original_duration_s"),
                        processed_duration_s=ev.get("processed_duration_s"), ads_pct=ev.get("ads_pct"))
     for run in runs:
@@ -88,18 +88,20 @@ def episode_detail(data_dir, name: str) -> Optional[dict]:
     labels = labeling._read_labels(data_dir, name)
     scored = None
     if labels and labels.get("reviewed") and segments and latest:
-        scored = score(segments, labels.get("spans", []), latest.get("spans", []))
+        scored = score(segments, labels.get("spans", []), latest.get("spans", []), cut_policy.cut_labels(feed))
 
     return {
         "name": name,
         "feed": feed,
         "title": labeling.episode_titles(data_dir).get(name),
         "released": labeling.release_dates(data_dir).get(name),
-        "latest": {k: v for k, v in latest.items() if k != "spans"} if latest else None,
-        "runs": [{k: v for k, v in r.items() if k != "spans"} for r in runs],
+        "latest": {k: v for k, v in latest.items() if k not in ("spans", "kept_spans")} if latest else None,
+        "runs": [{k: v for k, v in r.items() if k not in ("spans", "kept_spans")} for r in runs],
         "cuts": cuts,
         "labels": {"reviewed": bool(labels.get("reviewed")), "spans": labels.get("spans", [])} if labels else None,
         "score": scored,
         "has_transcript": bool(segments),
+        "cut_labels": sorted(cut_policy.cut_labels(feed)),
+        "kept": (latest or {}).get("kept_spans", []),
         "has_audio": labeling.raw_audio_path(data_dir, name) is not None,
     }
