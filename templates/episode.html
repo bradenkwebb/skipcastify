@@ -255,6 +255,7 @@ async function loadMeta(pageLoaded) {
     if (S.author && S.author !== S.title) $('show').append(' · ' + S.author);
   }
   if (E.title) {
+    document.title = 'Skipcastify · ' + E.title;
     setLinked($('title'), E.title, E.link);
     const n = [E.season && 'Season ' + E.season, E.episode && 'Episode ' + E.episode].filter(Boolean).join(', ');
     if (n) $('sub').prepend(n + ' · ');
