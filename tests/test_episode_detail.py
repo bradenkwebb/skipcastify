@@ -92,3 +92,9 @@ def test_recent_episodes_carry_feed_titles(client):  # noqa: F811
         '<rss><channel><title>t</title><item><title>Ep 1</title></item></channel></rss>')
     [row] = c.get('/api/stats.json', headers=AUTH).get_json()['recent_episodes']
     assert (row['episode'], row['title']) == (EP, 'Ep 1')
+
+
+def test_root_redirects_to_dashboard(client):  # noqa: F811
+    c, _ = client
+    r = c.get('/')
+    assert r.status_code == 302 and r.headers['Location'].endswith('/dashboard')
