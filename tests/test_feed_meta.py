@@ -88,3 +88,29 @@ def test_concurrent_requests_share_one_fetch(monkeypatch):
     [t.start() for t in threads]
     [t.join() for t in threads]
     assert len(calls) == 1
+
+
+def test_feed_meta_endpoint(client, monkeypatch):  # noqa: F811
+    c, tmp = client
+    setup(tmp, monkeypatch)
+    assert c.get('/api/feed/mypodcast/meta.json').status_code == 401
+    m = c.get('/api/feed/mypodcast/meta.json', headers=AUTH).get_json()
+    assert m['error'] is None and m['show']['title'] == 'My Podcast' and m['show']['image'] == 'https://img.example/show.jpg'
+    assert c.get('/api/feed/nope/meta.json', headers=AUTH).get_json()['show'] is None
+    assert c.get('/api/feed/.hidden/meta.json', headers=AUTH).status_code == 404
+
+
+def test_signatures_carry_titles_dates_and_cut_time(client, monkeypatch):  # noqa: F811
+    import json
+    c, tmp = client
+    (tmp / 'feeds' / 'mypodcast.xml').write_text(
+        '<rss><channel><title>t</title><item><title>Ep 1</title>'
+        '<pubDate>Mon, 02 Nov 2026 09:00:00 +0000</pubDate></item></channel></rss>')
+    (tmp / 'metrics').mkdir()
+    (tmp / 'metrics' / 'events.jsonl').write_text(json.dumps({
+        'event': 'episode_complete', 'ts': '2026-11-02T10:00:00', 'feed_slug': 'mypodcast', 'episode_name': 'mypodcast-ep_1',
+        'original_duration_s': 600.0, 'spans': [{'start_ms': 0, 'end_ms': 30000, 'label': 'ADVERTISEMENT'}]}) + '\n')
+    [feed] = c.get('/api/stats.json', headers=AUTH).get_json()['signatures']
+    [ep] = feed['episodes']
+    assert (ep['title'], ep['released'][:10], ep['ad_s'], ep['duration_min']) == ('Ep 1', '2026-11-02', 30.0, 10.0)
+    assert ep['processed'].startswith('2026-11-02') and ep['spans'] == [{'start': 0.0, 'end': 0.05}]
