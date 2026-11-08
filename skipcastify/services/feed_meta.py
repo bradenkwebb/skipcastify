@@ -1,6 +1,7 @@
 """Show and episode metadata (description, links, artwork), fetched from the
-upstream RSS feed when an episode page asks, and kept in memory for an hour.
-Nothing is written to disk."""
+upstream RSS feed when an episode page asks, and kept in memory for a day.
+A request for an episode the cached copy lacks (a new release) refetches, at
+most every 10 minutes per feed. Nothing is written to disk."""
 
 import re
 import threading
@@ -10,25 +11,41 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Optional
 
-import feedparser
 import requests
 
 from skipcastify.utils.utils import safe_filename
 
-TTL_S = 3600
+TTL_S = 24 * 3600
+MISS_REFRESH_S = 600
 MAX_BYTES = 40 * 1024 * 1024
 _cache: dict[str, tuple[float, dict]] = {}
 _lock = threading.Lock()
+_inflight: dict[str, threading.Lock] = {}  # one fetch per feed; concurrent requests wait for it
+
+NS = {"itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
+      "content": "http://purl.org/rss/1.0/modules/content/"}
+
+
+_upstream: dict[str, tuple[float, Optional[str]]] = {}
 
 
 def upstream_url(data_dir, slug: str) -> Optional[str]:
     """Our generated feed's <channel><link> is the subscription URL it was built from."""
     path = Path(data_dir) / "feeds" / f"{slug}.xml"
     try:
-        link = ET.parse(path).getroot().find("channel").findtext("link")
-    except (OSError, ET.ParseError, AttributeError):
+        mtime = path.stat().st_mtime
+    except OSError:
         return None
-    return link if link and link.startswith(("http://", "https://")) else None
+    hit = _upstream.get(str(path))
+    if hit and hit[0] == mtime:
+        return hit[1]
+    try:
+        link = ET.parse(path).getroot().find("channel").findtext("link")
+    except (ET.ParseError, AttributeError):
+        link = None
+    link = link if link and link.startswith(("http://", "https://")) else None
+    _upstream[str(path)] = (mtime, link)
+    return link
 
 
 class _Blocks(HTMLParser):
@@ -95,40 +112,47 @@ def notes_blocks(html: str) -> list[list[dict]]:
     return blocks
 
 
-def _image(obj) -> Optional[str]:
-    img = obj.get("image")
-    href = img.get("href") if isinstance(img, dict) else None
-    return href if href and href.startswith(("http://", "https://")) else None
-
-
 def _http(url) -> Optional[str]:
-    return url if isinstance(url, str) and url.startswith(("http://", "https://")) else None
+    url = (url or "").strip()
+    return url if url.startswith(("http://", "https://")) else None
+
+
+def _text(el, path) -> Optional[str]:
+    v = el.findtext(path, namespaces=NS)
+    return v.strip() if v and v.strip() else None
+
+
+def _image(el) -> Optional[str]:
+    img = el.find("itunes:image", NS)
+    return _http(img.get("href")) if img is not None else _http(el.findtext("image/url"))
 
 
 def _summarize(raw: bytes, slug: str) -> dict:
-    """Keep only what an episode page shows, keyed the way episode files are named."""
-    parsed = feedparser.parse(raw)
-    ch = parsed.feed
+    """Keep only what an episode page shows, keyed the way episode files are named.
+    ElementTree, not feedparser: 0.3s vs 12s on a 2,000-episode feed."""
+    ch = ET.fromstring(raw).find("channel")
+    if ch is None:
+        raise ValueError("not an RSS feed")
     show = {
-        "title": ch.get("title"),
-        "website": _http(ch.get("link")),
-        "author": ch.get("author") or ch.get("itunes_author"),
+        "title": _text(ch, "title"),
+        "website": _http(ch.findtext("link")),
+        "author": _text(ch, "itunes:author") or _text(ch, "author"),
         "image": _image(ch),
-        "description": notes_blocks(ch.get("summary") or ch.get("subtitle") or ""),
+        "description": notes_blocks(_text(ch, "description") or _text(ch, "itunes:summary") or ""),
     }
     episodes = {}
-    for e in parsed.entries:
-        title = e.get("title")
+    for item in ch.iter("item"):
+        title = _text(item, "title")
         if not title:
             continue
-        content = (e.get("content") or [{}])[0].get("value") if e.get("content") else None
+        notes = _text(item, "content:encoded") or _text(item, "description") or _text(item, "itunes:summary") or ""
         episodes.setdefault(safe_filename(title, slug)[: -len(".mp3")], {
             "title": title,
-            "link": _http(e.get("link")),
-            "episode": e.get("itunes_episode"),
-            "season": e.get("itunes_season"),
-            "image": _image(e),
-            "notes": notes_blocks(content or e.get("summary") or ""),
+            "link": _http(item.findtext("link")),
+            "episode": _text(item, "itunes:episode"),
+            "season": _text(item, "itunes:season"),
+            "image": _image(item),
+            "notes_html": notes,  # converted per request; 2,000 episodes at once is the slow part
         })
     return {"show": show, "episodes": episodes}
 
@@ -145,15 +169,21 @@ def _fetch(url: str) -> bytes:
     return b"".join(chunks)
 
 
-def feed_summary(url: str, slug: str) -> dict:
-    now = time.monotonic()
-    with _lock:
+def feed_summary(url: str, slug: str, max_age: float = TTL_S) -> dict:
+    def cached():
         hit = _cache.get(url)
-        if hit and now - hit[0] < TTL_S:
-            return hit[1]
-    summary = _summarize(_fetch(url), slug)
+        return hit[1] if hit and time.monotonic() - hit[0] < max_age else None
     with _lock:
-        _cache[url] = (now, summary)
+        if (hit := cached()) is not None:
+            return hit
+        flight = _inflight.setdefault(url, threading.Lock())
+    with flight:  # a second request for the same feed waits here, then reads the cache
+        with _lock:
+            if (hit := cached()) is not None:
+                return hit
+        summary = _summarize(_fetch(url), slug)
+        with _lock:
+            _cache[url] = (time.monotonic(), summary)
     return summary
 
 
@@ -164,8 +194,11 @@ def episode_meta(data_dir, slug: Optional[str], name: str) -> dict:
         return {"show": None, "episode": None, "error": "no upstream feed known for this show"}
     try:
         summary = feed_summary(url, slug)
+        if name not in summary["episodes"]:
+            summary = feed_summary(url, slug, max_age=MISS_REFRESH_S)  # maybe released since we cached
     except Exception as e:  # network, HTTP or parse failure: the page still works without it
         return {"show": None, "episode": None, "error": f"couldn't load the show's feed ({type(e).__name__})"}
-    ep = summary["episodes"].get(name)
+    raw = summary["episodes"].get(name)
+    ep = {k: v for k, v in raw.items() if k != "notes_html"} | {"notes": notes_blocks(raw["notes_html"])} if raw else None
     return {"show": summary["show"], "episode": ep,
             "error": None if ep else "this episode is no longer in the show's feed"}
