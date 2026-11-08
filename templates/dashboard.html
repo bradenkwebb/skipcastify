@@ -34,6 +34,12 @@
   .muted { color: var(--muted); }
   /* ad-signature strips */
   #sigList { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  #sigShow { display: flex; gap: 12px; align-items: center; min-height: 0; }
+  #sigShow img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--panel2); flex: none; }
+  #sigShow .t { font-weight: 600; }
+  #sigShow .t a { color: inherit; text-decoration: none; }
+  #sigShow .t a:hover { color: var(--accent); }
+  #sigShow .m { color: var(--muted); font-size: 13px; }
   a.track { display: block; }
   a.track:hover { outline: 1px solid var(--accent); }
   .tbl a { color: inherit; }
@@ -114,6 +120,7 @@
       <label class="muted" for="sigFeed">Feed:</label>
       <select id="sigFeed" onchange="saveSigFeed(); renderSignature()"></select>
     </div>
+    <div id="sigShow"></div>
     <div id="sigList"></div>
     <div class="axis"><span>start</span><span>25%</span><span>50%</span><span>75%</span><span>end</span></div>
   </div>
@@ -259,12 +266,57 @@ function renderSignature() {
   const feed = DATA.signatures.find(f => f.feed_slug === slug);
   const list = document.getElementById('sigList');
   if (!feed) { list.innerHTML = ''; return; }
+  renderSigShow(slug, feed);
   list.innerHTML = feed.episodes.map(ep => {
+    const about = epTooltip(ep), durS = ep.duration_min * 60;
     const spans = ep.spans.map(s =>
-      `<div class="sp" title="${(s.start*100).toFixed(0)}%–${(s.end*100).toFixed(0)}%"
+      `<div class="sp" title="${esc(`Ad ${clock(s.start * durS)}–${clock(s.end * durS)} (${clock((s.end - s.start) * durS)})\n\n${about}`)}"
             style="left:${s.start*100}%;width:${Math.max((s.end-s.start)*100,0.4)}%"></div>`).join('');
-    return `<a class="track" href="${epUrl(ep.episode)}" title="${esc(ep.episode)} (${ep.duration_min} min)">${spans}</a>`;
+    return `<a class="track" href="${epUrl(ep.episode)}" title="${esc(about)}">${spans}</a>`;
   }).join('');
+}
+
+function clock(sec) {
+  const t = Math.round(sec), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+}
+
+// Multi-line native tooltip for one episode's strip.
+function epTooltip(ep) {
+  const day = iso => new Date(iso).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
+  const len = ep.duration_min >= 60 ? `${Math.floor(ep.duration_min / 60)}h ${Math.round(ep.duration_min % 60)}m` : `${Math.round(ep.duration_min)}m`;
+  const pct = ep.duration_min ? (ep.ad_s / (ep.duration_min * 60) * 100).toFixed(1) : '0';
+  const n = ep.spans.length;
+  return [ep.title || ep.episode,
+    [ep.released ? 'Released ' + day(ep.released) : null, len].filter(Boolean).join(' · '),
+    n ? `${clock(ep.ad_s)} cut (${pct}%) in ${n} break${n === 1 ? '' : 's'}` : 'Nothing cut',
+    ep.processed ? 'Processed ' + day(ep.processed) : null,
+    'Click for details'].filter(Boolean).join('\n');
+}
+
+// Show artwork, title and website above the strips; fetched once per feed.
+const showMeta = {};
+async function renderSigShow(slug, feed) {
+  const box = document.getElementById('sigShow');
+  const n = feed.episodes.length, avg = feed.episodes.reduce((a, e) => a + e.ad_s, 0) / (n || 1);
+  const stats = `${n} episode${n === 1 ? '' : 's'} processed · ${clock(avg)} cut on average`;
+  const paint = S => {
+    if (document.getElementById('sigFeed').value !== slug) return;
+    const http = u => typeof u === 'string' && /^https?:\/\//.test(u) ? u : null;
+    const img = http(S && S.image), site = http(S && S.website), title = (S && S.title) || slug;
+    box.style.marginTop = '12px';
+    box.innerHTML = (img ? `<img src="${esc(img)}" alt="" referrerpolicy="no-referrer">` : '')
+      + `<div><div class="t">${site ? `<a href="${esc(site)}" target="_blank" rel="noopener noreferrer">${esc(title)}</a>` : esc(title)}</div>`
+      + `<div class="m">${S && S.author && S.author !== title ? esc(S.author) + ' · ' : ''}${stats}</div></div>`;
+  };
+  paint(showMeta[slug]);
+  if (!(slug in showMeta)) {
+    try {
+      const r = await fetch('/api/feed/' + encodeURIComponent(slug) + '/meta.json', { credentials: 'same-origin' });
+      showMeta[slug] = r.ok ? (await r.json()).show : null;
+    } catch (e) { showMeta[slug] = null; }
+    paint(showMeta[slug]);
+  }
 }
 
 function esc(s) {

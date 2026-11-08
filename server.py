@@ -159,6 +159,15 @@ def episode_page(episode):
     return render_template('episode.html', episode=episode)
 
 
+@app.route('/api/feed/<slug>/meta.json')
+@require_auth
+def feed_meta_json(slug):
+    """Show-level info (title, artwork, website) from the feed's cached upstream copy."""
+    if not labeling.valid_name(slug):
+        return abort(404)
+    return jsonify(feed_meta.show_meta(data_dir, slug))
+
+
 @app.route('/api/episode/<episode>/meta.json')
 @require_auth
 def episode_meta_json(episode):

@@ -162,6 +162,8 @@ def ad_signatures(events: list[dict]) -> list[dict]:
         by_feed[ev.get("feed_slug", "unknown")].append({
             "episode": ev.get("episode_name", ""),
             "duration_min": round((ev.get("original_duration_s") or 0) / 60.0, 1),
+            "ad_s": round(_ad_ms(ev) / 1000.0, 1),
+            "processed": _aware(ev.get("ts", "")),
             "spans": spans,
         })
     return [
@@ -237,9 +239,10 @@ def feed_status(runs: list[dict]) -> list[dict]:
 
 
 def _with_titles(data_dir: str, rows: list[dict]) -> list[dict]:
-    from skipcastify.services.labeling import episode_titles  # labeling imports this module
-    titles = episode_titles(data_dir)
-    return [{**r, "title": titles.get(r["episode"])} for r in rows]
+    """Add each row's feed title and release date (keyed by its "episode" name)."""
+    from skipcastify.services.labeling import episode_titles, release_dates  # labeling imports this module
+    titles, released = episode_titles(data_dir), release_dates(data_dir)
+    return [{**r, "title": titles.get(r["episode"]), "released": released.get(r["episode"])} for r in rows]
 
 
 def build_payload(data_dir: str, days: Optional[int] = None) -> dict:
@@ -259,7 +262,7 @@ def build_payload(data_dir: str, days: Optional[int] = None) -> dict:
         "overview": overview(events),
         "feeds": feed_summary(events),
         "daily": daily_series(events, start),
-        "signatures": ad_signatures(events),
+        "signatures": [{**f, "episodes": _with_titles(data_dir, f["episodes"])} for f in ad_signatures(events)],
         "drop_candidates": drop_candidates(events),
         "recent_episodes": _with_titles(data_dir, recent_episodes(events)),
         "runs": runs[:40],

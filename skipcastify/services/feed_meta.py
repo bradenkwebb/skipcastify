@@ -187,6 +187,17 @@ def feed_summary(url: str, slug: str, max_age: float = TTL_S) -> dict:
     return summary
 
 
+def show_meta(data_dir, slug: str) -> dict:
+    """{"show": ... or None, "error": ... or None}."""
+    url = upstream_url(data_dir, slug)
+    if not url:
+        return {"show": None, "error": "no upstream feed known for this show"}
+    try:
+        return {"show": feed_summary(url, slug)["show"], "error": None}
+    except Exception as e:
+        return {"show": None, "error": f"couldn't load the show's feed ({type(e).__name__})"}
+
+
 def episode_meta(data_dir, slug: Optional[str], name: str) -> dict:
     """{"show": ..., "episode": ... or None, "error": ... or None}."""
     url = upstream_url(data_dir, slug) if slug else None
