@@ -68,6 +68,11 @@
   .ep .d { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
   .ep .d.approx { font-style: italic; opacity: .7; }
   .feed { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 4px; }
+  .feed.tog { cursor: pointer; user-select: none; }
+  .feed.tog:hover { color: var(--fg); }
+  .feed .chev { display: inline-block; width: 16px; font-size: 17px; line-height: 0; transition: transform .12s; }
+  .feed .chev.open { transform: rotate(90deg) translateX(3px); }
+  .feed .todo { text-transform: none; letter-spacing: 0; }
   .ep { display: grid; gap: 10px; grid-template-columns: 1fr 96px 64px 56px 92px; align-items: baseline; padding: 5px 10px; border-radius: 6px; cursor: pointer;
         border-left: 3px solid transparent; }
   .ep.cur { background: var(--sel-strong); border-left-color: var(--accent); }
@@ -203,6 +208,9 @@ async function picker() {
   let sort = SORTS.includes(store('label.sort')) ? store('label.sort') : 'show';
   let status = STATUSES.includes(store('label.status')) ? store('label.status') : 'all';
   let cur = 0, shown = [];
+  let collapsed = new Set();
+  try { collapsed = new Set(JSON.parse(store('label.collapsed') || '[]')); } catch (e) {}
+  const saveCollapsed = () => store('label.collapsed', JSON.stringify([...collapsed]));
   const pretty = e => e.feed && e.name.startsWith(e.feed + '-') ? e.name.slice(e.feed.length + 1).replace(/_/g, ' ') : e.name;
   const stateOf = e => e.reviewed ? 'done' : e.labeled_spans != null ? 'wip' : 'todo';
   const day = iso => new Date(iso).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
@@ -219,7 +227,7 @@ async function picker() {
       + `<span>${e.has_predictions ? '' : '<span class="badge">no cuts</span>'}</span>`
       + `<span class="f">${mins(e.duration_s)}</span>${date}</div>`;
   }
-  function render() {
+  function render(follow = true) {
     document.querySelectorAll('[data-sort]').forEach(b => b.classList.toggle('on', b.dataset.sort === sort));
     document.querySelectorAll('[data-st]').forEach(b => b.classList.toggle('on', b.dataset.st === status));
     const words = $('filter').value.toLowerCase().split(/[\s_-]+/).filter(Boolean);
@@ -235,12 +243,17 @@ async function picker() {
     if (sort === 'show') {
       const groups = new Map();
       for (const e of shown) { const f = e.feed || 'unknown feed'; if (!groups.has(f)) groups.set(f, []); groups.get(f).push(e); }
-      shown = [...groups.values()].flat();
+      // A filter search shows every match, collapsed or not.
+      const isShut = f => collapsed.has(f) && !words.length;
+      shown = [...groups].flatMap(([f, list]) => isShut(f) ? [] : list);
       cur = Math.min(cur, Math.max(0, shown.length - 1));
       let i = 0;
       for (const [feed, list] of groups) {
-        html += `<div class="feed">${esc(feed)} · ${list.length}</div>`;
-        for (const e of list) html += row(e, i++, false);
+        const shut = isShut(feed), todo = list.filter(e => stateOf(e) !== 'done').length;
+        html += `<div class="feed tog" data-feed="${esc(feed)}" title="${shut ? 'Expand' : 'Collapse'} (c on an episode; C for all)">`
+          + `<span class="chev${shut ? '' : ' open'}">›</span>${esc(feed)} · ${list.length}`
+          + (shut && todo ? ` <span class="todo">· ${todo} not reviewed</span>` : '') + '</div>';
+        if (!shut) for (const e of list) html += row(e, i++, false);
       }
     } else {
       if (sort === 'old') shown = [...shown].reverse();
@@ -248,7 +261,7 @@ async function picker() {
       html = shown.map((e, i) => row(e, i, true)).join('');
     }
     $('eps').innerHTML = html || '<p class="muted">No matching episodes.</p>';
-    document.querySelector('.ep.cur')?.scrollIntoView({block: 'nearest'});
+    if (follow) document.querySelector('.ep.cur')?.scrollIntoView({block: 'nearest'});
   }
   // Keep the highlighted episode across re-sorts and filters.
   const rerender = () => { const keep = shown[cur]?.name; render(); const i = shown.findIndex(e => e.name === keep); if (i >= 0) { cur = i; render(); } };
@@ -258,7 +271,25 @@ async function picker() {
   document.querySelectorAll('[data-st]').forEach(b => b.onclick = () => setStatus(b.dataset.st));
   const open = i => { if (shown[i]) location.href = '/label/' + encodeURIComponent(shown[i].name); };
   $('filter').addEventListener('input', () => { cur = 0; render(); });
-  $('eps').addEventListener('click', e => { const el = e.target.closest('.ep'); if (el) open(+el.dataset.i); });
+  // Pin the show's heading where it is on screen, and put the cursor on its first episode when opening.
+  const toggleFeed = f => {
+    const head = () => [...document.querySelectorAll('.feed.tog')].find(h => h.dataset.feed === f);
+    const before = head()?.getBoundingClientRect().top;
+    const opening = collapsed.has(f);
+    opening ? collapsed.delete(f) : collapsed.add(f); saveCollapsed();
+    const keep = opening ? null : shown[cur]?.name;
+    render(false);
+    const i = opening ? shown.findIndex(e => (e.feed || 'unknown feed') === f) : shown.findIndex(e => e.name === keep);
+    if (i >= 0) cur = i;
+    render(false);
+    const after = head()?.getBoundingClientRect().top;
+    if (before != null && after != null) $('picker').scrollTop += after - before;
+  };
+  $('eps').addEventListener('click', e => {
+    const h = e.target.closest('.feed.tog');
+    if (h) return toggleFeed(h.dataset.feed);
+    const el = e.target.closest('.ep'); if (el) open(+el.dataset.i);
+  });
   document.addEventListener('keydown', e => {
     const k = e.key;
     if (k === '/' && !typing(e)) { e.preventDefault(); $('filter').focus(); return; }
@@ -266,6 +297,11 @@ async function picker() {
     if (k === 'Enter') { open(cur); return; }
     if (!typing(e) && k === 's') { setSort(SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length]); return; }
     if (!typing(e) && k === 'f') { setStatus(STATUSES[(STATUSES.indexOf(status) + 1) % STATUSES.length]); return; }
+    if (!typing(e) && sort === 'show' && k === 'c' && shown[cur]) { toggleFeed(shown[cur].feed || 'unknown feed'); return; }
+    if (!typing(e) && sort === 'show' && k === 'C') {
+      const feeds = [...new Set(eps.map(x => x.feed || 'unknown feed'))];
+      collapsed = collapsed.size ? new Set() : new Set(feeds); saveCollapsed(); rerender(); return;
+    }
     const down = k === 'ArrowDown' || (k === 'j' && !typing(e)), up = k === 'ArrowUp' || (k === 'k' && !typing(e));
     if (down || up) { e.preventDefault(); cur = Math.max(0, Math.min(shown.length - 1, cur + (down ? 1 : -1))); render(); }
   });
