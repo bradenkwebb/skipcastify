@@ -31,11 +31,20 @@ upstream OPML
                                            (e.g. Overcast)
 ```
 
-1. **Download** — fetches new episodes from every feed in `upstream.opml`
-2. **Transcribe** — runs Whisper locally to produce time-coded segments
-3. **Classify** — sends 10-minute transcript windows to an LLM to identify ad spans
-4. **Stitch** — cuts ad segments from the audio and re-encodes with pydub
-5. **Serve** — Flask server exposes ad-free MP3s and regenerated RSS feeds behind HTTP Basic Auth
+Each `pipeline.py` run walks five stages, and names the one it is in when it
+alerts or writes the run log:
+
+1. **download** — fetches new episodes from every feed in `upstream.opml`. After
+   downtime only the last 7 days are fetched; older unseen entries are marked
+   seen without downloading (`CATCH_UP_WINDOW_DAYS`)
+2. **process** — transcribes with faster-whisper, sends ~10-minute transcript
+   windows to an LLM to identify ad spans, then cuts and re-encodes with pydub
+3. **cleanup** — enforces the storage budget (see [Storage](#storage))
+4. **feeds** — regenerates an RSS feed per subscription
+5. **publish** — mirrors feeds and audio to Cloudflare R2 when `PUBLISH_TO_R2=true`
+
+Serving is continuous rather than a stage: the Flask server exposes ad-free MP3s
+and the regenerated feeds behind HTTP Basic Auth.
 
 ## Setup
 
@@ -121,18 +130,27 @@ from the public internet onto this box.
 
 ## Usage
 
-### Automated pipeline (cron)
+### Automated pipeline (systemd timer)
 
-The pipeline downloads new episodes, processes them (if enabled), regenerates feeds, and enforces storage limits:
+One run by hand:
 
 ```bash
 uv run python pipeline.py
 ```
 
-Recommended cron (hourly):
+In production a systemd timer drives it — 5 minutes after boot, then every 15
+minutes, as a `oneshot` service at `Nice=10`:
+
+```bash
+sudo cp systemd/skipcastify-pipeline.service systemd/skipcastify-pipeline.timer /etc/systemd/system/
+sudo systemctl enable --now skipcastify-pipeline.timer
+systemctl list-timers skipcastify-pipeline.timer
+journalctl -u skipcastify-pipeline.service -n 50
 ```
-0 * * * * cd /path/to/skipcastify && .venv/bin/python pipeline.py >> data/logs/cron.log 2>&1
-```
+
+The timer is deliberately **not** `Persistent`: after the box has been asleep
+the next scheduled run is wanted, not an immediate catch-up burst of
+transcription. Cron is not used — run one or the other, never both.
 
 ### Preview a single episode
 
@@ -195,7 +213,9 @@ LLM call profiles (latency, cost, spans found) are saved to `data/llm_profiles/`
 Raw episodes live in `data/podcasts/raw/<slug>/`. Processed episodes go to `data/podcasts/processed/<slug>/`. The pipeline enforces a storage budget:
 
 - When total audio exceeds `STORAGE_HIGH_WATER_GB`, the oldest files are deleted until usage drops below `STORAGE_LOW_WATER_GB`
-- Raw files are always deleted first when a processed counterpart exists
+- Raw files are deleted first when a processed counterpart exists
+- Raw audio of hand-labeled episodes is never deleted: the spans in
+  `data/labels/ground_truth/` are timed to that exact file
 - Files under `data/samples/` are excluded from the retention policy
 
 ## Testing
