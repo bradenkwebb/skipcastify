@@ -70,7 +70,8 @@
   .feed { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 4px; }
   .feed.tog { cursor: pointer; user-select: none; }
   .feed.tog:hover { color: var(--fg); }
-  .feed .chev { display: inline-block; width: 14px; }
+  .feed .chev { display: inline-block; width: 16px; font-size: 17px; line-height: 0; transition: transform .12s; }
+  .feed .chev.open { transform: rotate(90deg) translateX(3px); }
   .feed .todo { text-transform: none; letter-spacing: 0; }
   .ep { display: grid; gap: 10px; grid-template-columns: 1fr 96px 64px 56px 92px; align-items: baseline; padding: 5px 10px; border-radius: 6px; cursor: pointer;
         border-left: 3px solid transparent; }
@@ -250,7 +251,7 @@ async function picker() {
       for (const [feed, list] of groups) {
         const shut = isShut(feed), todo = list.filter(e => stateOf(e) !== 'done').length;
         html += `<div class="feed tog" data-feed="${esc(feed)}" title="${shut ? 'Expand' : 'Collapse'} (c on an episode; C for all)">`
-          + `<span class="chev">${shut ? '▸' : '▾'}</span>${esc(feed)} · ${list.length}`
+          + `<span class="chev${shut ? '' : ' open'}">›</span>${esc(feed)} · ${list.length}`
           + (shut && todo ? ` <span class="todo">· ${todo} not reviewed</span>` : '') + '</div>';
         if (!shut) for (const e of list) html += row(e, i++, false);
       }
