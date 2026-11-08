@@ -82,6 +82,7 @@ def episode_detail(data_dir, name: str) -> Optional[dict]:
                            if int(i["start_ms"]) < e and int(i["end_ms"]) > s and i.get("rationale")],
             "first_line": lines[0]["text"].strip() if lines else "",
             "last_line": lines[-1]["text"].strip() if len(lines) > 1 else "",
+            "lines": [{"start_ms": g["start"], "text": g["text"].strip()} for g in lines],
         })
 
     labels = labeling._read_labels(data_dir, name)

@@ -112,7 +112,7 @@
   <div class="panel">
     <div class="toolbar">
       <label class="muted" for="sigFeed">Feed:</label>
-      <select id="sigFeed" onchange="renderSignature()"></select>
+      <select id="sigFeed" onchange="saveSigFeed(); renderSignature()"></select>
     </div>
     <div id="sigList"></div>
     <div class="axis"><span>start</span><span>25%</span><span>50%</span><span>75%</span><span>end</span></div>
@@ -235,14 +235,22 @@ function renderDrops() {
     `<span class="badge">${d.feed_slug} · ${d.episodes} ep, all ad-free</span>`).join('');
 }
 
+function saveSigFeed() {
+  try { localStorage.setItem('sigFeed', document.getElementById('sigFeed').value); } catch (e) {}
+}
+
 function renderSignatureSelector() {
   const sel = document.getElementById('sigFeed');
   const withAds = DATA.signatures
     .filter(f => f.episodes.some(e => e.spans.length))
     .sort((a, b) => a.feed_slug.localeCompare(b.feed_slug));
-  const prev = sel.value;
-  sel.innerHTML = withAds.map(f => `<option value="${f.feed_slug}">${f.feed_slug}</option>`).join('');
-  if (withAds.some(f => f.feed_slug === prev)) sel.value = prev;
+  // Keep the current pick; else the one saved before the last reload; else the latest episode's feed.
+  let saved = null;
+  try { saved = localStorage.getItem('sigFeed'); } catch (e) {}
+  const latest = (DATA.recent_episodes[0] || {}).feed_slug;
+  const pick = [sel.value, saved, latest].find(f => withAds.some(w => w.feed_slug === f));
+  sel.innerHTML = withAds.map(f => `<option value="${esc(f.feed_slug)}">${esc(f.feed_slug)}</option>`).join('');
+  if (pick) sel.value = pick;
   renderSignature();
 }
 
