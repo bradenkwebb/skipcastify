@@ -26,6 +26,11 @@ def label_path(data_dir, name: str) -> Path:
     return Path(data_dir) / "labels" / "ground_truth" / f"{name}_labels.json"
 
 
+def valid_name(name: str) -> bool:
+    """Safe as a path component."""
+    return bool(_NAME_RE.match(name))
+
+
 def valid_episode(data_dir, name: str) -> bool:
     """Only names with a cached transcript; also rules out path traversal."""
     return bool(_NAME_RE.match(name)) and \
@@ -46,10 +51,19 @@ _release_cache: dict = {}
 
 def release_dates(data_dir) -> dict:
     """Episode name -> ISO pubDate, from the generated feeds; cached until they change."""
+    return _feed_items(data_dir)["dates"]
+
+
+def episode_titles(data_dir) -> dict:
+    """Episode name -> title as published in the feed."""
+    return _feed_items(data_dir)["titles"]
+
+
+def _feed_items(data_dir) -> dict:
     files = sorted(Path(data_dir).glob("feeds/*.xml"))
     key = tuple((str(f), f.stat().st_mtime) for f in files)
     if _release_cache.get("key") != key:
-        dates = {}
+        dates, titles = {}, {}
         for f in files:
             try:
                 channel = ET.parse(f).getroot().find("channel")
@@ -57,6 +71,8 @@ def release_dates(data_dir) -> dict:
                 continue
             for item in channel.findall("item") if channel is not None else []:
                 title, pub = item.findtext("title"), item.findtext("pubDate")
+                if title:
+                    titles[safe_filename(title, f.stem)[: -len(".mp3")]] = title
                 try:
                     dt = parsedate_to_datetime(pub)
                 except (TypeError, ValueError):
@@ -64,8 +80,8 @@ def release_dates(data_dir) -> dict:
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=timezone.utc)
                 dates[safe_filename(title, f.stem)[: -len(".mp3")]] = dt.isoformat()
-        _release_cache.update(key=key, dates=dates)
-    return _release_cache["dates"]
+        _release_cache.update(key=key, dates=dates, titles=titles)
+    return _release_cache
 
 
 def _feed_for(data_dir, name: str, completes: dict) -> Optional[str]:

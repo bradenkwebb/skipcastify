@@ -34,6 +34,10 @@
   .muted { color: var(--muted); }
   /* ad-signature strips */
   #sigList { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  a.track { display: block; }
+  a.track:hover { outline: 1px solid var(--accent); }
+  .tbl a { color: inherit; }
+  .tbl a:hover { color: var(--accent); }
   .track { position: relative; height: 20px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
   .track .sp { position: absolute; top: 0; bottom: 0; background: var(--ad); opacity: .85; }
   .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
@@ -100,7 +104,7 @@
   <h2>Drop candidates <span class="muted" style="text-transform:none;letter-spacing:0">— entirely ad-free recent runs</span></h2>
   <div class="panel" id="drops"></div>
 
-  <h2>Ad signatures <span class="muted" style="text-transform:none;letter-spacing:0">— where ads land within an episode (0 = start, 1 = end)</span></h2>
+  <h2>Ad signatures <span class="muted" style="text-transform:none;letter-spacing:0">— where ads land within an episode (0 = start, 1 = end); click a row for the episode</span></h2>
   <div class="panel">
     <div class="toolbar">
       <label class="muted" for="sigFeed">Feed:</label>
@@ -247,7 +251,7 @@ function renderSignature() {
     const spans = ep.spans.map(s =>
       `<div class="sp" title="${(s.start*100).toFixed(0)}%–${(s.end*100).toFixed(0)}%"
             style="left:${s.start*100}%;width:${Math.max((s.end-s.start)*100,0.4)}%"></div>`).join('');
-    return `<div class="track" title="${ep.episode} (${ep.duration_min} min)">${spans}</div>`;
+    return `<a class="track" href="${epUrl(ep.episode)}" title="${esc(ep.episode)} (${ep.duration_min} min)">${spans}</a>`;
   }).join('');
 }
 
@@ -320,12 +324,14 @@ function renderRuns() {
 function renderEpisodes() {
   const rows = DATA.recent_episodes.map(e =>
     `<tr><td title="${esc(e.ts)}">${ago(e.ts)}</td><td>${esc(shorten(e.feed_slug))}</td>` +
-    `<td title="${esc(e.episode)}">${esc(e.episode.replace(e.feed_slug + '-', '').slice(0, 48))}</td>` +
+    `<td title="${esc(e.episode)}"><a href="${epUrl(e.episode)}">${esc(e.episode.replace(e.feed_slug + '-', '').slice(0, 48))}</a></td>` +
     `<td>${e.duration_min}m</td><td>${e.ad_minutes}m (${e.ad_pct}%)</td></tr>`).join('');
   document.getElementById('episodes').innerHTML = rows ?
     `<table class="tbl"><tr><th>When</th><th>Feed</th><th>Episode</th><th>Length</th><th>Ads cut</th></tr>${rows}</table>` :
     '<span class="muted">No episodes processed yet.</span>';
 }
+
+function epUrl(name) { return '/dashboard/episode/' + encodeURIComponent(name); }
 
 function shorten(slug) { return slug.length > 26 ? slug.slice(0, 24) + '…' : slug; }
 
