@@ -82,3 +82,12 @@ def test_title_from_feed(client):  # noqa: F811
     (tmp / 'feeds' / 'mypodcast.xml').write_text(
         '<rss><channel><title>t</title><item><title>Ep 1</title></item></channel></rss>')
     assert c.get(f'/api/episode/{EP}.json', headers=AUTH).get_json()['title'] == 'Ep 1'
+
+
+def test_recent_episodes_carry_feed_titles(client):  # noqa: F811
+    c, tmp = client
+    setup(tmp)
+    (tmp / 'feeds' / 'mypodcast.xml').write_text(
+        '<rss><channel><title>t</title><item><title>Ep 1</title></item></channel></rss>')
+    [row] = c.get('/api/stats.json', headers=AUTH).get_json()['recent_episodes']
+    assert (row['episode'], row['title']) == (EP, 'Ep 1')

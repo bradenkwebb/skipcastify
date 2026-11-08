@@ -50,6 +50,7 @@
   /* One line per episode: titles truncate instead of wrapping. */
   .tbl.eps td { white-space: nowrap; }
   .tbl.eps td.ep { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .tbl.eps td.feed { max-width: 110px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
   .ok { color: var(--ok); }
   .warn { color: var(--warn); }
 </style>
@@ -328,8 +329,8 @@ let showAllEps = false;
 function renderEpisodes() {
   const all = DATA.recent_episodes, shown = showAllEps ? all : all.slice(0, 8);
   const rows = shown.map(e =>
-    `<tr><td title="${esc(e.ts)}">${ago(e.ts)}</td><td>${esc(shorten(e.feed_slug))}</td>` +
-    `<td class="ep" title="${esc(e.episode)}"><a href="${epUrl(e.episode)}">${esc(e.episode.replace(e.feed_slug + '-', ''))}</a></td>` +
+    `<tr><td title="${esc(e.ts)}">${ago(e.ts)}</td><td class="feed" title="${esc(e.feed_slug)}">${esc(e.feed_slug)}</td>` +
+    `<td class="ep" title="${esc(e.title || e.episode)}"><a href="${epUrl(e.episode)}">${esc(e.title || e.episode.replace(e.feed_slug + '-', ''))}</a></td>` +
     `<td>${e.duration_min}m</td><td>${e.ad_minutes}m (${e.ad_pct}%)</td></tr>`).join('');
   const more = all.length > 8
     ? `<button style="margin-top:10px" onclick="showAllEps=!showAllEps;renderEpisodes()">${showAllEps ? 'Show fewer' : `Show ${all.length - 8} more`}</button>` : '';
