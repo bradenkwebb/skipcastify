@@ -236,6 +236,12 @@ def feed_status(runs: list[dict]) -> list[dict]:
     return sorted(status.values(), key=lambda r: r["feed_slug"])
 
 
+def _with_titles(data_dir: str, rows: list[dict]) -> list[dict]:
+    from skipcastify.services.labeling import episode_titles  # labeling imports this module
+    titles = episode_titles(data_dir)
+    return [{**r, "title": titles.get(r["episode"])} for r in rows]
+
+
 def build_payload(data_dir: str, days: Optional[int] = None) -> dict:
     """One JSON blob with everything the dashboard needs.
 
@@ -255,7 +261,7 @@ def build_payload(data_dir: str, days: Optional[int] = None) -> dict:
         "daily": daily_series(events, start),
         "signatures": ad_signatures(events),
         "drop_candidates": drop_candidates(events),
-        "recent_episodes": recent_episodes(events),
+        "recent_episodes": _with_titles(data_dir, recent_episodes(events)),
         "runs": runs[:40],
         "feed_status": feed_status(runs),
     }

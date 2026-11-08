@@ -47,6 +47,10 @@
   .tbl td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   .tbl tr:last-child td { border-bottom: 0; }
   .scroll { overflow-x: auto; }
+  /* One line per episode: titles truncate instead of wrapping. */
+  .tbl.eps td { white-space: nowrap; }
+  .tbl.eps td.ep { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .tbl.eps td.feed { max-width: 110px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
   .ok { color: var(--ok); }
   .warn { color: var(--warn); }
 </style>
@@ -321,13 +325,17 @@ function renderRuns() {
     `<span class="muted">${DATA.runs.length} recent run(s), none with anything new.</span>`;
 }
 
+let showAllEps = false;
 function renderEpisodes() {
-  const rows = DATA.recent_episodes.map(e =>
-    `<tr><td title="${esc(e.ts)}">${ago(e.ts)}</td><td>${esc(shorten(e.feed_slug))}</td>` +
-    `<td title="${esc(e.episode)}"><a href="${epUrl(e.episode)}">${esc(e.episode.replace(e.feed_slug + '-', '').slice(0, 48))}</a></td>` +
+  const all = DATA.recent_episodes, shown = showAllEps ? all : all.slice(0, 8);
+  const rows = shown.map(e =>
+    `<tr><td title="${esc(e.ts)}">${ago(e.ts)}</td><td class="feed" title="${esc(e.feed_slug)}">${esc(e.feed_slug)}</td>` +
+    `<td class="ep" title="${esc(e.title || e.episode)}"><a href="${epUrl(e.episode)}">${esc(e.title || e.episode.replace(e.feed_slug + '-', ''))}</a></td>` +
     `<td>${e.duration_min}m</td><td>${e.ad_minutes}m (${e.ad_pct}%)</td></tr>`).join('');
+  const more = all.length > 8
+    ? `<button style="margin-top:10px" onclick="showAllEps=!showAllEps;renderEpisodes()">${showAllEps ? 'Show fewer' : `Show ${all.length - 8} more`}</button>` : '';
   document.getElementById('episodes').innerHTML = rows ?
-    `<table class="tbl"><tr><th>When</th><th>Feed</th><th>Episode</th><th>Length</th><th>Ads cut</th></tr>${rows}</table>` :
+    `<table class="tbl eps"><tr><th>When</th><th>Feed</th><th>Episode</th><th>Length</th><th>Ads cut</th></tr>${rows}</table>${more}` :
     '<span class="muted">No episodes processed yet.</span>';
 }
 
