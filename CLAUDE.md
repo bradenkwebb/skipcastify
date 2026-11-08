@@ -29,7 +29,7 @@ Use `uv`; never install into a global Python.
 ## Working on ad detection
 
 The model is non-deterministic at `temperature=0` on a pinned snapshot, and its
-dominant output shape drifts over hours. Two consequences, both load-bearing:
+dominant output shape drifts over hours. Two consequences:
 
 - **A single run is a sample, not a measurement.** Take rates over several runs.
 - **Compare prompts by interleaving the arms round-robin**, never one arm after
@@ -49,8 +49,9 @@ this model where rule text repeatedly did not.
 ## Conventions
 
 - **Comments: one or two lines.** Incident history, rejected alternatives and
-  the reasoning behind a fix belong in the commit message, the PR body, or a
-  test docstring that names the case — not in an inline block.
+  the reasoning behind a fix belong in the commit message, the PR body, a
+  test docstring that names the case, or excluded entirely — not in an inline
+  block.
 - **One meaningful change per commit.** No bundling.
 - No `Co-Authored-By: Claude` or `Claude-Session:` trailers in commits.
 - Develop in a git worktree. The server's main checkout is live and
