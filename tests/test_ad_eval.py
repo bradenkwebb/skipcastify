@@ -53,3 +53,20 @@ def test_dated_snapshot_uses_family_price():
     from skipcastify.services.llm_utils import price_for
     assert price_for("gpt-4o-mini-2024-07-18") == price_for("gpt-4o-mini") != price_for("gpt-4o")
     assert price_for("gpt-4o-mini")["input"] > 0 and price_for("unknown")["input"] == 0
+
+
+def test_summary_splits_tuned_from_held_out(tmp_path):
+    rows = [{"round": 0, "arm": "/p/a.txt", "episode": ep, "truth_ms": 10000, "cut_ms": 10000,
+             "missed_ms": m, "wrong_ms": 0} for ep, m in (("tuned-ep", 0), ("fresh-ep", 4000))]
+    tuned_file = tmp_path / "tuned.txt"
+    tuned_file.write_text("# comment\ntuned-ep\n")
+    text = eval_ads.summarize(rows, ["/p/a.txt"], ["fresh-ep", "tuned-ep"], 0.0, eval_ads.read_tuned(tuned_file))
+    held, tuned = text.split("## Tuned")[0], text.split("## Tuned")[1].split("## Per episode")[0]
+    assert "## Held-out: 1 episode" in held and "| a.txt | 1 | 4.0 | 0.0 | 60.0% |" in held
+    assert "| a.txt | 1 | 0.0 | 0.0 | 100.0% |" in tuned
+    assert "| fresh-ep | held-out |" in text and "| tuned-ep | tuned |" in text
+
+
+def test_tuned_list_names_are_episode_ids():
+    for name in eval_ads.read_tuned(eval_ads.TUNED_FILE):
+        assert labeling.valid_name(name) and " " not in name, name
