@@ -37,6 +37,9 @@
   .scroll { overflow-x: auto; }
   .num { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .edge { color: var(--muted); font-style: italic; }
+  .edge .ln { font-style: normal; color: var(--fg); display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 1px 0; }
+  .edge .ts { color: var(--muted); font-variant-numeric: tabular-nums; }
+  button.txt { background: none; border: 0; padding: 4px 0 0; color: var(--accent); font-style: normal; cursor: pointer; }
   button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
     border-radius: 7px; padding: 3px 10px; font-size: 13px; cursor: pointer; }
   button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
@@ -152,9 +155,28 @@ function renderCuts() {
     <td class="num">${play ? `<button data-play="${i}" title="Play the raw audio around this cut">▶</button> ` : ''}${clock(c.start_ms)}–${clock(c.end_ms)}</td>
     <td class="num">${secs((c.end_ms - c.start_ms) / 1000)}</td>
     <td>${c.rationales.length ? c.rationales.map(esc).join('<br>') : '<span class="muted">—</span>'}</td>
-    <td class="edge">${c.first_line ? '“' + esc(c.first_line) + '”' : ''}${c.last_line ? '<br>… “' + esc(c.last_line) + '”' : ''}</td></tr>`).join('');
-  $('cuts').innerHTML = `<table class="tbl"><tr><th>When</th><th>Length</th><th>Why</th><th>First and last line</th></tr>${rows}</table>`;
+    <td class="edge" id="tx${i}">${transcriptCell(c, i)}</td></tr>`).join('');
+  $('cuts').innerHTML = `<table class="tbl"><tr><th>When</th><th>Length</th><th>Why</th><th>Transcript</th></tr>${rows}</table>`;
   $('cuts').querySelectorAll('[data-play]').forEach(b => b.onclick = () => playCut(+b.dataset.play, b));
+  $('cuts').addEventListener('click', e => {
+    const t = e.target.closest('[data-tx]');
+    if (!t) return;
+    const i = +t.dataset.tx;
+    expanded.has(i) ? expanded.delete(i) : expanded.add(i);
+    $('tx' + i).innerHTML = transcriptCell(D.cuts[i], i);
+  });
+}
+
+// Per cut: first and last line, or every line with its timestamp.
+const expanded = new Set();
+function transcriptCell(c, i) {
+  const n = c.lines.length;
+  if (expanded.has(i)) {
+    return c.lines.map(l => `<div class="ln"><span class="ts">${clock(l.start_ms)}</span>${esc(l.text)}</div>`).join('')
+      + `<button class="txt" data-tx="${i}">Show less</button>`;
+  }
+  const short = (c.first_line ? '“' + esc(c.first_line) + '”' : '') + (c.last_line ? '<br>… “' + esc(c.last_line) + '”' : '');
+  return short + (n > 2 ? `<br><button class="txt" data-tx="${i}">Show all ${n} lines</button>` : '');
 }
 
 function renderRuns() {

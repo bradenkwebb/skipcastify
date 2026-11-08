@@ -62,6 +62,7 @@ def test_detail_cuts_runs_and_reasons(client):  # noqa: F811
     [cut] = d['cuts']
     assert cut['rationales'] == ['Acme read with a code.']
     assert (cut['first_line'], cut['last_line']) == ('This episode is brought to you by Acme.', 'Use code SKIP.')
+    assert cut['lines'] == [{'start_ms': 0, 'text': 'This episode is brought to you by Acme.'}, {'start_ms': 4000, 'text': 'Use code SKIP.'}]
     assert d['labels'] is None and d['score'] is None
 
 
