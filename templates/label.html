@@ -227,7 +227,7 @@ async function picker() {
       + `<span>${e.has_predictions ? '' : '<span class="badge">no cuts</span>'}</span>`
       + `<span class="f">${mins(e.duration_s)}</span>${date}</div>`;
   }
-  function render() {
+  function render(follow = true) {
     document.querySelectorAll('[data-sort]').forEach(b => b.classList.toggle('on', b.dataset.sort === sort));
     document.querySelectorAll('[data-st]').forEach(b => b.classList.toggle('on', b.dataset.st === status));
     const words = $('filter').value.toLowerCase().split(/[\s_-]+/).filter(Boolean);
@@ -261,7 +261,7 @@ async function picker() {
       html = shown.map((e, i) => row(e, i, true)).join('');
     }
     $('eps').innerHTML = html || '<p class="muted">No matching episodes.</p>';
-    document.querySelector('.ep.cur')?.scrollIntoView({block: 'nearest'});
+    if (follow) document.querySelector('.ep.cur')?.scrollIntoView({block: 'nearest'});
   }
   // Keep the highlighted episode across re-sorts and filters.
   const rerender = () => { const keep = shown[cur]?.name; render(); const i = shown.findIndex(e => e.name === keep); if (i >= 0) { cur = i; render(); } };
@@ -271,7 +271,20 @@ async function picker() {
   document.querySelectorAll('[data-st]').forEach(b => b.onclick = () => setStatus(b.dataset.st));
   const open = i => { if (shown[i]) location.href = '/label/' + encodeURIComponent(shown[i].name); };
   $('filter').addEventListener('input', () => { cur = 0; render(); });
-  const toggleFeed = f => { collapsed.has(f) ? collapsed.delete(f) : collapsed.add(f); saveCollapsed(); rerender(); };
+  // Pin the show's heading where it is on screen, and put the cursor on its first episode when opening.
+  const toggleFeed = f => {
+    const head = () => [...document.querySelectorAll('.feed.tog')].find(h => h.dataset.feed === f);
+    const before = head()?.getBoundingClientRect().top;
+    const opening = collapsed.has(f);
+    opening ? collapsed.delete(f) : collapsed.add(f); saveCollapsed();
+    const keep = opening ? null : shown[cur]?.name;
+    render(false);
+    const i = opening ? shown.findIndex(e => (e.feed || 'unknown feed') === f) : shown.findIndex(e => e.name === keep);
+    if (i >= 0) cur = i;
+    render(false);
+    const after = head()?.getBoundingClientRect().top;
+    if (before != null && after != null) $('picker').scrollTop += after - before;
+  };
   $('eps').addEventListener('click', e => {
     const h = e.target.closest('.feed.tog');
     if (h) return toggleFeed(h.dataset.feed);
