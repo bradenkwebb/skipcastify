@@ -26,14 +26,26 @@ NS = {"itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
       "content": "http://purl.org/rss/1.0/modules/content/"}
 
 
+_upstream: dict[str, tuple[float, Optional[str]]] = {}
+
+
 def upstream_url(data_dir, slug: str) -> Optional[str]:
     """Our generated feed's <channel><link> is the subscription URL it was built from."""
     path = Path(data_dir) / "feeds" / f"{slug}.xml"
     try:
-        link = ET.parse(path).getroot().find("channel").findtext("link")
-    except (OSError, ET.ParseError, AttributeError):
+        mtime = path.stat().st_mtime
+    except OSError:
         return None
-    return link if link and link.startswith(("http://", "https://")) else None
+    hit = _upstream.get(str(path))
+    if hit and hit[0] == mtime:
+        return hit[1]
+    try:
+        link = ET.parse(path).getroot().find("channel").findtext("link")
+    except (ET.ParseError, AttributeError):
+        link = None
+    link = link if link and link.startswith(("http://", "https://")) else None
+    _upstream[str(path)] = (mtime, link)
+    return link
 
 
 class _Blocks(HTMLParser):
@@ -140,7 +152,7 @@ def _summarize(raw: bytes, slug: str) -> dict:
             "episode": _text(item, "itunes:episode"),
             "season": _text(item, "itunes:season"),
             "image": _image(item),
-            "notes": notes_blocks(notes),
+            "notes_html": notes,  # converted per request; 2,000 episodes at once is the slow part
         })
     return {"show": show, "episodes": episodes}
 
@@ -186,6 +198,7 @@ def episode_meta(data_dir, slug: Optional[str], name: str) -> dict:
             summary = feed_summary(url, slug, max_age=MISS_REFRESH_S)  # maybe released since we cached
     except Exception as e:  # network, HTTP or parse failure: the page still works without it
         return {"show": None, "episode": None, "error": f"couldn't load the show's feed ({type(e).__name__})"}
-    ep = summary["episodes"].get(name)
+    raw = summary["episodes"].get(name)
+    ep = {k: v for k, v in raw.items() if k != "notes_html"} | {"notes": notes_blocks(raw["notes_html"])} if raw else None
     return {"show": summary["show"], "episode": ep,
             "error": None if ep else "this episode is no longer in the show's feed"}
