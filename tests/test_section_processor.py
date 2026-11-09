@@ -1,8 +1,5 @@
-"""Sections are the window the model is shown, so their bounds are load-bearing.
-
-The bounds are quoted into the prompt ("section 1140000ms-1740000ms") and are
-what an LLM span is clamped to, so a section must not claim time the audio
-does not have.
+"""A section is the window the model is shown, and its bounds are what an LLM
+span is clamped to, so a section must not claim time the audio does not have.
 """
 
 from skipcastify.services import section_processor

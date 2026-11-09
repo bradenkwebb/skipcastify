@@ -1,10 +1,9 @@
 """An LLM span is bounded by the window the model was shown.
 
-Stage 1 has always clamped to the section. Stage 2 — the TWO_STAGE_LLM
-boundary refinement — was a near-copy of stage 1's parse that dropped the
-clamp, while its prompt specifically asks the model to move end_ms *later*.
-An end_ms of 9999999 was accepted verbatim, and cut_and_stitch_audio clamps
-to the episode length, so the cut ran to the end of the episode.
+The refine_spans prompt asks the model to move end_ms later, so the stage-2
+parse is the one most likely to be handed an endpoint past the section. An
+unbounded end_ms of 9999999 reaches cut_and_stitch_audio, which clamps to the
+episode length and excises everything from the ad to the end of the episode.
 """
 
 from unittest.mock import MagicMock, patch
@@ -55,17 +54,15 @@ class TestStageTwoIsBounded:
                                            "section re-replaces the span, so "
                                            "the clamp only bounds one hop")
     def test_overlapping_sections_do_not_walk_a_span_forward(self, tmp_path):
-        """The clamp is necessary but not sufficient.
+        """Clamping each answer to its own section bounds one hop, not the
+        total.
 
         Sections step by 9.5 minutes and overlap by 30s, and stage 2 replaces
-        every span overlapping a section with that section's answer. A span
-        near a boundary is therefore re-refined by the next section's pass,
-        and a model that keeps asking for a later end_ms walks it forward one
-        section at a time — here 180000 to the end of the episode in three
-        hops, each hop individually within its own section's bounds.
-
-        The fix is per-span merging rather than whole-set replacement, which
-        is a separate change.
+        every span overlapping a section with that section's answer, so a
+        span near a boundary is refined again by the following section. A
+        model that keeps asking for a later end_ms therefore walks a span
+        forward one section per pass while every single hop stays inside its
+        own section. Merging per span instead of replacing the set closes it.
         """
         spans = [{"start_ms": 120_000, "end_ms": 180_000,
                   "label": "ADVERTISEMENT", "rationale": "pod"}]

@@ -34,8 +34,8 @@ dev = [
 
 
 [tool.ruff.lint]
-# Deliberately narrow: a hit here is a real mistake, not a style preference.
-# I (import order), UP and B all have standing hits; see the commit message.
+# Narrow by intent: a hit is a mistake, not a style preference. Import order
+# (I), typing modernisation (UP) and bugbear (B) have standing hits.
 select = ["F", "E9", "W605"]
 
 [tool.ruff.lint.per-file-ignores]

@@ -1,10 +1,8 @@
 """Resolving which show an episode belongs to.
 
-There used to be two near-copies of this — labeling._feed_for and an inline
-version in episode_detail — and the shared last resort was a name-prefix
-match whose ties were broken by taking the longest slug. safe_filename keeps
-hyphens that were in the episode title, so that guess can be wrong whenever
-one subscription's slug is a prefix of another's.
+The last resort is a name-prefix match, broken by taking the longest slug.
+safe_filename keeps hyphens from the episode title, so that tie-break can be
+wrong whenever one subscription's slug is a prefix of another's.
 """
 
 from skipcastify.services import labeling

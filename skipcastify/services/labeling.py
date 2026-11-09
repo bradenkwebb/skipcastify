@@ -86,12 +86,8 @@ def _feed_items(data_dir) -> dict:
 
 
 def feed_for(data_dir, name: str, completes: Optional[dict] = None) -> Optional[str]:
-    """Which show an episode belongs to.
-
-    Three sources, best first: the event log, which recorded the slug at
-    download time; the raw audio, which sits in its own feed's directory and
-    so is exact; and a name-prefix match, which is a guess because one slug
-    can be a prefix of another. Pass completes={} to skip the log.
+    """Which show an episode belongs to: the event log, then the directory the
+    raw audio sits in, then a name-prefix guess. completes={} skips the log.
     """
     if completes is None:
         completes = _latest_completes(data_dir)

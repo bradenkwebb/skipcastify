@@ -46,14 +46,12 @@ class EpisodeDownloader:
         return Path(self.data_dir) / "feed_cache.json"
 
     def _load_feed_cache(self) -> dict[str, dict]:
-        """Per-feed HTTP validators from the last successful fetch."""
         path = self._feed_cache_path()
         if path.exists():
             try:
                 with open(path) as f:
                     return json.load(f)
             except (OSError, ValueError) as e:
-                # Losing it only costs one unconditional fetch per feed.
                 logger.warning(f"Ignoring unreadable feed cache: {e}")
         return {}
 
@@ -66,9 +64,8 @@ class EpisodeDownloader:
 
     def _remember_feed(self, cache: dict, url: str, slug: str, feed,
                        fully_handled: bool) -> None:
-        """Record the slug always; the HTTP validators only when nothing is
-        left to retry. A 304 skips the feed, so a backlog or a failed
-        download would otherwise never be picked up again."""
+        """A 304 skips the feed entirely, so the validators are only safe to
+        store once no episode is still waiting to be downloaded."""
         entry = {"slug": slug}
         if fully_handled:
             for key in ("etag", "modified"):
@@ -179,8 +176,7 @@ class EpisodeDownloader:
                                         etag=cached.get("etag"),
                                         modified=cached.get("modified"))
                 if getattr(feed, "status", None) == 304:
-                    # Not modified: no body was sent, so feed.entries is empty
-                    # and must not be read as "this feed has no episodes".
+                    # A 304 carries no body, so feed.entries is empty.
                     logger.info(f"Unchanged since last run: {cached.get('slug') or subscription_url}")
                     results.append({"feed": cached.get("slug"), "status": "up_to_date",
                                     "not_modified": True})
@@ -290,8 +286,6 @@ class EpisodeDownloader:
                     failed += 1
 
             seen[subscription_url] = feed_seen
-            # Anything past episode_limit waits for the next run, and a failed
-            # download is retried then, so neither may be hidden by a 304.
             self._remember_feed(cache, subscription_url, slug, feed,
                                 failed == 0 and len(fresh) <= self.episode_limit)
             if new_entries:

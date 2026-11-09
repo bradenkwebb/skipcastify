@@ -72,6 +72,18 @@ class Segment:
 DEFAULT_PROMPT_PATH = os.path.join(os.path.dirname(__file__), '..', 'llm_prompts', 'identify_ads_prompt.txt')
 
 
+def _classify_against_spans(segments: List, spans: list[dict]) -> List[ClassifiedSegment]:
+    ad_spans = [AdSpan.from_dict(span) for span in spans]
+    classified = []
+    for seg in segments:
+        hit = next((s for s in ad_spans if s.overlaps(seg.start, seg.end)), None)
+        classified.append(ClassifiedSegment(
+            start=seg.start, end=seg.end, text=seg.text,
+            content_type=hit.content_type() if hit else ContentType.CONTENT,
+            confidence=0.9))
+    return classified
+
+
 class AudioProcessor:
     def __init__(self, data_dir: str) -> None:
         self.data_dir = data_dir
@@ -350,26 +362,8 @@ class AudioProcessor:
             # Mark segments based on LLM results or heuristic fallback
             classifier = SegmentClassifier()
             if llm_answered:
-                # An empty span list is a real answer: no ads. Only an LLM
-                # that never answered hands over to the keyword heuristic.
                 logger.info(f"LLM identified {len(llm_ad_spans)} ad spans. Marking overlapping segments...")
-                classified_segments = []
-                for seg in segments:
-                    # Check overlap with any LLM ad span
-                    is_ad = False
-                    ad_label = None
-                    for span in llm_ad_spans:
-                        span_start = int(span.get("start_ms", 0))
-                        span_end = int(span.get("end_ms", 0))
-                        if seg.start < span_end and seg.end > span_start:
-                            is_ad = True
-                            ad_label = span.get("label")
-                            break
-                    if is_ad:
-                        ct = ContentType.ADVERTISEMENT if ad_label in ("ADVERTISEMENT", "OTHER_AD") else ContentType.SPONSOR
-                        classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ct, confidence=0.9))
-                    else:
-                        classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
+                classified_segments = _classify_against_spans(segments, llm_ad_spans)
             else:
                 logger.info("Using heuristic classifier as fallback...")
                 classified_segments = classifier.classify_segments(segments)
@@ -596,8 +590,6 @@ class AudioProcessor:
                 spans_found=len(parsed) if success else 0,
             )
 
-            # The model was shown this section and nothing else, so its
-            # answer is bounded by it.
             all_spans.extend(span.to_dict() for span in AdSpan.parse_many(
                 parsed, bounds=(sec.start_ms, sec.end_ms),
                 context=f"section {sec.start_ms}-{sec.end_ms}"))
@@ -710,7 +702,6 @@ class AudioProcessor:
                     pass
 
                 new_spans = llm_utils.parse_json_array_from_text(resp.text)
-                # Bounded like stage 1; this prompt asks for a later end_ms.
                 valid = [span.to_dict() for span in AdSpan.parse_many(
                     new_spans, bounds=(sec.start_ms, sec.end_ms),
                     context=f"refinement of section {sec.start_ms}-{sec.end_ms}")]
@@ -798,22 +789,7 @@ class AudioProcessor:
 
         if llm_answered:
             logger.info(f"Using {len(final_spans)} LLM spans for preview audio cut.")
-            classified_segments = []
-            for seg in segments:
-                is_ad = False
-                ad_label = None
-                for span in final_spans:
-                    span_start = int(span.get('start_ms', 0))
-                    span_end = int(span.get('end_ms', 0))
-                    if seg.start < span_end and seg.end > span_start:
-                        is_ad = True
-                        ad_label = span.get('label')
-                        break
-                if is_ad:
-                    ct = ContentType.ADVERTISEMENT if ad_label in ("ADVERTISEMENT", "OTHER_AD") else ContentType.SPONSOR
-                    classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ct, confidence=0.9))
-                else:
-                    classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
+            classified_segments = _classify_against_spans(segments, final_spans)
         else:
             logger.info("Using heuristic classifier as fallback for preview...")
             classifier = SegmentClassifier()
@@ -908,22 +884,7 @@ class AudioProcessor:
 
         if llm_answered:
             logger.info(f"Using {len(final_spans)} LLM spans for preview audio cut.")
-            classified_segments = []
-            for seg in segments:
-                is_ad = False
-                ad_label = None
-                for span in final_spans:
-                    span_start = int(span.get('start_ms', 0))
-                    span_end = int(span.get('end_ms', 0))
-                    if seg.start < span_end and seg.end > span_start:
-                        is_ad = True
-                        ad_label = span.get('label')
-                        break
-                if is_ad:
-                    ct = ContentType.ADVERTISEMENT if ad_label in ("ADVERTISEMENT", "OTHER_AD") else ContentType.SPONSOR
-                    classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ct, confidence=0.9))
-                else:
-                    classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
+            classified_segments = _classify_against_spans(segments, final_spans)
         else:
             logger.info("Using heuristic classifier as fallback for preview...")
             classifier = SegmentClassifier()

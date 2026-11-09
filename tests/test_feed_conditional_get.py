@@ -1,7 +1,7 @@
 """The downloader asks for a 304 before re-reading a feed.
 
 The pipeline runs every 15 minutes over every subscription, so without HTTP
-validators each run re-downloaded every feed's full XML.
+validators each run fetches every feed's full XML.
 """
 
 import calendar
@@ -77,8 +77,8 @@ def test_the_next_fetch_sends_them_back(downloader, tmp_path):
 
 
 def test_a_304_short_circuits_the_feed(downloader, tmp_path):
-    """No body is sent with a 304, so feed.entries is empty and must not be
-    read as "this show has no episodes"."""
+    """A 304 sends no body, so feed.entries is empty and must not be mistaken
+    for a show that has no episodes."""
     with patch("feedparser.parse", return_value=reply([FakeEntry("a")], etag='W/"abc"')):
         downloader.download_latest(now=NOW)
     seen_before = (tmp_path / "seen_episodes.json").read_text()
