@@ -78,7 +78,7 @@ def main():
         print("PREVIEW TRANSCRIPT (showing what will be removed):")
         print("="*100 + "\n")
         
-        with open(result['transcript_path'], 'r', encoding='utf-8') as f:
+        with open(result['transcript_path'], encoding='utf-8') as f:
             print(f.read())
         
         # Show span comparison across all stages

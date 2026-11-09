@@ -267,7 +267,7 @@ def main():
         load_dotenv()
         data_dir = os.getenv("DATA_DIR")
         if not data_dir:
-            raise EnvironmentError("DATA_DIR is not defined")
+            raise OSError("DATA_DIR is not defined")
         setup_logging(data_dir)
         alerter = Alerter(data_dir)
 

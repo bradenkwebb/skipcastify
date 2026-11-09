@@ -21,7 +21,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +62,7 @@ class GroundTruthLabel:
 class GroundTruthStore:
     """Manages ground-truth labels for episodes."""
     
-    def __init__(self, labels_dir: Optional[str] = None):
+    def __init__(self, labels_dir: str | None = None):
         self.labels_dir = Path(labels_dir) if labels_dir else (
             Path(os.environ.get("DATA_DIR", "data")) / "labels" / "ground_truth")
     
@@ -71,7 +70,7 @@ class GroundTruthStore:
         """Get the label file path for an episode."""
         return self.labels_dir / f"{episode_name}_labels.json"
     
-    def load_labels(self, episode_name: str) -> Optional[List[GroundTruthLabel]]:
+    def load_labels(self, episode_name: str) -> list[GroundTruthLabel] | None:
         """Load ground-truth labels for an episode.
         
         Returns:
@@ -83,7 +82,7 @@ class GroundTruthStore:
             return None
         
         try:
-            with open(label_path, 'r', encoding='utf-8') as f:
+            with open(label_path, encoding='utf-8') as f:
                 data = json.load(f)
             
             labels = [GroundTruthLabel.from_dict(item) for item in data.get('ads', [])]
@@ -97,7 +96,7 @@ class GroundTruthStore:
             logger.warning(f"Failed to load ground-truth labels: {e}")
             return None
     
-    def save_labels(self, episode_name: str, labels: List[GroundTruthLabel]) -> None:
+    def save_labels(self, episode_name: str, labels: list[GroundTruthLabel]) -> None:
         """Save ground-truth labels for an episode.
         
         Args:
@@ -123,7 +122,7 @@ class GroundTruthStore:
         """Check if labels exist for an episode."""
         return self.get_label_path(episode_name).exists()
     
-    def list_labeled(self) -> List[str]:
+    def list_labeled(self) -> list[str]:
         """List all episodes with ground-truth labels."""
         labeled = []
         for f in self.labels_dir.glob("*_labels.json"):
@@ -172,8 +171,8 @@ class EvaluationMetrics:
                 f"TP={self.tp} FP={self.fp} FN={self.fn} TN={self.tn}")
 
 
-def evaluate_predictions(ground_truth: List[GroundTruthLabel], 
-                        predictions: List[dict],
+def evaluate_predictions(ground_truth: list[GroundTruthLabel], 
+                        predictions: list[dict],
                         overlap_threshold_ms: int = 1000) -> EvaluationMetrics:
     """Evaluate predicted ad spans against ground-truth labels.
     

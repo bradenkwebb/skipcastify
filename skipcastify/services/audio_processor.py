@@ -3,7 +3,6 @@ import logging
 import os
 import time
 from dataclasses import dataclass
-from typing import List, Optional
 
 import numpy as np
 from faster_whisper import WhisperModel, decode_audio
@@ -74,7 +73,7 @@ class Segment:
 DEFAULT_PROMPT_PATH = os.path.join(os.path.dirname(__file__), '..', 'llm_prompts', 'identify_ads_prompt.txt')
 
 
-def _classify_against_spans(segments: List, spans: list[dict]) -> List[ClassifiedSegment]:
+def _classify_against_spans(segments: list, spans: list[dict]) -> list[ClassifiedSegment]:
     ad_spans = [AdSpan.from_dict(span) for span in spans]
     classified = []
     for seg in segments:
@@ -136,7 +135,7 @@ class AudioProcessor:
         self, 
         audio_path: str,
         model_size: str = "base"
-    ) -> List[Segment]:
+    ) -> list[Segment]:
         """
         Transcribe audio locally with faster-whisper (CTranslate2).
 
@@ -215,7 +214,7 @@ class AudioProcessor:
     def cut_and_stitch_audio(
         self, 
         audio: AudioSegment, 
-        aggregated_segments: List
+        aggregated_segments: list
     ) -> AudioSegment:
         """
         Remove only the ad segments, keeping the rest of the audio intact.
@@ -436,7 +435,7 @@ class AudioProcessor:
             logger.error(f"Error processing episode: {episode_file_path} - {e}", exc_info=True)
             raise
     
-    def _save_classification_log(self, log_path: str, aggregated_segments: List) -> None:
+    def _save_classification_log(self, log_path: str, aggregated_segments: list) -> None:
         """Save segment classification results to a text file for debugging."""
         try:
             with open(log_path, 'w', encoding='utf-8') as f:
@@ -459,7 +458,7 @@ class AudioProcessor:
         except Exception as e:
             logger.warning(f"Failed to save classification log: {e}")
 
-    def _save_preview_transcript(self, transcript_path: str, aggregated_segments: List, classified_segments: List) -> None:
+    def _save_preview_transcript(self, transcript_path: str, aggregated_segments: list, classified_segments: list) -> None:
         """Save a side-by-side transcript showing original text and what was removed."""
         try:
             with open(transcript_path, 'w', encoding='utf-8') as f:
@@ -500,8 +499,8 @@ class AudioProcessor:
             logger.warning(f"Failed to save preview transcript: {e}")
 
 
-    def _run_section_llm(self, segments: List[Segment], transcripts_dir: str, episode_name: str, feed_slug: str = "",
-                         prompt_path: Optional[str] = None) -> List[dict]:
+    def _run_section_llm(self, segments: list[Segment], transcripts_dir: str, episode_name: str, feed_slug: str = "",
+                         prompt_path: str | None = None) -> list[dict]:
         """Run the section-level LLM on suspicious sections and return ad spans.
 
         Returns a list of dicts with keys: start_ms, end_ms, label, rationale.
@@ -510,7 +509,7 @@ class AudioProcessor:
         prompt_path = os.path.normpath(prompt_path or DEFAULT_PROMPT_PATH)
 
         try:
-            with open(prompt_path, 'r', encoding='utf-8') as f:
+            with open(prompt_path, encoding='utf-8') as f:
                 prompt_template = f.read()
         except Exception as e:
             logger.error(f"Failed to read prompt template: {e}")
@@ -664,7 +663,7 @@ class AudioProcessor:
             os.path.dirname(__file__), "..", "llm_prompts", "refine_spans_prompt.txt"
         ))
         try:
-            with open(prompt_path, "r", encoding="utf-8") as f:
+            with open(prompt_path, encoding="utf-8") as f:
                 prompt_template = f.read()
         except Exception as e:
             logger.error("Failed to read refinement prompt: %s", e)
@@ -722,7 +721,7 @@ class AudioProcessor:
 
         return refined
 
-    def _aggregated_segments_to_ad_spans(self, aggregated_segments: List) -> List[dict]:
+    def _aggregated_segments_to_ad_spans(self, aggregated_segments: list) -> list[dict]:
         """Convert aggregated segments classified as ads into ad span dicts.
         
         Returns list of dicts with keys: start_ms, end_ms, label, rationale
@@ -830,7 +829,7 @@ class AudioProcessor:
             "refined_spans": refined_spans,
         }
 
-    def process_preview_with_segments(self, episode_file_path: str, preview_output_path: str, segments: List[Segment]) -> dict:
+    def process_preview_with_segments(self, episode_file_path: str, preview_output_path: str, segments: list[Segment]) -> dict:
         """Process a preview using pre-loaded (cached) segments.
         
         Skips transcription entirely, useful for fast iteration during development.

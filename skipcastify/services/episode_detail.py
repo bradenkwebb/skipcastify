@@ -3,7 +3,6 @@ processing runs, and how the latest cuts score against hand labels."""
 
 import json
 from pathlib import Path
-from typing import Optional
 
 from skipcastify.services import cut_policy, labeling
 from skipcastify.services.ad_eval import score
@@ -36,7 +35,7 @@ def _runs(events: list[dict]) -> list[dict]:
     return runs[::-1]
 
 
-def _llm_items(data_dir, feed: Optional[str], name: str) -> list[dict]:
+def _llm_items(data_dir, feed: str | None, name: str) -> list[dict]:
     """Spans with rationales from the latest run's saved section responses, if still on disk."""
     if not feed:
         return []
@@ -59,7 +58,7 @@ def _segments(data_dir, name: str) -> list[dict]:
     return [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in json.loads(path.read_text())]
 
 
-def episode_detail(data_dir, name: str) -> Optional[dict]:
+def episode_detail(data_dir, name: str) -> dict | None:
     if not labeling.valid_name(name):
         return None
     events = [e for e in load_events(data_dir) if e.get("episode_name") == name]

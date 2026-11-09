@@ -44,7 +44,7 @@ def load_latest_prediction(episode_name: str) -> tuple[list, str]:
         return None, str(predictions_path)
     
     try:
-        with open(predictions_path, 'r', encoding='utf-8') as f:
+        with open(predictions_path, encoding='utf-8') as f:
             data = json.load(f)
         return data.get('predictions', []), str(predictions_path)
     except Exception as e:

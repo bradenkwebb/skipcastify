@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable, Optional
+from typing import Any, Optional
 
 from skipcastify.models.content import ContentType
 
@@ -36,7 +37,7 @@ class AdSpan:
 
     @classmethod
     def parse(cls, item: Any,
-              bounds: Optional[tuple[int, int]] = None) -> Optional["AdSpan"]:
+              bounds: tuple[int, int] | None = None) -> Optional["AdSpan"]:
         if not isinstance(item, dict):
             return None
         try:
@@ -57,7 +58,7 @@ class AdSpan:
 
     @classmethod
     def parse_many(cls, items: Iterable[Any],
-                   bounds: Optional[tuple[int, int]] = None,
+                   bounds: tuple[int, int] | None = None,
                    context: str = "") -> list["AdSpan"]:
         spans = []
         for item in items or []:
