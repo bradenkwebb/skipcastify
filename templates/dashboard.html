@@ -44,6 +44,9 @@
   a.track:hover { outline: 1px solid var(--accent); }
   .tbl a { color: inherit; }
   .tbl a:hover { color: var(--accent); }
+  .dayeps { margin-top: 10px; font-size: 13px; }
+  .dayeps ul { margin: 6px 0 0; padding-left: 18px; }
+  .dayeps a { color: var(--fg); } .dayeps a:hover { color: var(--accent); }
   .track { position: relative; height: 20px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
   .track .sp { position: absolute; top: 0; bottom: 0; background: var(--ad); opacity: .85; }
   .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
@@ -97,14 +100,15 @@
   <div class="grid2">
     <div>
       <h2>Daily throughput</h2>
-      <div class="panel"><canvas id="dailyChart" height="220"></canvas></div>
+      <div class="panel"><canvas id="dailyChart" height="220"></canvas>
+        <div id="dayEps" class="dayeps muted">Click a bar to list that day's episodes.</div></div>
     </div>
     <div>
       <h2>Ad-heaviness leaderboard</h2>
       <div class="panel">
         <div class="toolbar">
-          <button id="btnMinutes" class="active" onclick="setLeaderboard('minutes')">Total ad minutes</button>
-          <button id="btnPct" onclick="setLeaderboard('pct')">Avg ad %</button>
+          <button id="btnPct" class="active" onclick="setLeaderboard('pct')">Avg ad %</button>
+          <button id="btnMinutes" onclick="setLeaderboard('minutes')">Total ad minutes</button>
         </div>
         <canvas id="feedChart" height="240"></canvas>
       </div>
@@ -175,7 +179,7 @@ function render() {
   renderRuns();
   renderEpisodes();
   renderDaily();
-  setLeaderboard('minutes');
+  setLeaderboard('pct');
   renderDrops();
   renderSignatureSelector();
 }
@@ -196,6 +200,8 @@ function renderDaily() {
       ],
     },
     options: {
+      onClick: (_e, els) => { if (els.length) showDayEps(d[els[0].index]); },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : ''; },
       plugins: { legend: { labels: { color: css('muted') } } },
       scales: {
         x: { ticks: { color: css('muted') }, grid: { color: css('line') } },
@@ -206,7 +212,18 @@ function renderDaily() {
   });
 }
 
-let lbMode = 'minutes';
+// Canvas tooltips can't hold clickable links, so a click pins the day's list here.
+function showDayEps(day) {
+  const box = document.getElementById('dayEps');
+  const eps = day.list || [];
+  box.classList.toggle('muted', !eps.length);
+  box.innerHTML = `<b>${esc(day.date)}</b> · ${eps.length} episode${eps.length === 1 ? '' : 's'}` +
+    (eps.length ? '<ul>' + eps.map(e =>
+      `<li><a href="${epUrl(e.episode)}">${esc(e.title || e.episode)}</a> ` +
+      `<span class="muted">${esc(shorten(e.feed_slug))} · ${e.ad_minutes}m ads</span></li>`).join('') + '</ul>' : '');
+}
+
+let lbMode = 'pct';
 function setLeaderboard(mode) {
   lbMode = mode;
   document.getElementById('btnMinutes').classList.toggle('active', mode === 'minutes');

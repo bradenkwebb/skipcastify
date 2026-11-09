@@ -25,6 +25,8 @@
   .note strong { color: var(--fg); }
   .feed { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
           padding: 14px; margin-top: 14px; }
+  .feedhead { display: flex; gap: 12px; align-items: center; }
+  .feedhead img { width: 48px; height: 48px; border-radius: 8px; flex: none; background: var(--panel2); }
   .feed h2 { margin: 0; font-size: 16px; font-weight: 620; line-height: 1.3; }
   .meta { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
   .urlrow { display: flex; gap: 8px; margin-top: 12px; }
@@ -86,6 +88,9 @@
 {% else %}
   {% for feed in feeds %}
   <div class="feed">
+    <div class="feedhead">
+    <img src="/feeds/art/{{ feed.slug }}.jpg" alt="" loading="lazy" onerror="this.remove()">
+    <div>
     <h2>{{ feed.title }}</h2>
     <div class="meta">
       {{ feed.slug }}
@@ -93,6 +98,8 @@
         in R2 · {{ feed.audio_bytes | mb }}{% endif %}
       {%- if feed.last_audio_upload %} · newest {{ feed.last_audio_upload | ago }}{% endif %}
       {%- if feed.feed_uploaded %} · feed updated {{ feed.feed_uploaded | ago }}{% endif %}
+    </div>
+    </div>
     </div>
     <div class="urlrow">
       <input class="url" type="text" readonly

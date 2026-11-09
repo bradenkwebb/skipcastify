@@ -120,9 +120,13 @@ def daily_series(events: list[dict], start: Optional[date] = None) -> list[dict]
     by_day_eps: dict[str, int] = defaultdict(int)
     by_day_feeds: dict[str, set] = defaultdict(set)
     by_day_admin: dict[str, float] = defaultdict(float)
+    by_day_list: dict[str, list] = defaultdict(list)
     for ev in _completes(events):
         d = _day(ev)
         by_day_eps[d] += 1
+        by_day_list[d].append({"feed_slug": ev.get("feed_slug", "unknown"),
+                               "episode": ev.get("episode_name", ""),
+                               "ad_minutes": round(_ad_ms(ev) / 60000.0, 1)})
         by_day_feeds[d].add(ev.get("feed_slug"))
         by_day_admin[d] += _ad_ms(ev) / 60000.0
     if not by_day_eps and start is None:
@@ -138,6 +142,7 @@ def daily_series(events: list[dict], start: Optional[date] = None) -> list[dict]
             "episodes": by_day_eps.get(d, 0),
             "feeds": len(by_day_feeds.get(d, ())),
             "ad_minutes": round(by_day_admin.get(d, 0.0), 1),
+            "list": by_day_list.get(d, []),
         })
         day += timedelta(days=1)
     return rows
@@ -261,7 +266,7 @@ def build_payload(data_dir: str, days: Optional[int] = None) -> dict:
         "days": days,
         "overview": overview(events),
         "feeds": feed_summary(events),
-        "daily": daily_series(events, start),
+        "daily": [{**d, "list": _with_titles(data_dir, d["list"])} for d in daily_series(events, start)],
         "signatures": [{**f, "episodes": _with_titles(data_dir, f["episodes"])} for f in ad_signatures(events)],
         "drop_candidates": drop_candidates(events),
         "recent_episodes": _with_titles(data_dir, recent_episodes(events)),
