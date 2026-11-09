@@ -49,6 +49,8 @@ public struct APIClient: Sendable {
     public func stats() async throws -> Stats { try await get("api/stats.json") }
     public func settings() async throws -> SettingsState { try await get("api/settings.json") }
     public func labelEpisodes() async throws -> [LabelEpisode] { try await get("api/label/episodes.json") }
+    /// Needs a server with /api/feeds.json; older ones return 404.
+    public func publishedFeeds() async throws -> PublishedFeeds { try await get("api/feeds.json") }
 
     public func episode(_ name: String) async throws -> EpisodeDetail {
         try await get("api/episode/\(Self.segment(name)).json")

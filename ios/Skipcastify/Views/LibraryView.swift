@@ -5,6 +5,7 @@ struct LibraryView: View {
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
     @Environment(\.modelContext) private var context
     @State private var showAdd = false
+    @State private var showFeeds = false
 
     var body: some View {
         NavigationStack {
@@ -26,9 +27,13 @@ struct LibraryView: View {
             .navigationDestination(for: Podcast.self) { PodcastDetailView(podcast: $0) }
             .refreshable { await FeedService.refreshAll(in: context) }
             .toolbar {
-                Button { showAdd = true } label: { Label("Add Podcast", systemImage: "plus") }
+                Menu {
+                    Button { showFeeds = true } label: { Label("Ad-free Feeds from Skipcastify", systemImage: "scissors") }
+                    Button { showAdd = true } label: { Label("Search All Podcasts", systemImage: "magnifyingglass") }
+                } label: { Label("Add Podcast", systemImage: "plus") }
             }
             .sheet(isPresented: $showAdd) { AddPodcastView() }
+            .sheet(isPresented: $showFeeds) { SkipcastifyFeedsView() }
         }
     }
 }

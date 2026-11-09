@@ -66,6 +66,15 @@ struct DecodingTests {
         #expect(r.results.count == 2 && r.results[1].author == nil)
     }
 
+    @Test func publishedFeeds() throws {
+        let p = try Fixture.decode(PublishedFeeds.self, "feeds")
+        #expect(p.publishingEnabled && p.feeds.count == 2)
+        let odd = try #require(p.feeds.first)
+        #expect(odd.addLinks.first?.href.scheme == "overcast")
+        #expect(odd.lastAudioUpload != nil)  // epoch seconds
+        #expect(p.feeds[1].feedUploaded == nil)
+    }
+
     @Test func labelEpisodes() throws {
         let eps = try Fixture.decode([LabelEpisode].self, "label_episodes")
         #expect(eps.contains { $0.reviewed })

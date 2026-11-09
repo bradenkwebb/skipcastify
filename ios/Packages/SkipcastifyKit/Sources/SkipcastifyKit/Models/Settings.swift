@@ -133,3 +133,29 @@ public struct LabelEpisode: Decodable, Sendable, Identifiable {
     public let labeledSpans: Int?
     public var id: String { name }
 }
+
+/// `GET /api/feeds.json`: the ad-free feeds published to R2. URLs carry the path secret.
+public struct PublishedFeeds: Decodable, Sendable {
+    public let publishingEnabled: Bool
+    public let feeds: [PublishedFeed]
+}
+
+public struct PublishedFeed: Decodable, Sendable, Identifiable {
+    public let slug: String
+    public let title: String
+    public let url: URL
+    public let episodes: Int
+    public let audioBytes: Int64
+    public let lastAudioUpload: Date?
+    public let feedUploaded: Date?
+    public let addLinks: [AddLink]
+    public var id: String { slug }
+
+    /// A podcast app's documented "subscribe to this feed" link.
+    public struct AddLink: Decodable, Sendable, Hashable {
+        public let app: String
+        public let name: String
+        public let href: URL
+        public let hint: String?
+    }
+}
