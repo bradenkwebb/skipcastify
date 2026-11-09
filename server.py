@@ -3,6 +3,7 @@ import os
 import time
 from functools import wraps
 
+import yaml
 from dotenv import load_dotenv
 from flask import (
     Flask,
@@ -17,10 +18,11 @@ from flask import (
     send_from_directory,
 )
 
-from skipcastify.services import analytics, feed_meta, labeling
+from skipcastify.services import analytics, cut_policy, feed_meta, labeling, settings
 from skipcastify.services.artwork_thumbs import thumbnail
 from skipcastify.services.episode_detail import episode_detail
 from skipcastify.services.published_feeds import published_feeds
+from skipcastify.services.state_manager import StateManager
 from skipcastify.utils.alerts import scrub_secrets
 
 load_dotenv()
@@ -235,6 +237,98 @@ def feeds_page():
         "script-src 'unsafe-inline'; form-action 'none'; base-uri 'none'"
     )
     return resp
+
+
+def _write_refused():
+    """None if this looks like a same-origin write from our own page.
+
+    Browsers attach Basic auth cross-site, so: a custom header and a JSON body
+    both force a CORS preflight (never approved here), and Sec-Fetch-Site,
+    when sent, must say same-origin.
+    """
+    site = request.headers.get('Sec-Fetch-Site')
+    if (request.headers.get('X-Skipcastify') != '1' or not request.is_json
+            or (site is not None and site not in ('same-origin', 'none'))):
+        return abort(403)
+    return None
+
+
+def _user():
+    return request.authorization.username if request.authorization else None
+
+
+@app.route('/settings')
+@require_auth
+def settings_page():
+    resp = make_response(render_template('settings.html'))
+    resp.headers['Cache-Control'] = 'no-store'
+    resp.headers['Content-Security-Policy'] = (
+        "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; "
+        "script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'"
+    )
+    return resp
+
+
+@app.route('/api/settings.json')
+@require_auth
+def settings_json():
+    path = cut_policy.policy_path()
+    try:
+        policy, error = settings.snapshot(path), None
+    except (ValueError, yaml.YAMLError) as e:  # a bad hand edit: show it, don't overwrite it
+        policy, error = {"default": [], "feeds": {}}, f"policy.yaml is invalid: {e}"
+    skipped = StateManager(data_dir).skipped()
+    return jsonify(
+        version=settings.version(path), policy=policy, error=error,
+        labels=list(cut_policy.LABELS), feeds=settings.feeds(data_dir, policy),
+        changes=settings.changes(data_dir),
+        skipped=[{"episode": k, "attempts": n} for k, n in sorted(skipped.items())],
+    )
+
+
+@app.route('/api/settings/policy.json', methods=['PUT'])
+@require_auth
+def settings_policy():
+    if (refused := _write_refused()) is not None:
+        return refused
+    body = request.get_json(silent=True) or {}
+    try:
+        entry = settings.save(data_dir, body.get('policy'), body.get('version'), _user())
+    except settings.Conflict as e:
+        return jsonify(error=str(e)), 409
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    return jsonify(change=entry)
+
+
+@app.route('/api/settings/undo/<int:change_id>.json', methods=['POST'])
+@require_auth
+def settings_undo(change_id):
+    if (refused := _write_refused()) is not None:
+        return refused
+    body = request.get_json(silent=True) or {}
+    try:
+        entry = settings.undo(data_dir, change_id, body.get('version'), _user())
+    except KeyError:
+        return abort(404)
+    except settings.Conflict as e:
+        return jsonify(error=str(e)), 409
+    return jsonify(change=entry)
+
+
+@app.route('/api/settings/retry.json', methods=['POST'])
+@require_auth
+def settings_retry():
+    """Clear a skipped episode's failure count so the next run tries it again."""
+    if (refused := _write_refused()) is not None:
+        return refused
+    episode = (request.get_json(silent=True) or {}).get('episode')
+    sm = StateManager(data_dir)
+    if episode not in sm.skipped():
+        return abort(404)
+    sm.finish_attempt(sm.raw_dir / episode)
+    app.logger.info("retry %s requested by %s", episode, _user())
+    return jsonify(ok=True)
 
 
 @app.route('/api/stats.json')

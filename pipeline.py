@@ -19,7 +19,7 @@ from skipcastify.services.run_log import (
     take_inflight,
     write_inflight,
 )
-from skipcastify.services.state_manager import StateManager, uncut_marker
+from skipcastify.services.state_manager import MAX_ATTEMPTS, StateManager, uncut_marker
 from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.lock import LockHeld, pipeline_lock
 from skipcastify.utils.logger import setup_logging
@@ -31,9 +31,6 @@ logger = logging.getLogger(__name__)
 # diagnosis from a phone. The others are set inline in run(); this one is the
 # value before run() is even reached.
 STAGE_STARTUP = "startup"
-# An episode that started this many runs without finishing is skipped, so one
-# bad file (e.g. an OOM kill) cannot block every later episode and publish.
-MAX_ATTEMPTS = 2
 
 
 class Pipeline:
