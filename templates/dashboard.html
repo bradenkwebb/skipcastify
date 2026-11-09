@@ -103,8 +103,8 @@
       <h2>Ad-heaviness leaderboard</h2>
       <div class="panel">
         <div class="toolbar">
-          <button id="btnMinutes" class="active" onclick="setLeaderboard('minutes')">Total ad minutes</button>
-          <button id="btnPct" onclick="setLeaderboard('pct')">Avg ad %</button>
+          <button id="btnPct" class="active" onclick="setLeaderboard('pct')">Avg ad %</button>
+          <button id="btnMinutes" onclick="setLeaderboard('minutes')">Total ad minutes</button>
         </div>
         <canvas id="feedChart" height="240"></canvas>
       </div>
@@ -175,7 +175,7 @@ function render() {
   renderRuns();
   renderEpisodes();
   renderDaily();
-  setLeaderboard('minutes');
+  setLeaderboard('pct');
   renderDrops();
   renderSignatureSelector();
 }
@@ -206,7 +206,7 @@ function renderDaily() {
   });
 }
 
-let lbMode = 'minutes';
+let lbMode = 'pct';
 function setLeaderboard(mode) {
   lbMode = mode;
   document.getElementById('btnMinutes').classList.toggle('active', mode === 'minutes');
