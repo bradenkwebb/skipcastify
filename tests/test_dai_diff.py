@@ -7,6 +7,7 @@ from skipcastify.services import dai_diff
 FRAME_MS = 1152 / 44100 * 1000
 FRAME_BYTES = 417
 _HEADER = b"\xff\xfb\x90\x00"
+_LAYER_III_BITS = 0b01
 
 
 def frame(tag: int) -> bytes:
@@ -164,3 +165,36 @@ class TestRefusals:
                      + list(range(980, 1060)) + list(range(60, 400)))
         with pytest.raises(dai_diff.NotComparable, match="differ in"):
             align(monetized, CONTENT, max_breaks=1)
+
+
+class TestHeaderVersions:
+    """Only MPEG 1 Layer III at 44.1kHz appears in these feeds, but a
+    misparsed header would invent frame sizes and desynchronise the scan."""
+
+    @staticmethod
+    def _frame(version_bits: int, rate_index: int = 0, bitrate_index: int = 9) -> bytes:
+        byte1 = 0b1110_0000 | (version_bits << 3) | (_LAYER_III_BITS << 1) | 1
+        byte2 = (bitrate_index << 4) | (rate_index << 2)
+        return bytes([0xFF, byte1, byte2, 0x00])
+
+    def test_the_reserved_version_is_not_read_as_mpeg_1(self):
+        assert dai_diff.read_frames(self._frame(0b01) + b"\x00" * 600) == []
+
+    def test_mpeg_1_frames_are_417_bytes_at_128kbps(self):
+        body = self._frame(0b11) + bytes(413)
+        frames = dai_diff.read_frames(body * 3)
+        assert len(frames) == 3
+        assert frames[0][1] == pytest.approx(1152 / 44100 * 1000)
+
+    def test_mpeg_2_halves_the_sample_rate(self):
+        """80kbps over 22050Hz gives a 261-byte frame; a wrong rate desyncs."""
+        frames = dai_diff.read_frames((self._frame(0b10) + bytes(257)) * 3)
+        assert len(frames) == 3
+        assert frames[0][1] == pytest.approx(576 / 22050 * 1000)
+
+    def test_mpeg_2_5_quarters_the_sample_rate(self):
+        """The version field's low bit alone cannot tell 2.5 from 2, and
+        reading 2.5 as 2 halves every frame size from here on."""
+        frames = dai_diff.read_frames((self._frame(0b00) + bytes(518)) * 3)
+        assert len(frames) == 3
+        assert frames[0][1] == pytest.approx(576 / 11025 * 1000)

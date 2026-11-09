@@ -24,6 +24,12 @@ _BITRATES_V2 = (0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0)
 _SAMPLE_RATES = (44100, 48000, 32000)
 _LAYER_III = 1
 
+# The header's version field: 0 is MPEG 2.5, 1 is reserved, 2 is MPEG 2, 3 is
+# MPEG 1. Each halves the sample rate of the one above it.
+_VERSION_RESERVED = 1
+_VERSION_1 = 3
+_RATE_SHIFT = {0: 2, 2: 1, 3: 0}
+
 # Re-encoding changes every frame, so two renderings of one episode that share
 # less than this are not the same encode and their diff means nothing.
 MATCH_FLOOR = 0.80
@@ -66,18 +72,20 @@ def read_frames(data: bytes) -> list[tuple[bytes, float]]:
             continue
 
         header = data[offset + 1:offset + 3]
-        is_v1 = (header[0] >> 3) & 1
+        version = (header[0] >> 3) & 3
         layer = (header[0] >> 1) & 3
         bitrate_index = (header[1] >> 4) & 0xF
         rate_index = (header[1] >> 2) & 3
         padding = (header[1] >> 1) & 1
 
-        if layer != _LAYER_III or bitrate_index in (0, 0xF) or rate_index == 3:
+        if layer != _LAYER_III or version == _VERSION_RESERVED \
+                or bitrate_index in (0, 0xF) or rate_index == 3:
             offset += 1
             continue
 
+        is_v1 = version == _VERSION_1
         bitrate = (_BITRATES_V1 if is_v1 else _BITRATES_V2)[bitrate_index] * 1000
-        sample_rate = _SAMPLE_RATES[rate_index] >> (0 if is_v1 else 1)
+        sample_rate = _SAMPLE_RATES[rate_index] >> _RATE_SHIFT[version]
         samples = 1152 if is_v1 else 576
         size = (samples // 8) * bitrate // sample_rate + padding
         if size <= 4 or offset + size > len(data):
