@@ -106,10 +106,12 @@ def call_openai_chat(prompt: str) -> LLMResponse:
 
 def call_ollama_generate(prompt: str, model: str = DEFAULT_OLLAMA_MODEL, timeout: int = 300) -> LLMResponse:
     """Call local Ollama's generate endpoint and return an LLMResponse with token counts."""
+    # Sampling parameters go under "options"; Ollama ignores them at the top
+    # level, which silently ran generation at the model default instead of 0.
     payload = {
         "model": model,
         "prompt": prompt,
-        "temperature": 0.0,
+        "options": {"temperature": 0.0},
         "stream": False,
     }
 
