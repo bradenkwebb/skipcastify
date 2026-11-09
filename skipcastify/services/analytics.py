@@ -219,7 +219,9 @@ def review_overlay(cut_ms, truth_ms, dur_ms: float) -> dict:
 def _with_review(data_dir: str, feeds: list[dict], events: list[dict]) -> list[dict]:
     """Mark episodes with reviewed hand labels and overlay cut vs labeled ads."""
     from skipcastify.services import (  # labeling imports this module
+        ad_eval,
         cut_policy,
+        episode_detail,
         labeling,
     )
     cuts = {ev.get("episode_name"): ev for ev in _completes(events)}
@@ -234,7 +236,10 @@ def _with_review(data_dir: str, feeds: list[dict], events: list[dict]) -> list[d
             if not doc or not doc.get("reviewed") or not ev or not ev.get("original_duration_s"):
                 continue
             truth = [(s["start_ms"], s["end_ms"]) for s in doc.get("spans", []) if s.get("label") in wanted]
-            cut = [(s["start_ms"], s["end_ms"]) for s in ev.get("spans", [])]
+            # What was actually removed: whole transcript lines overlapping a span.
+            segments = episode_detail._segments(data_dir, ep["episode"])
+            spans = ev.get("spans", [])
+            cut = ad_eval.cut_lines(segments, spans) if segments else [(s["start_ms"], s["end_ms"]) for s in spans]
             ep["reviewed"] = True
             ep["review"] = review_overlay(cut, truth, ev["original_duration_s"] * 1000)
     return feeds
