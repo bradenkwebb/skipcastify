@@ -34,6 +34,10 @@ final class ServerStore {
     private(set) var settingsError: String?
     private(set) var isLoadingSettings = false
 
+    /// Every transcribed episode (titles aren't included; recent ones get them from stats).
+    private(set) var allEpisodes: [LabelEpisode]?
+    private(set) var allEpisodesError: String?
+
     init(defaults: UserDefaults = .standard) {
         baseURL = defaults.string(forKey: Self.urlKey) ?? ""
         authMode = AuthMode(rawValue: defaults.string(forKey: Self.modeKey) ?? "") ?? .none
@@ -91,6 +95,22 @@ final class ServerStore {
         } catch {
             settingsError = error.localizedDescription
         }
+    }
+
+    func loadAllEpisodes() async {
+        guard let client else { allEpisodesError = Self.notConfigured; return }
+        do {
+            allEpisodes = try await client.labelEpisodes()
+            allEpisodesError = nil
+        } catch {
+            allEpisodesError = error.localizedDescription
+        }
+    }
+
+    /// Title for an episode name, when stats know it.
+    func episodeTitle(_ name: String) -> String? {
+        stats?.recentEpisodes.first { $0.episode == name }?.title
+            ?? stats?.signatures.lazy.flatMap(\.episodes).first { $0.episode == name }?.title
     }
 
     /// Runs a write, then reloads settings so versions and the change log stay current.

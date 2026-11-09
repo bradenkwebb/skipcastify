@@ -1,15 +1,14 @@
 import SwiftUI
 
 struct RootView: View {
-    enum Section: String { case dashboard, episodes, shows, library, settings }
-
     @Environment(AudioPlayer.self) private var player
     @Environment(ServerStore.self) private var server
-    @AppStorage("root.tab") private var tab: Section = .dashboard
+    @Environment(Router.self) private var router
     @State private var showPlayer = false
 
     var body: some View {
-        TabView(selection: $tab) {
+        @Bindable var router = router
+        TabView(selection: $router.tab) {
             Tab("Dashboard", systemImage: "chart.bar.xaxis", value: .dashboard) { DashboardView() }
             Tab("Episodes", systemImage: "scissors", value: .episodes) { EpisodesView() }
             Tab("Shows", systemImage: "square.grid.2x2", value: .shows) { ShowsView() }
@@ -23,7 +22,7 @@ struct RootView: View {
         .sheet(isPresented: $showPlayer) { PlayerView() }
         .onAppear {
             // Nothing works without a server; start where it's set.
-            if !server.isConfigured { tab = .settings }
+            if !server.isConfigured { router.tab = .settings }
         }
     }
 }
