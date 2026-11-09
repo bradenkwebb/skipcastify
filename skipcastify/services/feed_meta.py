@@ -39,8 +39,7 @@ def upstream_url(data_dir, slug: str) -> Optional[str]:
     hit = _upstream.get(str(path))
     if hit and hit[0] == mtime:
         return hit[1]
-    # ET.parse() opens the file itself, so OSError belongs here as well as on
-    # the stat() above: a feed removed between the two must not 500 the page.
+    # ET.parse() does its own open(), so a parse failure can be an OSError.
     try:
         link = ET.parse(path).getroot().find("channel").findtext("link")
     except (ET.ParseError, AttributeError, OSError):

@@ -820,8 +820,6 @@ class AudioProcessor:
 
         final_spans = refined_spans if refined_spans is not None else postprocessed_spans
 
-        # An empty span list is a real answer: no ads. Only an LLM that never
-        # answered hands over to the keyword heuristic.
         if llm_answered:
             logger.info(f"Using {len(final_spans)} LLM spans for preview audio cut.")
             classified_segments = []
@@ -932,8 +930,6 @@ class AudioProcessor:
         # Use best available spans for the audio cut
         final_spans = refined_spans if refined_spans is not None else postprocessed_spans
 
-        # An empty span list is a real answer: no ads. Only an LLM that never
-        # answered hands over to the keyword heuristic.
         if llm_answered:
             logger.info(f"Using {len(final_spans)} LLM spans for preview audio cut.")
             classified_segments = []

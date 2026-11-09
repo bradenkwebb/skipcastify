@@ -166,8 +166,6 @@ class SegmentClassifier:
                 current_group['count'] += 1
                 continue
 
-            # A different type, or too long a gap: close the group and open one
-            # here. Intros and outros are preserved, never absorbed.
             if current_group is not None:
                 aggregated.append(self._create_aggregated_segment(current_group))
             current_group = {

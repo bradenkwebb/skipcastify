@@ -4,9 +4,8 @@ from skipcastify.services.ground_truth import GroundTruthLabel, GroundTruthStore
 
 
 def test_default_follows_data_dir_not_the_cwd(tmp_path, monkeypatch):
-    """The labels live under DATA_DIR. The old default was "data/labels/..."
-    relative to the process's cwd, so a script run from anywhere else found an
-    empty store and reported every episode unlabeled."""
+    """A store resolved against the cwd reads as empty from any other
+    directory, and reports every episode unlabeled."""
     labels = tmp_path / 'data' / 'labels' / 'ground_truth'
     labels.mkdir(parents=True)
     (labels / 'ep_labels.json').write_text(
@@ -22,8 +21,8 @@ def test_default_follows_data_dir_not_the_cwd(tmp_path, monkeypatch):
 
 
 def test_reading_does_not_create_the_directory(tmp_path, monkeypatch):
-    """Constructing a store used to mkdir -p its path, which turned a wrong
-    path into an empty one instead of a visible miss."""
+    """Creating the directory on read would turn a wrong path into an empty
+    one instead of a visible miss."""
     monkeypatch.setenv('DATA_DIR', str(tmp_path / 'nonexistent'))
     store = GroundTruthStore()
     assert store.load_labels('ep') is None

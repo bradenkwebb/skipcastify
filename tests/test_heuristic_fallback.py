@@ -217,10 +217,10 @@ def _preview(tmp_path, segments, *, cached, llm_spans=None, llm_raises=False):
 @pytest.mark.parametrize("cached", [False, True],
                          ids=["process_preview", "process_preview_with_segments"])
 class TestThePreviewPathsAgreeWithProduction:
-    """Both preview paths carried the `if final_spans:` bug after process() was
-    fixed. The preview is what a human reviews before trusting a cut, and its
+    """The preview MP3 is what a human reviews before trusting a cut, and
     <episode>_predictions.json is what scripts/evaluate_ad_detection.py scores
-    against hand labels — so an ad-free episode scored the keyword matcher.
+    against the hand labels. Both must agree with process() about when the
+    keyword heuristic is allowed to run.
     """
 
     def test_an_ad_free_episode_keeps_the_garbled_ad_mention(self, tmp_path, cached):
