@@ -13,6 +13,12 @@ final class Router {
 
     init() {
         tab = Tab(rawValue: UserDefaults.standard.string(forKey: "root.tab") ?? "") ?? .dashboard
+        #if DEBUG
+        // Screenshots and tests open a screen at launch: `-open skipcastify://…`.
+        if let link = UserDefaults.standard.string(forKey: "open"), let url = URL(string: link) {
+            open(url)
+        }
+        #endif
     }
 
     @discardableResult

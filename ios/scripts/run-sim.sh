@@ -14,6 +14,7 @@ if [ -n "${SERVER_USER:-}" ]; then
   args+=(-server.authMode basic -server.username "$SERVER_USER" -server.password "${SERVER_PASSWORD:-}")
 fi
 [ -n "${TAB:-}" ] && args+=(-root.tab "$TAB")
+[ -n "${OPEN:-}" ] && args+=(-open "$OPEN")
 xcrun simctl terminate "$SIM" "$BUNDLE" >/dev/null 2>&1 || true
 xcrun simctl install "$SIM" "$APP"
 xcrun simctl launch "$SIM" "$BUNDLE" "${args[@]}"

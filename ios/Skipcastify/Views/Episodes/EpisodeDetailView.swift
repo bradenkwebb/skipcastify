@@ -207,7 +207,7 @@ private struct CutRow: View {
             }
             if let count = cut.lines?.count, count > 2 {
                 Button(expanded ? "Show first and last lines" : "Show all \(count) lines") {
-                    withAnimation { expanded.toggle() }
+                    expanded.toggle()  // List rows animate height changes poorly
                 }
                 .font(.caption)
                 .buttonStyle(.borderless)

@@ -48,7 +48,7 @@ struct SkipcastifyFeedsView: View {
         return HStack(spacing: 12) {
             ShowArtwork(slug: feed.slug, size: 44)
             VStack(alignment: .leading, spacing: 2) {
-                Text(feed.title).font(.subheadline.weight(.medium)).lineLimit(2)
+                Text(title(feed)).font(.subheadline.weight(.medium)).lineLimit(2)
                 Text(feed.episodes > 0
                      ? "\(feed.episodes) ad-free episode\(feed.episodes == 1 ? "" : "s") · \(Format.bytes(feed.audioBytes))"
                      : "No ad-free episodes yet")
@@ -79,8 +79,14 @@ struct SkipcastifyFeedsView: View {
         }
     }
 
+    /// The server falls back to the slug when it lacks a feed's local copy; prefer a real title.
+    private func title(_ feed: PublishedFeed) -> String {
+        feed.title == feed.slug ? server.showTitle(feed.slug) : feed.title
+    }
+
     private func load() async {
         guard let client = server.client else { error = ServerStore.notConfigured; return }
+        if server.settings == nil { await server.loadSettings() }  // for titles
         do {
             feeds = try await client.publishedFeeds()
             error = nil
@@ -97,7 +103,7 @@ struct SkipcastifyFeedsView: View {
         do {
             try await FeedService.subscribe(to: feed.url, in: context)
         } catch {
-            self.error = "Couldn't add \(feed.title): \(error.localizedDescription)"
+            self.error = "Couldn't add \(title(feed)): \(error.localizedDescription)"
         }
     }
 }
