@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from skipcastify.services.state_manager import StateManager
 from skipcastify.services.segment_classifier import SegmentClassifier
+from skipcastify.models.ad_span import AdSpan
 from skipcastify.models.content import ContentType
 from skipcastify.services import llm_utils
 from skipcastify.services import metrics
@@ -595,25 +596,11 @@ class AudioProcessor:
                 spans_found=len(parsed) if success else 0,
             )
 
-            # Validate and normalize spans
-            for item in parsed:
-                try:
-                    s = int(item.get('start_ms', 0))
-                    e = int(item.get('end_ms', 0))
-                    label = item.get('label', 'ADVERTISEMENT')
-                    rationale = item.get('rationale', '')
-                    # Ensure spans are within section bounds broadly
-                    if s < sec.start_ms:
-                        s = sec.start_ms
-                    if e > sec.end_ms:
-                        e = sec.end_ms
-                    if s >= e:
-                        logger.debug(f"Ignoring invalid span {s}-{e} in section {sec.start_ms}-{sec.end_ms}")
-                        continue
-                    all_spans.append({"start_ms": s, "end_ms": e, "label": label, "rationale": rationale})
-                except Exception as ex:
-                    logger.debug(f"Skipping malformed LLM item: {item} ({ex})")
-                    continue
+            # The model was shown this section and nothing else, so its
+            # answer is bounded by it.
+            all_spans.extend(span.to_dict() for span in AdSpan.parse_many(
+                parsed, bounds=(sec.start_ms, sec.end_ms),
+                context=f"section {sec.start_ms}-{sec.end_ms}"))
 
         logger.info(f"LLM identified {len(all_spans)} ad spans across sections")
 
@@ -723,21 +710,12 @@ class AudioProcessor:
                     pass
 
                 new_spans = llm_utils.parse_json_array_from_text(resp.text)
-                valid = []
-                for ns in new_spans:
-                    try:
-                        s = int(ns.get("start_ms", 0))
-                        e = int(ns.get("end_ms", 0))
-                        if s >= e:
-                            continue
-                        valid.append({
-                            "start_ms": s,
-                            "end_ms": e,
-                            "label": ns.get("label", "ADVERTISEMENT"),
-                            "rationale": ns.get("rationale", ""),
-                        })
-                    except Exception:
-                        pass
+                # Bounded like stage 1. The prompt asks for a later end_ms, so
+                # an unbounded answer here was accepted verbatim and
+                # cut_and_stitch_audio excised the rest of the episode.
+                valid = [span.to_dict() for span in AdSpan.parse_many(
+                    new_spans, bounds=(sec.start_ms, sec.end_ms),
+                    context=f"refinement of section {sec.start_ms}-{sec.end_ms}")]
 
                 if valid:
                     # Replace spans in this section with the refined set
