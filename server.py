@@ -455,7 +455,8 @@ def label_episode(episode):
         return abort(403)
     body = request.get_json(silent=True) or {}
     try:
-        doc = labeling.save_labels(data_dir, episode, body.get('spans'), body.get('reviewed', False))
+        doc = labeling.save_labels(data_dir, episode, body.get('spans'), body.get('reviewed', False),
+                                   source=labeling.stored_source(data_dir, episode))
     except ValueError as e:
         return jsonify(error=str(e)), 400
     return jsonify(doc)

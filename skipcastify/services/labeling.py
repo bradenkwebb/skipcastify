@@ -197,6 +197,21 @@ def label_source(doc: dict) -> str:
     return source if source in SOURCES else MANUAL
 
 
+def stored_source(data_dir, name: str) -> str:
+    """The source already on disk for an episode, MANUAL when there is none.
+
+    Confirming derived spans does not make them hand labels: what they cover
+    is a property of how they were derived, so the source survives a save.
+    """
+    path = label_path(data_dir, name)
+    if not path.is_file():
+        return MANUAL
+    try:
+        return label_source(json.loads(path.read_text()))
+    except (OSError, ValueError):
+        return MANUAL
+
+
 def save_labels(data_dir, name: str, spans, reviewed: bool,
                 source: str = MANUAL) -> dict:
     if source not in SOURCES:

@@ -90,16 +90,25 @@ not re-encode the episode, so the renderings share their content frames exactly
 and the ads are recoverable to about 26ms. It makes no LLM calls and no
 transcription, so a labelled episode costs one download.
 
-**The labels cover inserted ads only.** A sponsor the host reads aloud is part
-of the master and appears in both renderings, so it is in neither the diff nor
-the labels. They are written with `"source": "dai_diff"`, and `eval_ads.py`
-reports them in their own group for that reason: averaged in with hand labels, a
-recall figure would describe neither set.
+**The labels cover only ads that differ between the two renderings.** A sponsor
+the host reads aloud is part of the master and appears in both, so it is in
+neither the diff nor the labels. They are written with `"source": "dai_diff"`,
+and `eval_ads.py` reports them in their own group for that reason: averaged in
+with hand labels, a recall figure would describe neither set.
 
-The two metrics are not equally sound on a derived set. Recall is exact, since
-every inserted ad is labelled. Precision is a floor: a host-read sponsor the
-detector cut correctly counts against it, because the labels do not know the
-sponsor is there.
+**They are written unreviewed.** The diff knows where an ad is, not what it is:
+a network inserts its own promos exactly as an advertiser's spot arrives, and
+those are `self_promo` under the per-feed cut policy. Every span is proposed as
+`ad` for you to confirm in `/label`, where the boundaries are already exact, and
+confirming them keeps `source` as `dai_diff` because what they cover depends on
+how they were derived, not on who checked them. An episode that already has hand
+labels is never touched.
+
+Neither metric is clean on a derived set, and they err in opposite directions.
+An ad that both renderings carry is unlabelled — a host-read sponsor, or the
+same house promo filling a slot in each. Missing such an ad costs no recall,
+so recall reads high; cutting it counts as content wrongly cut, so precision
+reads low. Treat them as a bound each, not a measurement.
 
 Three outcomes other than success, all of them useful:
 
