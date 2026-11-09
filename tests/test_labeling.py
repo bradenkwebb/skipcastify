@@ -128,3 +128,28 @@ def test_unknown_release_date_falls_back_to_transcribed(data):
     c, _ = data
     e = c.get('/api/label/episodes.json', headers=AUTH).get_json()[0]
     assert e['released'] is None and e['date'] == e['transcribed']
+
+
+class TestLabelSource:
+    SPAN = [{'start_ms': 0, 'end_ms': 9000, 'label': 'ad'}]
+
+    def test_hand_labels_are_the_default(self, tmp_path):
+        doc = labeling.save_labels(tmp_path, EP, self.SPAN, reviewed=True)
+        assert doc['source'] == labeling.MANUAL
+
+    def test_a_derived_source_is_recorded(self, tmp_path):
+        doc = labeling.save_labels(tmp_path, EP, self.SPAN, reviewed=True,
+                                   source=labeling.DAI_DIFF)
+        assert doc['source'] == labeling.DAI_DIFF
+        assert json.loads(labeling.label_path(tmp_path, EP).read_text())['source'] \
+            == labeling.DAI_DIFF
+
+    def test_an_unknown_source_is_refused(self, tmp_path):
+        with pytest.raises(ValueError):
+            labeling.save_labels(tmp_path, EP, self.SPAN, reviewed=True, source='guess')
+
+    def test_a_file_without_a_source_reads_as_a_hand_label(self):
+        assert labeling.label_source({'spans': []}) == labeling.MANUAL
+
+    def test_an_unrecognised_stored_source_reads_as_a_hand_label(self):
+        assert labeling.label_source({'source': 'something_else'}) == labeling.MANUAL

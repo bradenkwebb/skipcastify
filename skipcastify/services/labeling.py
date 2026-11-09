@@ -15,6 +15,12 @@ from skipcastify.utils.utils import safe_filename
 
 LABELS = ("ad", "self_promo", "intro_outro")
 FORMAT_VERSION = 2
+
+# Where a label file's spans came from. DAI_DIFF labels cover only ads the host
+# inserted into the episode, so a host-read sponsor is absent from them.
+MANUAL = "manual"
+DAI_DIFF = "dai_diff"
+SOURCES = (MANUAL, DAI_DIFF)
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
@@ -185,11 +191,21 @@ def clean_spans(spans) -> list[dict]:
     return sorted(out, key=lambda s: s["start_ms"])
 
 
-def save_labels(data_dir, name: str, spans, reviewed: bool) -> dict:
+def label_source(doc: dict) -> str:
+    """A label file written before sources were recorded holds hand labels."""
+    source = (doc or {}).get("source") or MANUAL
+    return source if source in SOURCES else MANUAL
+
+
+def save_labels(data_dir, name: str, spans, reviewed: bool,
+                source: str = MANUAL) -> dict:
+    if source not in SOURCES:
+        raise ValueError(f"source must be one of {SOURCES}, got {source!r}")
     doc = {
         "episode_name": name,
         "version": FORMAT_VERSION,
         "reviewed": bool(reviewed),
+        "source": source,
         "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "spans": clean_spans(spans),
     }
