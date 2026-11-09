@@ -7,6 +7,7 @@ struct ShowDetailView: View {
     @Environment(ServerStore.self) private var server
     @Environment(\.dismiss) private var dismiss
     @State private var meta: ShowInfo?
+    @State private var metaLoaded = false
     @State private var confirmRemove = false
     @State private var error: String?
 
@@ -18,6 +19,14 @@ struct ShowDetailView: View {
     var body: some View {
         List {
             Section { header }
+
+            Section {
+                PolicyEditor(slug: slug)
+            } header: {
+                Text("Cut policy")
+            } footer: {
+                Text("Applies to episodes processed from now on.")
+            }
 
             Section("Status") {
                 if let sub = subscription {
@@ -32,14 +41,6 @@ struct ShowDetailView: View {
                     LabeledContent("Average ads", value: "\(Format.length(seconds: s.avgAdMinutes * 60)) · \(Format.percent(s.avgAdPct))")
                     LabeledContent("Total removed", value: Format.dhm(minutes: s.totalAdMinutes))
                 }
-            }
-
-            Section {
-                PolicyEditor(slug: slug)
-            } header: {
-                Text("Cut policy")
-            } footer: {
-                Text("Applies to episodes processed from now on.")
             }
 
             if let signature, !signature.episodes.isEmpty {
@@ -90,6 +91,7 @@ struct ShowDetailView: View {
             if server.settings == nil { await server.loadSettings() }
             if server.stats == nil { await server.loadStats() }
             meta = try? await server.client?.showMeta(slug).show
+            metaLoaded = true
         }
         .refreshable {
             await server.loadSettings()
@@ -102,9 +104,15 @@ struct ShowDetailView: View {
             ShowArtwork(slug: slug, size: 72)
             VStack(alignment: .leading, spacing: 4) {
                 Text(subscription?.title ?? meta?.title ?? server.showTitle(slug)).font(.headline)
-                if let author = meta?.author { Text(author).font(.subheadline).foregroundStyle(.secondary) }
+                // Fixed height while metadata loads, so nothing below jumps when it arrives.
+                Text(meta?.author ?? "Author placeholder")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .redacted(reason: metaLoaded ? [] : .placeholder)
+                    .opacity(metaLoaded && meta?.author == nil ? 0 : 1)
                 if let site = meta?.website {
                     Link(site.host() ?? "Website", destination: site).font(.caption)
+                } else {
+                    Text("website").font(.caption).redacted(reason: .placeholder).opacity(metaLoaded ? 0 : 1)
                 }
             }
         }

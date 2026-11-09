@@ -30,8 +30,11 @@ final class ShowsUITests: XCTestCase {
 
         let useDefault = app.switches["Use the default policy"].waitToAppear()
         let wasDefault = (useDefault.value as? String) == "1"
+        // Toggles are disabled while a save is in flight; a tap then would be ignored.
+        waitUntilEnabled(useDefault)
         useDefault.switches.firstMatch.tap()
         waitForValue(of: useDefault, toBe: wasDefault ? "0" : "1")
+        waitUntilEnabled(useDefault)
         useDefault.switches.firstMatch.tap()
         waitForValue(of: useDefault, toBe: wasDefault ? "1" : "0")
 
@@ -52,8 +55,17 @@ final class ShowsUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Cadence"].exists)
     }
 
-    private func waitForValue(of element: XCUIElement, toBe value: String) {
-        expectation(for: NSPredicate(format: "value == %@", value), evaluatedWith: element)
+    private func waitUntilEnabled(_ element: XCUIElement) {
+        // Hittable too: right after the deep link the page is still animating in.
+        expectation(for: NSPredicate(format: "enabled == true AND hittable == true"), evaluatedWith: element)
         waitForExpectations(timeout: 15)
+    }
+
+    private func waitForValue(of element: XCUIElement, toBe value: String) {
+        let changed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: element)
+        if XCTWaiter.wait(for: [changed], timeout: 15) != .completed {
+            print("UI TREE >>>\n\(XCUIApplication().debugDescription.prefix(8000))\n<<< UI TREE")
+            XCTFail("\(element) never became \(value)")
+        }
     }
 }

@@ -8,9 +8,12 @@ final class ImageCache {
     static let shared = ImageCache()
     private let cache = NSCache<NSURL, UIImage>()
     private var inFlight: [URL: Task<UIImage?, Never>] = [:]
+    /// Shows without artwork 404; don't ask again every time a row appears.
+    private var failed: [URL: Date] = [:]
 
     func image(for url: URL, headers: [String: String]) async -> UIImage? {
         if let hit = cache.object(forKey: url as NSURL) { return hit }
+        if let when = failed[url], Date().timeIntervalSince(when) < 300 { return nil }
         if let task = inFlight[url] { return await task.value }
         let task = Task<UIImage?, Never> {
             var request = URLRequest(url: url)
@@ -22,7 +25,7 @@ final class ImageCache {
         inFlight[url] = task
         let image = await task.value
         inFlight[url] = nil
-        if let image { cache.setObject(image, forKey: url as NSURL) }
+        if let image { cache.setObject(image, forKey: url as NSURL) } else { failed[url] = Date() }
         return image
     }
 }
