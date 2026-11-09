@@ -34,9 +34,7 @@ dev = [
 
 
 [tool.ruff.lint]
-# Narrow by intent: a hit is a mistake, not a style preference. Import order
-# (I), typing modernisation (UP) and bugbear (B) have standing hits.
-select = ["F", "E9", "W605"]
+select = ["F", "E9", "W605", "I", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 # Importing a fixture and then naming it as a test parameter is the pytest
