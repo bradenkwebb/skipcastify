@@ -19,7 +19,6 @@ Example:
 
 import logging
 import os
-import os
 from pathlib import Path
 from typing import List, Optional
 import json

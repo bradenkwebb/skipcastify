@@ -400,7 +400,7 @@ class AudioProcessor:
             
             logger.info(f"Saving processed audio to: {processed_audio_path}")
             processed_audio.export(processed_audio_path, format="mp3", bitrate=_source_bitrate(episode_file_path))
-            logger.info(f"Successfully saved processed audio")
+            logger.info("Successfully saved processed audio")
 
             original_s = audio.duration_seconds
             processed_s = processed_audio.duration_seconds

@@ -48,4 +48,4 @@ for feed_url, title in titles.items():
     overcast_url = f"{auth_base}/feeds/{slug}.xml"
     print(f"[{exists}] {title:<52} {overcast_url}")
 
-print(f"\n✓ = feed XML exists on disk   ✗ = not yet generated")
+print("\n✓ = feed XML exists on disk   ✗ = not yet generated")
