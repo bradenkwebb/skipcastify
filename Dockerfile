@@ -9,8 +9,8 @@ RUN apt-get update \
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /app
-# Dependencies first, so code changes don't reinstall them.
-COPY pyproject.toml uv.lock README.md ./
+# Dependencies first, so code (and README) changes don't reinstall them.
+COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 COPY . .
 RUN uv sync --locked --no-dev
