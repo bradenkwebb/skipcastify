@@ -101,8 +101,12 @@ a network inserts its own promos exactly as an advertiser's spot arrives, and
 those are `self_promo` under the per-feed cut policy. Every span is proposed as
 `ad` for you to confirm in `/label`, where the boundaries are already exact, and
 confirming them keeps `source` as `dai_diff` because what they cover depends on
-how they were derived, not on who checked them. An episode that already has hand
-labels is never touched.
+how they were derived, not on who checked them.
+
+**Only an unreviewed file the script wrote is ever replaced.** Hand labels and
+confirmed labels alike are left alone, so re-running a feed cannot undo a review
+or a relabelling. To re-derive an episode you have already confirmed, delete its
+label file first.
 
 Neither metric is clean on a derived set, and they err in opposite directions.
 An ad that both renderings carry is unlabelled — a host-read sponsor, or the
@@ -114,6 +118,8 @@ Three outcomes other than success, all of them useful:
 
 - *renderings are identical* — the feed inserts nothing, so it needs hand
   labels. Mormon Stories and the Dwarkesh Podcast are both like this.
+- *hand labels, or already reviewed* — the episode carries work a fresh diff
+  would discard, so it is skipped before the download.
 - *below the match floor* — the host re-encodes on insertion rather than
   stitching frames, or the episode on disk predates a re-encode of the master.
   Recent episodes are the ones that align.

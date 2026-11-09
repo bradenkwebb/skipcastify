@@ -123,20 +123,37 @@ class TestEpisodesFor:
         assert gt.episodes_for(tmp_path, "absent", [], 10) == []
 
 
-class TestHandLabelsAreLeftAlone:
+class TestProtection:
+    """Only an unreviewed file this script wrote may be replaced."""
+
     SPAN = [{"start_ms": 0, "end_ms": 9000, "label": "ad"}]
 
-    def test_an_episode_with_hand_labels_is_protected(self, tmp_path):
-        labeling.save_labels(tmp_path, "show-ep", self.SPAN, reviewed=True)
-        assert gt.has_hand_labels(tmp_path, "show-ep") is True
-
     def test_an_episode_with_no_labels_is_open(self, tmp_path):
-        assert gt.has_hand_labels(tmp_path, "show-ep") is False
+        assert gt.protected_because(tmp_path, "show-ep") is None
 
-    def test_a_label_this_script_wrote_can_be_replaced(self, tmp_path):
+    def test_a_file_this_script_wrote_and_nobody_reviewed_can_be_replaced(self, tmp_path):
         labeling.save_labels(tmp_path, "show-ep", self.SPAN, reviewed=False,
                              source=labeling.DAI_DIFF)
-        assert gt.has_hand_labels(tmp_path, "show-ep") is False
+        assert gt.protected_because(tmp_path, "show-ep") is None
+
+    def test_hand_labels_are_protected(self, tmp_path):
+        labeling.save_labels(tmp_path, "show-ep", self.SPAN, reviewed=True)
+        assert "hand labels" in gt.protected_because(tmp_path, "show-ep")
+
+    def test_unreviewed_hand_labels_are_protected(self, tmp_path):
+        labeling.save_labels(tmp_path, "show-ep", self.SPAN, reviewed=False)
+        assert "hand labels" in gt.protected_because(tmp_path, "show-ep")
+
+    def test_confirmed_derived_labels_are_protected(self, tmp_path):
+        """Confirming in /label keeps source dai_diff, and a fresh diff would
+        undo the confirmation and any relabelling with it."""
+        labeling.save_labels(tmp_path, "show-ep", self.SPAN, reviewed=False,
+                             source=labeling.DAI_DIFF)
+        labeling.save_labels(tmp_path, "show-ep",
+                             [{"start_ms": 0, "end_ms": 9000, "label": "self_promo"}],
+                             reviewed=True,
+                             source=labeling.stored_source(tmp_path, "show-ep"))
+        assert "already reviewed" in gt.protected_because(tmp_path, "show-ep")
 
     def test_a_label_without_a_source_counts_as_a_hand_label(self, tmp_path):
         """Every label file predating the source field was written by hand."""
@@ -145,10 +162,10 @@ class TestHandLabelsAreLeftAlone:
         doc = json.loads(path.read_text())
         doc.pop("source")
         path.write_text(json.dumps(doc))
-        assert gt.has_hand_labels(tmp_path, "show-ep") is True
+        assert "hand labels" in gt.protected_because(tmp_path, "show-ep")
 
     def test_an_unreadable_label_file_is_protected(self, tmp_path):
         path = labeling.label_path(tmp_path, "show-ep")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{ truncated")
-        assert gt.has_hand_labels(tmp_path, "show-ep") is True
+        assert "unreadable" in gt.protected_because(tmp_path, "show-ep")

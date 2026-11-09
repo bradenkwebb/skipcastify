@@ -23,8 +23,11 @@ report them apart from hand labels.
 They are written unreviewed, because the diff knows where an ad is and not
 what it is. A network inserts its own promos the same way an advertiser's spot
 arrives, and those are self_promo under the per-feed cut policy, so each span
-is proposed as "ad" for confirmation in /label. An episode that already has
-hand labels is left alone.
+is proposed as "ad" for confirmation in /label.
+
+Only an unreviewed file this script wrote is ever replaced. Hand labels and
+confirmed labels alike are left alone, so re-running a feed cannot undo a
+review. To re-derive a confirmed episode, delete its label file first.
 
 Nothing is written unless every check passes: the reference has to be the same
 encode, run to the length the feed declares, and differ by a plausible amount.
@@ -142,19 +145,26 @@ def check(spans: list[dict], reference_ms: float, episode_ms: float,
     return None
 
 
-def has_hand_labels(data_dir: Path, name: str) -> bool:
-    """Whether a label file exists that this script must not replace.
+def protected_because(data_dir: Path, name: str) -> str | None:
+    """Why this episode's labels must not be replaced, or None when they may be.
 
-    An unreadable file counts, so a damaged hand label is never overwritten.
+    Only an unreviewed file this script wrote itself is safe to overwrite.
+    Anything touched by hand carries work a fresh diff would throw away: the
+    spans it proposes are unreviewed and every label is "ad", so replacing a
+    confirmed file would undo both the confirmation and any relabelling.
     """
     path = labeling.label_path(data_dir, name)
     if not path.is_file():
-        return False
+        return None
     try:
         doc = json.loads(path.read_text())
     except (OSError, ValueError):
-        return True
-    return labeling.label_source(doc) == labeling.MANUAL
+        return "label file is unreadable, left alone"
+    if labeling.label_source(doc) == labeling.MANUAL:
+        return "has hand labels, left alone"
+    if doc.get("reviewed"):
+        return "labels already reviewed, left alone"
+    return None
 
 
 def episodes_for(data_dir: Path, slug: str, filters: list[str], limit: int) -> list[Path]:
@@ -184,8 +194,9 @@ def run_feed(data_dir: Path, slug: str, url: str, args) -> list[dict]:
     rows = []
     for mp3 in chosen:
         row = {"feed": slug, "episode": mp3.stem}
-        if has_hand_labels(data_dir, mp3.stem):
-            row["skipped"] = "has hand labels, left alone"
+        protected = protected_because(data_dir, mp3.stem)
+        if protected:
+            row["skipped"] = protected
             rows.append(row)
             continue
         entry = entries.get(mp3.name)
