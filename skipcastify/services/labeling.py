@@ -10,6 +10,7 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Optional
 
+from skipcastify.services import cut_policy
 from skipcastify.services.analytics import load_events
 from skipcastify.utils.utils import safe_filename
 
@@ -155,6 +156,7 @@ def load_episode(data_dir, name: str) -> dict:
         "spans": labels.get("spans", []),
         "reviewed": bool(labels.get("reviewed")),
         "has_audio": raw_audio_path(data_dir, name, completes) is not None,
+        "cut_labels": sorted(cut_policy.cut_labels(_feed_for(data_dir, name, completes))),
     }
 
 

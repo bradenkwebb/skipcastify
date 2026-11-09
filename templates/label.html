@@ -176,7 +176,7 @@ const LABELS = [
   {key: 'intro_outro', n: '3', name: 'Intro/outro'},
 ];
 // Labels say what a span is; this says which ones should be cut.
-const CUT = ['ad', 'self_promo'];
+let CUT = ['ad', 'self_promo'];  // replaced by this feed's policy on load
 const css = name => getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim();
 const COLOR = {};
 const loadColors = () => { for (const l of LABELS) COLOR[l.key] = css(l.key); };
@@ -629,6 +629,7 @@ async function editor() {
   $('title').title = EP;
   const d = await (await fetch(`/api/label/${encodeURIComponent(EP)}.json`)).json();
   FEED = d.feed;
+  if (d.cut_labels) CUT = d.cut_labels;
   S = d.segments; spans = d.spans; reviewed = d.reviewed; HAS_AUDIO = d.has_audio; PRED_N = d.predictions.length;
   dur = Math.max(1, ...S.map(r => r.end));
   SPOKEN = union(S.map(r => [r.start, r.end]));

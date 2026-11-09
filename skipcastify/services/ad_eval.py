@@ -46,10 +46,10 @@ def cut_lines(segments, spans: list[dict]) -> list[Interval]:
                  if any(s < sp["end_ms"] and e > sp["start_ms"] for sp in spans))
 
 
-def score(segments, labels: list[dict], spans: list[dict]) -> dict:
-    """labels: /label v2 spans; spans: predicted LLM spans. All values in ms."""
+def score(segments, labels: list[dict], spans: list[dict], cut_labels=CUT_LABELS) -> dict:
+    """labels: /label v2 spans; spans: the cuts made. cut_labels: what this feed's policy cuts. All values in ms."""
     spoken = merge(_bounds(seg) for seg in segments)
-    truth = intersect(merge((l["start_ms"], l["end_ms"]) for l in labels if l["label"] in CUT_LABELS), spoken)
+    truth = intersect(merge((l["start_ms"], l["end_ms"]) for l in labels if l["label"] in cut_labels), spoken)
     cut = intersect(cut_lines(segments, spans), spoken)
     hit = total(intersect(truth, cut))
     return {"spoken_ms": total(spoken), "truth_ms": total(truth), "cut_ms": total(cut),

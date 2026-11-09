@@ -1,0 +1,13 @@
+# Per-feed cut policy. Copy to policy.yaml (gitignored) on the server; without
+# it every feed uses the default below. Labels: ad, self_promo, intro_outro.
+#   ad          someone else pays: sponsors, underwriting, other networks' shows
+#   self_promo  the show, its host or its network: Patreon, merch, NYT offers
+#   intro_outro theme music, credits
+# Labels describe a span; this file decides which ones are cut. Changes apply
+# from the next processed episode.
+default:
+  cut: [ad, self_promo]
+feeds:
+  # The slug is the folder name under data/podcasts/raw/.
+  # mormon-stories-podcast:
+  #   cut: [ad]
