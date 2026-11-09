@@ -134,8 +134,26 @@ URLs to subscribe to the ad-free feeds in-app and to offer "Add to Overcast".
 - **Phase 4, done (in review).** Shows: subscriptions with R2 usage, add-show flow with
   preview, per-show and default policy toggles, unsubscribe, change log with Undo, skipped
   episodes with Retry.
-- **Testing infrastructure.** A UI test target (XCUITest) runs against the local dev server
-  (`scripts/uitest.sh`), plus `skipcastify://` deep links to open any screen.
+- **Phase 5, done; needs the server PR.** Library: "Ad-free Feeds from Skipcastify" lists
+  `/api/feeds.json` (skipcastify#68). You can subscribe in the built-in player, or long-press
+  for Add to Overcast / AntennaPod / Metacast and Copy URL. On an older server it explains
+  the missing endpoint.
+- **Phase 6, partly done.** Dark mode checked; show pages no longer shift as data arrives;
+  artwork 404s are cached; the library is local-only (no CloudKit) and the password is
+  ThisDeviceOnly; nothing logs feed URLs.
+- **Testing infrastructure.** A UI test target (XCUITest, 10 tests) runs against the local
+  dev server (`scripts/uitest.sh`), plus `skipcastify://` deep links to open any screen.
+  Debug builds also accept `-open <link>` at launch.
+
+### Next
+
+1. Merge skipcastify#68, then try the app on your phone against the real server
+   (Tailscale sign-in: "None").
+2. Offline and error states: keep the last data on screen when a refresh fails (the
+   dashboard does; check the other tabs), and add a UI test with the server down.
+3. Cut preview on a server that has the raw audio (the snapshot had none).
+4. iPad layout (split view for lists and details), Dynamic Type at large sizes.
+5. Later: labeling on the phone, push notifications, widgets.
 
 ### Dev loop
 
