@@ -120,4 +120,32 @@ URLs to subscribe to the ad-free feeds in-app and to offer "Add to Overcast".
 - `docs/PLAN.md` progress notes updated at the end of each phase.
 
 ## Progress
-(updated as phases land)
+
+- **Phase 0, done.** SkipcastifyKit with models for every endpoint, API client, formatting, deep
+  links; 34 unit tests plus an opt-in live test (`SKIPCASTIFY_LIVE_URL=… swift test`) that
+  decodes every recent episode from a real server. The live test already caught one real
+  case: processing runs with no `original_duration_s`.
+- **Phase 1, done.** Placeholder strip API removed; ServerStore; Settings with Test Connection;
+  tab shell; `scripts/build.sh`, `scripts/run-sim.sh`.
+- **Phase 2, done.** Dashboard (cards, pipeline status and runs list, daily chart with day
+  drill-down, leaderboard).
+- **Phase 3, done (in review).** Episodes list (recent / all, search, show filter) and episode
+  detail (timeline, cuts with transcript and rationale, cut audio preview, score, notes, runs).
+- **Phase 4, done (in review).** Shows: subscriptions with R2 usage, add-show flow with
+  preview, per-show and default policy toggles, unsubscribe, change log with Undo, skipped
+  episodes with Retry.
+- **Testing infrastructure.** A UI test target (XCUITest) runs against the local dev server
+  (`scripts/uitest.sh`), plus `skipcastify://` deep links to open any screen.
+
+### Dev loop
+
+1. Local server on snapshot data (real code, test credentials, `127.0.0.1:5055`).
+2. `scripts/build.sh`, then `SERVER_URL=… SERVER_USER=… SERVER_PASSWORD=… scripts/run-sim.sh`.
+3. `SKIPCASTIFY_URL=… SKIPCASTIFY_USER=… SKIPCASTIFY_PASSWORD=… scripts/uitest.sh`.
+
+UI tests that write (policy, subscriptions) must only point at a disposable server.
+
+### Notes
+
+- Simulator launches of the Debug build spend 8–30 s in `dyld_sim` before the first frame
+  on this machine. That's linker overhead, not app code, so UI tests use generous timeouts.
