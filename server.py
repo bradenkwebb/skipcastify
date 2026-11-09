@@ -39,6 +39,8 @@ app = Flask(__name__)
 data_dir = os.environ.get("DATA_DIR")
 _feed_username = os.environ.get("FEED_USERNAME")
 _feed_password = os.environ.get("FEED_PASSWORD")
+# Tailnet logins that skip Basic auth (comma-separated). Empty: Basic auth only.
+_tailscale_users = {u.strip().lower() for u in os.environ.get("TAILSCALE_USERS", "").split(",") if u.strip()}
 _episode_token = os.environ.get("EPISODE_TOKEN")
 _public_base_url = os.environ.get("PUBLIC_BASE_URL", "")
 _publish_to_r2 = os.environ.get("PUBLISH_TO_R2", "false").lower() == "true"
@@ -118,17 +120,30 @@ def _log_request(response):
         target += "?" + scrub_secrets(request.query_string.decode('latin-1'))
 
     # Username only, never the password or Authorization header.
-    auth = request.authorization
-    who = f" user={auth.username}" if auth and auth.username else ""
+    who = f" user={_user()}" if _user() else ""
 
     app.logger.info("%s %s -> %s %.1fms%s", request.method, target,
                     response.status_code, duration_ms, who)
     return response
 
 
+def _tailscale_user() -> str | None:
+    """The allowlisted tailnet login `tailscale serve` vouches for, if any.
+
+    Serve strips client-sent identity headers and sets its own, and sets none for
+    tagged devices. Trusted only from loopback, where gunicorn listens behind serve.
+    """
+    if not _tailscale_users or request.remote_addr not in ("127.0.0.1", "::1"):
+        return None
+    login = (request.headers.get("Tailscale-User-Login") or "").strip().lower()
+    return login if login in _tailscale_users else None
+
+
 def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if _tailscale_user():
+            return f(*args, **kwargs)
         auth = request.authorization
         if not auth or auth.username != _feed_username or auth.password != _feed_password:
             return Response(
@@ -261,6 +276,8 @@ def _write_refused():
 
 
 def _user():
+    if login := _tailscale_user():
+        return login
     return request.authorization.username if request.authorization else None
 
 
