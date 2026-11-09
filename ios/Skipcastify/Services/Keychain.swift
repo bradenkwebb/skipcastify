@@ -29,7 +29,8 @@ enum Keychain {
         guard let value, !value.isEmpty else { return }
         var attributes = query
         attributes[kSecValueData as String] = Data(value.utf8)
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // This device only: not synced, and not restored onto another phone from a backup.
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         SecItemAdd(attributes as CFDictionary, nil)
     }
 }
