@@ -7,6 +7,9 @@ from skipcastify.models.content import AudioSegment
 logger = logging.getLogger(__name__)
 
 UNCUT_SUFFIX = ".uncut"
+# An episode that started this many runs without finishing is skipped, so one
+# bad file (e.g. an OOM kill) cannot block every later episode and publish.
+MAX_ATTEMPTS = 2
 
 
 def uncut_marker(processed_path) -> Path:
@@ -71,6 +74,10 @@ class StateManager:
         attempts[key] = attempts.get(key, 0) + 1
         self.attempts_path.write_text(json.dumps(attempts, indent=1))
         return attempts[key]
+
+    def skipped(self) -> dict[str, int]:
+        """'slug/file.mp3' -> attempts, for episodes runs now skip."""
+        return {k: n for k, n in self._load_attempts().items() if n >= MAX_ATTEMPTS}
 
     def finish_attempt(self, episode) -> None:
         attempts = self._load_attempts()
