@@ -4,7 +4,7 @@ FROM python:3.10-slim-bookworm
 COPY --from=ghcr.io/astral-sh/uv:0.6.9 /uv /usr/local/bin/uv
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/app/.venv
