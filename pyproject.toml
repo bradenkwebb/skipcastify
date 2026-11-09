@@ -29,8 +29,14 @@ dependencies = [
 dev = [
     "ipykernel>=6.29.5",
     "pytest>=8.3.5",
+    "ruff>=0.14.4",
 ]
 
+
+[tool.ruff.lint]
+# Deliberately narrow: a hit here is a real mistake, not a style preference.
+# I (import order), UP and B all have standing hits; see the commit message.
+select = ["F", "E9", "W605"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
