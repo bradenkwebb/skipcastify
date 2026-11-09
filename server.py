@@ -312,6 +312,20 @@ def feeds_page():
     return resp
 
 
+@app.route('/api/feeds.json')
+@require_auth
+def feeds_json():
+    """The published feeds as JSON, for the iOS app. Same secrecy as /feeds: never cache."""
+    feeds = [{
+        "slug": f.slug, "title": f.title, "url": f.url, "episodes": f.episodes,
+        "audio_bytes": f.audio_bytes, "last_audio_upload": f.last_audio_upload,
+        "feed_uploaded": f.feed_uploaded, "add_links": f.add_links,
+    } for f in published_feeds(data_dir, _public_base_url)]
+    resp = jsonify(publishing_enabled=_publish_to_r2, feeds=feeds)
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+
 def _write_refused():
     """None if this looks like a same-origin write from our own page.
 
