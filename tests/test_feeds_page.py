@@ -206,3 +206,37 @@ def test_the_page_offers_the_overcast_shortcut(client, tmp_path):
 
     assert "overcast://x-callback-url/add?url=" in html
     assert "Add to Overcast" in html
+
+
+# --- artwork icons ---------------------------------------------------------
+
+def write_art(tmp_path, name, size=600):
+    from PIL import Image
+    d = tmp_path / "artwork"
+    d.mkdir(exist_ok=True)
+    Image.new("RGB", (size, size), (200, 30, 30)).save(d / name)
+
+
+def test_artwork_is_same_origin_only(client, tmp_path):
+    c, tmp_path = client
+    publish(tmp_path, "a-show")
+    csp = get_page(c).headers['Content-Security-Policy']
+    assert "img-src 'self'" in csp
+    assert '<img src="/feeds/art/a-show.jpg"' in get_page(c).get_data(as_text=True)
+
+
+def test_artwork_thumbnail_is_small_and_needs_auth(client, tmp_path):
+    from io import BytesIO
+    from PIL import Image
+    c, tmp_path = client
+    write_art(tmp_path, "a-show-0123abcd.jpg")
+    assert c.get('/feeds/art/a-show.jpg').status_code == 401
+    r = c.get('/feeds/art/a-show.jpg', headers=AUTH)
+    assert r.status_code == 200
+    assert max(Image.open(BytesIO(r.data)).size) <= 96
+
+
+def test_artwork_does_not_match_a_longer_slug(client, tmp_path):
+    c, tmp_path = client
+    write_art(tmp_path, "a-show-extra-0123abcd.jpg")
+    assert c.get('/feeds/art/a-show.jpg', headers=AUTH).status_code == 404
