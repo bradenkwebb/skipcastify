@@ -42,6 +42,28 @@ class EpisodeDownloader:
         with open(self._seen_path(), "w") as f:
             json.dump({k: sorted(v) for k, v in seen.items()}, f, indent=2)
 
+    def _feed_cache_path(self) -> Path:
+        return Path(self.data_dir) / "feed_cache.json"
+
+    def _load_feed_cache(self) -> dict[str, dict]:
+        """Per-feed HTTP validators from the last successful fetch."""
+        path = self._feed_cache_path()
+        if path.exists():
+            try:
+                with open(path) as f:
+                    return json.load(f)
+            except (OSError, ValueError) as e:
+                # Losing it only costs one unconditional fetch per feed.
+                logger.warning(f"Ignoring unreadable feed cache: {e}")
+        return {}
+
+    def _save_feed_cache(self, cache: dict[str, dict]) -> None:
+        try:
+            with open(self._feed_cache_path(), "w") as f:
+                json.dump(cache, f, indent=2)
+        except OSError as e:
+            logger.warning(f"Could not save feed cache: {e}")
+
     def _safe_entry_id(self, entry) -> str | None:
         """_entry_id, or None for an entry we cannot identify at all."""
         try:
@@ -134,11 +156,22 @@ class EpisodeDownloader:
         """Returns one {feed, status, ...} per subscription for the run log."""
         now = now if now is not None else time.time()
         seen = self._load_seen()
+        cache = self._load_feed_cache()
         results = []
 
         for subscription_url in self.subscription_urls:
+            cached = cache.get(subscription_url) or {}
             try:
-                feed = feedparser.parse(subscription_url)
+                feed = feedparser.parse(subscription_url,
+                                        etag=cached.get("etag"),
+                                        modified=cached.get("modified"))
+                if getattr(feed, "status", None) == 304:
+                    # Not modified: no body was sent, so feed.entries is empty
+                    # and must not be read as "this feed has no episodes".
+                    logger.info(f"Unchanged since last run: {cached.get('slug') or subscription_url}")
+                    results.append({"feed": cached.get("slug"), "status": "up_to_date",
+                                    "not_modified": True})
+                    continue
                 podcast_title = feed.feed.title
             except Exception as e:
                 logger.warning(f"Skipping feed {subscription_url}: {e}")
@@ -146,6 +179,14 @@ class EpisodeDownloader:
                 continue
             logger.info(f"Checking podcast: {podcast_title}")
             slug = slugify(podcast_title)
+
+            # Remember the validators so the next run can ask for a 304.
+            cache[subscription_url] = {
+                k: v for k, v in (("slug", slug),
+                                  ("etag", getattr(feed, "etag", None)),
+                                  ("modified", getattr(feed, "modified", None)))
+                if v
+            }
 
             feed_seen = seen.get(subscription_url)
             if feed_seen is None:
@@ -253,5 +294,6 @@ class EpisodeDownloader:
                 results.append({"feed": slug, "status": "up_to_date"})
 
         self._save_seen(seen)
+        self._save_feed_cache(cache)
         return results
 
