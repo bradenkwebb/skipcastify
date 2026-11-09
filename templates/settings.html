@@ -39,7 +39,17 @@
   .log li:last-child { border-bottom: 0; }
   .log .what { flex: 1; font-size: 13.5px; }
   .log .when { font-size: 12px; color: var(--muted); }
-  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .subs .meta { font-size: 12px; color: var(--muted); }
+  .addrow { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .addrow input, .addrow select { flex: 1 1 260px; min-width: 0; background: var(--panel2); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font-size: 13.5px; }
+  .card { margin-top: 12px; border: 1px solid var(--accent); border-radius: 8px; padding: 12px; font-size: 13.5px; }
+  .card h3 { margin: 0 0 4px; font-size: 15px; }
+  .card dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0; }
+  .card dt { color: var(--muted); }
+  .card dd { margin: 0; }
+  .warnbox { color: var(--warn); }
+  code { 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
 </style>
 </head>
 <body>
@@ -48,6 +58,22 @@
   <a href="/dashboard">dashboard</a><a href="/feeds">feeds</a><a href="/label">label</a>
 </header>
 <main>
+  <h2>Subscriptions</h2>
+  <div class="panel">
+    <p class="note">Shows the pipeline downloads and processes. <span id="r2"></span></p>
+    <ul id="subs" class="log subs"></ul>
+    <div class="addrow">
+      <input id="addInput" placeholder="Feed URL, or search by name" autocomplete="off" spellcheck="false">
+      <button id="lookup">Look up</button>
+    </div>
+    <div class="addrow" id="upstreamRow" hidden>
+      <select id="upstream"><option value="">From your Overcast export…</option></select>
+    </div>
+    <div id="subStatus" class="muted" style="margin-top:8px"></div>
+    <ul id="results" class="log"></ul>
+    <div id="preview"></div>
+  </div>
+
   <h2>Cut policy</h2>
   <div class="panel">
     <p class="note">Which labeled spans are cut from the audio. Changes apply to future processing, 
@@ -105,7 +131,7 @@ async function load(msg) {
   S = await (await fetch('/api/settings.json')).json();
   draft = JSON.parse(JSON.stringify(S.policy));
   document.getElementById('policyError').textContent = S.error || '';
-  renderPolicy(); renderLog(); renderSkipped();
+  renderSubs(); renderPolicy(); renderLog(); renderSkipped();
   status(msg || '');
 }
 
@@ -175,7 +201,7 @@ document.getElementById('log').addEventListener('click', async e => {
   if (!id) return;
   if (dirty() && !confirm('Discard your unsaved changes and undo this one?')) return;
   try {
-    const { change } = await call(`/api/settings/undo/${id}.json`, 'POST', { version: S.version });
+    const { change } = await call(`/api/settings/undo/${id}.json`, 'POST', { versions: { policy: S.version, subscriptions: S.subs_version } });
     await load(change ? 'Undone' : 'Already in that state');
   } catch (err) { status(err.message, 'err'); }
 });
@@ -194,6 +220,90 @@ document.getElementById('skipped').addEventListener('click', async e => {
   try { await call('/api/settings/retry.json', 'POST', { episode: ep }); await load('Will retry on the next run'); }
   catch (err) { status(err.message, 'err'); }
 });
+
+function mb(b) { return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; }
+function subStatus(msg, cls) { const el = document.getElementById('subStatus'); el.textContent = msg; el.className = cls || 'muted'; }
+
+function renderSubs() {
+  const r2 = S.r2;
+  document.getElementById('r2').textContent =
+    `R2 audio: ${mb(r2.used_bytes)} of the ${mb(r2.cap_bytes)} cap.`;
+  const el = document.getElementById('subs');
+  el.innerHTML = S.subscriptions.length ? S.subscriptions.map(s => `<li><div class="what"><div class="show">` +
+    `<img src="/feeds/art/${encodeURIComponent(s.slug)}.jpg" alt="" onerror="this.style.visibility='hidden'">` +
+    `<span title="${esc(s.url)}">${esc(s.title)}</span></div><div class="meta">` +
+    [s.checked ? 'checked ' + ago(s.checked) : 'not checked yet',
+     s.last_download ? 'last download ' + ago(s.last_download) : null,
+     s.published ? 'on R2' : 'not on R2 yet'].filter(Boolean).join(' · ') +
+    `</div></div><button data-remove="${esc(s.url)}" data-title="${esc(s.title)}">Remove</button></li>`).join('')
+    : '<li class="muted">No subscriptions.</li>';
+  const sel = document.getElementById('upstream');
+  document.getElementById('upstreamRow').hidden = !S.upstream.length;
+  sel.innerHTML = '<option value="">From your Overcast export…</option>' +
+    S.upstream.map(u => `<option value="${esc(u.url)}">${esc(u.title)}</option>`).join('');
+}
+
+document.getElementById('subs').addEventListener('click', async e => {
+  const url = e.target.dataset.remove;
+  if (!url) return;
+  if (!confirm(`Stop downloading and processing ${e.target.dataset.title}?\n\nIts R2 feed stays up and its audio ` +
+               'ages out over 14 days. Unsubscribe in Overcast too if you no longer want it.')) return;
+  try {
+    await call('/api/settings/subscriptions/remove.json', 'POST', { url, version: S.subs_version });
+    await load(); subStatus(`Removed. Unsubscribe in Overcast too if you're done with it.`);
+  } catch (err) { subStatus(err.message, 'err'); }
+});
+
+async function lookup() {
+  const q = document.getElementById('addInput').value.trim();
+  document.getElementById('results').innerHTML = ''; document.getElementById('preview').innerHTML = '';
+  if (!q) return;
+  if (/^https?:\/\//i.test(q)) return preview(q);
+  subStatus('Searching…');
+  try {
+    const { results } = await call('/api/settings/subscriptions/search.json', 'POST', { term: q });
+    subStatus(results.length ? '' : 'No podcasts found.');
+    document.getElementById('results').innerHTML = results.map(r => `<li><div class="what">${esc(r.title)}` +
+      `<div class="meta">${esc(r.author || '')}</div></div><button data-preview="${esc(r.url)}">Preview</button></li>`).join('');
+  } catch (err) { subStatus(err.message, 'err'); }
+}
+document.getElementById('lookup').onclick = lookup;
+document.getElementById('addInput').addEventListener('keydown', e => { if (e.key === 'Enter') lookup(); });
+document.getElementById('results').addEventListener('click', e => { if (e.target.dataset.preview) preview(e.target.dataset.preview); });
+document.getElementById('upstream').addEventListener('change', e => { if (e.target.value) preview(e.target.value); });
+
+async function preview(url) {
+  const box = document.getElementById('preview');
+  box.innerHTML = ''; subStatus('Loading feed…');
+  let p;
+  try { p = await call('/api/settings/subscriptions/preview.json', 'POST', { url }); }
+  catch (err) { return subStatus(err.message, 'err'); }
+  subStatus('');
+  const left = S.r2.cap_bytes - S.r2.used_bytes;
+  const latest = p.latest ? ago(new Date(p.latest * 1000).toISOString()) : 'unknown';
+  box.innerHTML = `<div class="card"><h3>${esc(p.title)}</h3><div class="meta">${esc(p.author || '')}</div><dl>` +
+    `<dt>Slug</dt><dd><code>${esc(p.slug)}</code></dd>` +
+    `<dt>Episodes in feed</dt><dd>${p.episodes} · newest ${latest}</dd>` +
+    `<dt>Cadence</dt><dd>~${p.per_window} episodes per 14 days (from the last 90 days)</dd>` +
+    `<dt>Typical episode</dt><dd>${p.avg_bytes ? mb(p.avg_bytes) : 'unknown'}</dd>` +
+    `<dt>R2 estimate</dt><dd>~${mb(p.est_bytes)} at steady state` +
+    (p.est_bytes > left ? ` <span class="warnbox">· more than the ${mb(Math.max(left, 0))} left under the cap</span>` : '') +
+    `<br><span class="meta">Less if episodes have nothing to cut: those link the original audio.</span></dd></dl>` +
+    `<p class="meta">Only episodes released after subscribing are processed; the current backlog is skipped.</p>` +
+    (p.already ? '<p class="warnbox">Already subscribed.</p>' :
+      `<div class="bar"><button class="primary" id="subscribe">Subscribe</button><button id="cancelPreview">Cancel</button></div>`) +
+    '</div>';
+  if (p.already) return;
+  document.getElementById('cancelPreview').onclick = () => { box.innerHTML = ''; };
+  document.getElementById('subscribe').onclick = async () => {
+    try {
+      await call('/api/settings/subscriptions/add.json', 'POST', { url: p.url, title: p.title, version: S.subs_version });
+      box.innerHTML = ''; document.getElementById('results').innerHTML = '';
+      document.getElementById('addInput').value = '';
+      await load(); subStatus(`Subscribed to ${p.title}. It's picked up on the next run.`);
+    } catch (err) { subStatus(err.message, 'err'); }
+  };
+}
 
 load();
 </script>

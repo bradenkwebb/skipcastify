@@ -18,7 +18,14 @@ from flask import (
     send_from_directory,
 )
 
-from skipcastify.services import analytics, cut_policy, feed_meta, labeling, settings
+from skipcastify.services import (
+    analytics,
+    cut_policy,
+    feed_meta,
+    labeling,
+    settings,
+    subscriptions,
+)
 from skipcastify.services.artwork_thumbs import thumbnail
 from skipcastify.services.episode_detail import episode_detail
 from skipcastify.services.published_feeds import published_feeds
@@ -278,12 +285,35 @@ def settings_json():
     except (ValueError, yaml.YAMLError) as e:  # a bad hand edit: show it, don't overwrite it
         policy, error = {"default": [], "feeds": {}}, f"policy.yaml is invalid: {e}"
     skipped = StateManager(data_dir).skipped()
+    subs_path = subscriptions.opml_path()
+    subs = subscriptions.read(subs_path)
     return jsonify(
         version=settings.version(path), policy=policy, error=error,
-        labels=list(cut_policy.LABELS), feeds=settings.feeds(data_dir, policy),
+        labels=list(cut_policy.LABELS), feeds=settings.feeds(data_dir, policy, subs),
         changes=settings.changes(data_dir),
         skipped=[{"episode": k, "attempts": n} for k, n in sorted(skipped.items())],
+        subscriptions=_subscription_rows(subs), subs_version=settings.version(subs_path),
+        upstream=[u for u in subscriptions.read(subscriptions.upstream_path())
+                  if u["url"] not in {s["url"] for s in subs}],
+        r2=_r2_usage(),
     )
+
+
+def _subscription_rows(subs):
+    status = {r["feed_slug"]: r for r in analytics.feed_status(analytics.recent_runs(data_dir, 500))}
+    published = {f.slug for f in published_feeds(data_dir, _public_base_url)}
+    rows = []
+    for sub in subs:
+        slug = settings.feed_slug(data_dir, sub)
+        st = status.get(slug, {})
+        rows.append({**sub, "slug": slug, "checked": st.get("checked"),
+                     "last_download": st.get("last_download"), "published": slug in published})
+    return rows
+
+
+def _r2_usage():
+    used = sum(f.audio_bytes for f in published_feeds(data_dir, _public_base_url))
+    return {"used_bytes": used, "cap_bytes": int(float(os.environ.get("R2_CAP_GB", 7)) * 1024 ** 3)}
 
 
 @app.route('/api/settings/policy.json', methods=['PUT'])
@@ -308,11 +338,68 @@ def settings_undo(change_id):
         return refused
     body = request.get_json(silent=True) or {}
     try:
-        entry = settings.undo(data_dir, change_id, body.get('version'), _user())
+        entry = settings.undo(data_dir, change_id, body.get('versions') or {}, _user())
     except KeyError:
         return abort(404)
     except settings.Conflict as e:
         return jsonify(error=str(e)), 409
+    return jsonify(change=entry)
+
+
+@app.route('/api/settings/subscriptions/search.json', methods=['POST'])
+@require_auth
+def subscriptions_search():
+    if (refused := _write_refused()) is not None:
+        return refused
+    term = ((request.get_json(silent=True) or {}).get('term') or '').strip()
+    if not term:
+        return jsonify(results=[])
+    try:
+        return jsonify(results=subscriptions.search(term[:100]))
+    except Exception as e:
+        return jsonify(error=f"search failed ({type(e).__name__})"), 502
+
+
+@app.route('/api/settings/subscriptions/preview.json', methods=['POST'])
+@require_auth
+def subscriptions_preview():
+    """Fetches the feed server-side, so it gets the same guard as a write."""
+    if (refused := _write_refused()) is not None:
+        return refused
+    url = (request.get_json(silent=True) or {}).get('url') or ''
+    try:
+        url = subscriptions.check_url(url)
+        summary = subscriptions.summarize(subscriptions.fetch(url))
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    except Exception as e:
+        return jsonify(error=f"couldn't load that feed ({type(e).__name__})"), 502
+    subscribed = {s['url'] for s in subscriptions.read(subscriptions.opml_path())}
+    return jsonify(url=url, already=url in subscribed, **summary)
+
+
+@app.route('/api/settings/subscriptions/<action>.json', methods=['POST'])
+@require_auth
+def subscriptions_change(action):
+    if action not in ('add', 'remove'):
+        return abort(404)
+    if (refused := _write_refused()) is not None:
+        return refused
+    body = request.get_json(silent=True) or {}
+    url, version = body.get('url') or '', body.get('version')
+    try:
+        if action == 'add':
+            url = subscriptions.check_url(url)
+            title = (body.get('title') or '').strip()[:200] or url
+            entry = settings.add_subscription(data_dir, url, title, version, _user())
+        else:
+            entry = settings.remove_subscription(data_dir, url, version, _user())
+    except settings.Conflict as e:
+        return jsonify(error=str(e)), 409
+    except KeyError:
+        return abort(404)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
     return jsonify(change=entry)
 
 
