@@ -69,7 +69,7 @@ def episode_detail(data_dir, name: str) -> Optional[dict]:
     runs = _runs(events)
     latest = next((r for r in runs if r["completed"]), None)
     feed = next((e["feed_slug"] for e in reversed(events) if e.get("feed_slug")), None) \
-        or labeling._feed_for(data_dir, name, {})
+        or labeling.feed_for(data_dir, name, {})
     items = _llm_items(data_dir, feed, name)
 
     cuts = []

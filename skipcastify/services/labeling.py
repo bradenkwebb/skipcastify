@@ -85,19 +85,33 @@ def _feed_items(data_dir) -> dict:
     return _release_cache
 
 
-def _feed_for(data_dir, name: str, completes: dict) -> Optional[str]:
+def feed_for(data_dir, name: str, completes: Optional[dict] = None) -> Optional[str]:
+    """Which show an episode belongs to.
+
+    Three sources, best first: the event log, which recorded the slug at
+    download time; the raw audio, which sits in its own feed's directory and
+    so is exact; and a name-prefix match, which is a guess because one slug
+    can be a prefix of another. Pass completes={} to skip the log.
+    """
+    if completes is None:
+        completes = _latest_completes(data_dir)
     ev = completes.get(name)
     if ev and ev.get("feed_slug"):
         return ev["feed_slug"]
+
     raw = Path(data_dir) / "podcasts" / "raw"
-    feeds = [d.name for d in raw.iterdir() if d.is_dir()] if raw.is_dir() else []
+    feeds = sorted(d.name for d in raw.iterdir() if d.is_dir()) if raw.is_dir() else []
+    for slug in feeds:
+        if (raw / slug / f"{name}.mp3").is_file():
+            return slug
+
     matches = [f for f in feeds if name.startswith(f + "-")]
     return max(matches, key=len) if matches else None
 
 
 def raw_audio_path(data_dir, name: str, completes: Optional[dict] = None) -> Optional[Path]:
     """The untouched download; the processed file's timeline has ads cut out."""
-    feed = _feed_for(data_dir, name, completes if completes is not None else _latest_completes(data_dir))
+    feed = feed_for(data_dir, name, completes)
     if not feed:
         return None
     path = Path(data_dir) / "podcasts" / "raw" / feed / f"{name}.mp3"
@@ -127,7 +141,7 @@ def list_episodes(data_dir) -> list[dict]:
         transcribed = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
         out.append({
             "name": name,
-            "feed": _feed_for(data_dir, name, completes),
+            "feed": feed_for(data_dir, name, completes),
             "transcribed": transcribed,
             "released": released.get(name),
             "date": released.get(name) or transcribed,
@@ -148,7 +162,7 @@ def load_episode(data_dir, name: str) -> dict:
     labels = _read_labels(data_dir, name) or {}
     return {
         "name": name,
-        "feed": _feed_for(data_dir, name, completes),
+        "feed": feed_for(data_dir, name, completes),
         "segments": segments,
         "predictions": [{"start_ms": s["start_ms"], "end_ms": s["end_ms"], "label": s.get("label", "")}
                         for s in (ev or {}).get("spans", [])],
@@ -156,7 +170,7 @@ def load_episode(data_dir, name: str) -> dict:
         "spans": labels.get("spans", []),
         "reviewed": bool(labels.get("reviewed")),
         "has_audio": raw_audio_path(data_dir, name, completes) is not None,
-        "cut_labels": sorted(cut_policy.cut_labels(_feed_for(data_dir, name, completes))),
+        "cut_labels": sorted(cut_policy.cut_labels(feed_for(data_dir, name, completes))),
     }
 
 
