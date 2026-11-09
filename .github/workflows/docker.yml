@@ -18,3 +18,12 @@ jobs:
         run: |
           docker run --rm skipcastify python -c "import server, pipeline"
           touch .env && docker compose config -q
+      - name: Server starts and requires login
+        run: |
+          docker run -d --name sk -p 5000:5000 -e FEED_USERNAME=ci -e FEED_PASSWORD=ci skipcastify
+          for i in $(seq 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:5000/settings)
+            [ "$code" = 401 ] && exit 0
+            sleep 1
+          done
+          echo "expected 401 from /settings, got $code"; docker logs sk; exit 1
