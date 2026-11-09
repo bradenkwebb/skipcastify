@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import feedparser
 from feedgen.feed import FeedGenerator
@@ -167,7 +167,7 @@ class FeedManager:
                 fe.guid(guid, permalink=False)
 
             if entry.get('published_parsed'):
-                fe.pubDate(datetime(*entry.published_parsed[:6], tzinfo=timezone.utc))
+                fe.pubDate(datetime(*entry.published_parsed[:6], tzinfo=UTC))
             else:
                 logger.warning(f"Episode '{entry.title}' of {title} has no publish date.")
 

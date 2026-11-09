@@ -5,7 +5,7 @@ import json
 import os
 import re
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -78,7 +78,7 @@ def _feed_items(data_dir) -> dict:
                 except (TypeError, ValueError):
                     continue
                 if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
+                    dt = dt.replace(tzinfo=UTC)
                 dates[safe_filename(title, f.stem)[: -len(".mp3")]] = dt.isoformat()
         _release_cache.update(key=key, dates=dates, titles=titles)
     return _release_cache
@@ -133,7 +133,7 @@ def list_episodes(data_dir) -> list[dict]:
         name = path.name[: -len("_transcript.json")]
         ev = completes.get(name)
         labels = _read_labels(data_dir, name)
-        transcribed = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+        transcribed = datetime.fromtimestamp(path.stat().st_mtime, UTC).isoformat()
         out.append({
             "name": name,
             "feed": feed_for(data_dir, name, completes),
@@ -190,7 +190,7 @@ def save_labels(data_dir, name: str, spans, reviewed: bool) -> dict:
         "episode_name": name,
         "version": FORMAT_VERSION,
         "reviewed": bool(reviewed),
-        "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "updated": datetime.now(UTC).isoformat(timespec="seconds"),
         "spans": clean_spans(spans),
     }
     path = label_path(data_dir, name)
