@@ -38,6 +38,11 @@ dev = [
 # I (import order), UP and B all have standing hits; see the commit message.
 select = ["F", "E9", "W605"]
 
+[tool.ruff.lint.per-file-ignores]
+# Importing a fixture and then naming it as a test parameter is the pytest
+# idiom for sharing fixtures across modules; F811 reads it as a redefinition.
+"tests/*" = ["F811"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
