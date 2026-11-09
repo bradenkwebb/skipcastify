@@ -1,5 +1,8 @@
+import ipaddress
+import json
 import logging
 import os
+import subprocess
 import time
 from functools import wraps
 
@@ -39,8 +42,24 @@ app = Flask(__name__)
 data_dir = os.environ.get("DATA_DIR")
 _feed_username = os.environ.get("FEED_USERNAME")
 _feed_password = os.environ.get("FEED_PASSWORD")
-# Tailnet logins that skip Basic auth (comma-separated). Empty: Basic auth only.
-_tailscale_users = {u.strip().lower() for u in os.environ.get("TAILSCALE_USERS", "").split(",") if u.strip()}
+
+
+def _parse_tailscale_allow(raw: str) -> dict[str, set[str] | None]:
+    """'login' allows any of that user's devices; 'login/device' only that device."""
+    allow: dict[str, set[str] | None] = {}
+    for entry in raw.split(","):
+        login, _, device = entry.strip().lower().partition("/")
+        if not login:
+            continue
+        if not device:
+            allow[login] = None
+        elif allow.get(login, set()) is not None:
+            allow.setdefault(login, set()).add(device)
+    return allow
+
+
+# Tailnet logins (optionally /device) that skip Basic auth. Empty: Basic auth only.
+_tailscale_users = _parse_tailscale_allow(os.environ.get("TAILSCALE_USERS", ""))
 _episode_token = os.environ.get("EPISODE_TOKEN")
 _public_base_url = os.environ.get("PUBLIC_BASE_URL", "")
 _publish_to_r2 = os.environ.get("PUBLISH_TO_R2", "false").lower() == "true"
@@ -136,7 +155,39 @@ def _tailscale_user() -> str | None:
     if not _tailscale_users or request.remote_addr not in ("127.0.0.1", "::1"):
         return None
     login = (request.headers.get("Tailscale-User-Login") or "").strip().lower()
-    return login if login in _tailscale_users else None
+    if login not in _tailscale_users:
+        return None
+    devices = _tailscale_users[login]
+    if devices is None:
+        return login
+    # Serve sets X-Forwarded-For to the client's tailnet IP (inbound values are dropped).
+    who = _whois(request.headers.get("X-Forwarded-For", "").strip())
+    if who and who[0] == login and who[1] in devices:
+        return f"{login}/{who[1]}"
+    return None
+
+
+_whois_cache: dict[str, tuple[float, tuple[str, str] | None]] = {}
+
+
+def _whois(ip: str) -> tuple[str, str] | None:
+    """(login, device) for a tailnet IP via the local tailscaled; cached 5 minutes."""
+    try:
+        ip = str(ipaddress.ip_address(ip))
+    except ValueError:
+        return None
+    hit = _whois_cache.get(ip)
+    if hit and time.monotonic() - hit[0] < 300:
+        return hit[1]
+    try:
+        out = subprocess.run(["tailscale", "whois", "--json", ip], capture_output=True,
+                             text=True, timeout=3, check=True).stdout
+        d = json.loads(out)
+        who = (d["UserProfile"]["LoginName"].lower(), d["Node"]["ComputedName"].lower())
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        who = None
+    _whois_cache[ip] = (time.monotonic(), who)
+    return who
 
 
 def require_auth(f):

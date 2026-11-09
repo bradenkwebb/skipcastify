@@ -90,7 +90,7 @@ All runtime config lives in `.env` (never committed):
 | `SUBSCRIPTIONS` | Path to upstream OPML file |
 | `SERVER_BASE_URL` | HTTPS base URL for this server (e.g. its `tailscale serve` URL) |
 | `FEED_USERNAME` / `FEED_PASSWORD` | HTTP Basic Auth credentials for the feed server and the `/dashboard` web UI |
-| `TAILSCALE_USERS` | Optional, comma-separated tailnet logins (e.g. `you@gmail.com`) that skip Basic auth. Only for the app behind `tailscale serve` on the same host: it trusts the `Tailscale-User-Login` header serve sets, and only on loopback requests |
+| `TAILSCALE_USERS` | Optional, comma-separated entries that skip Basic auth: `login/device` (e.g. `you@github/your-iphone`, the device's MagicDNS name) for one device, or a bare `login` for all of that user's devices. Only for the app behind `tailscale serve` on the same host: it trusts the identity and `X-Forwarded-For` headers serve sets, only on loopback requests, and checks devices with `tailscale whois` |
 | `EPISODE_TOKEN` | Secret token appended to episode URLs |
 | `EPISODE_LIMIT` | Max episodes to download per feed per run (default: 5) |
 | `ENABLE_PROCESSING` | Set `true` to enable ad removal (default: `false`) |

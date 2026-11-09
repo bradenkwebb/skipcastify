@@ -1,5 +1,6 @@
 """Tailscale identity auth: an allowlisted Tailscale-User-Login from loopback
-(tailscale serve) skips Basic auth; anything else still needs the password."""
+(tailscale serve), optionally on a named device, skips Basic auth; anything
+else still needs the password."""
 
 import json
 import os
@@ -23,7 +24,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(server_module, "data_dir", str(tmp_path))
     monkeypatch.setattr(server_module, "_feed_username", "testuser")
     monkeypatch.setattr(server_module, "_feed_password", "testpass")
-    monkeypatch.setattr(server_module, "_tailscale_users", {ME})
+    monkeypatch.setattr(server_module, "_tailscale_users", {ME: None})
     server_module.app.config['TESTING'] = True
     with server_module.app.test_client() as c:
         yield c
@@ -53,7 +54,7 @@ def test_header_is_ignored_unless_the_request_is_from_loopback(client):
 
 
 def test_no_allowlist_means_basic_auth_only(client, monkeypatch):
-    monkeypatch.setattr(server_module, "_tailscale_users", set())
+    monkeypatch.setattr(server_module, "_tailscale_users", {})
     assert get(client, ME).status_code == 401
     assert get(client, headers=BASIC).status_code == 200
 
@@ -65,3 +66,62 @@ def test_changes_are_logged_under_the_tailnet_login(client):
                    data=json.dumps({"policy": {"default": ["ad"], "feeds": {}}, "version": v}),
                    content_type="application/json")
     assert r.status_code == 200 and r.get_json()["change"]["user"] == ME
+
+
+# --- device-scoped entries (login/device) ----------------------------------
+
+PHONE_IP, LAPTOP_IP = "100.64.0.10", "100.64.0.11"
+WHOIS = {PHONE_IP: (ME, "my-phone"), LAPTOP_IP: (ME, "shared-laptop")}
+
+
+@pytest.fixture
+def phone_only(client, monkeypatch):
+    monkeypatch.setattr(server_module, "_tailscale_users", {ME: {"my-phone"}})
+    monkeypatch.setattr(server_module, "_whois", lambda ip: WHOIS.get(ip))
+    return client
+
+
+def from_ip(c, ip, login=ME):
+    return get(c, login, headers={"X-Forwarded-For": ip})
+
+
+def test_the_allowed_device_needs_no_password(phone_only):
+    assert from_ip(phone_only, PHONE_IP).status_code == 200
+
+
+def test_another_device_of_the_same_user_needs_the_password(phone_only):
+    assert from_ip(phone_only, LAPTOP_IP).status_code == 401
+
+
+def test_no_or_unknown_client_ip_needs_the_password(phone_only):
+    assert get(phone_only, ME).status_code == 401
+    assert from_ip(phone_only, "100.64.0.99").status_code == 401
+
+
+def test_whois_must_agree_with_the_login_header(phone_only, monkeypatch):
+    monkeypatch.setattr(server_module, "_whois", lambda ip: ("other@github", "my-phone"))
+    assert from_ip(phone_only, PHONE_IP).status_code == 401
+
+
+def test_changes_are_logged_with_the_device(phone_only):
+    v = from_ip(phone_only, PHONE_IP).get_json()["version"]
+    r = phone_only.put('/api/settings/policy.json', environ_base=LOOPBACK,
+                       headers={"Tailscale-User-Login": ME, "X-Forwarded-For": PHONE_IP,
+                                "X-Skipcastify": "1", "Sec-Fetch-Site": "same-origin"},
+                       data=json.dumps({"policy": {"default": ["ad"], "feeds": {}}, "version": v}),
+                       content_type="application/json")
+    assert r.get_json()["change"]["user"] == f"{ME}/my-phone"
+
+
+def test_allowlist_parsing():
+    parse = server_module._parse_tailscale_allow
+    assert parse("") == {}
+    assert parse(" A@github/Phone , a@github/tablet, b@x ") == {"a@github": {"phone", "tablet"}, "b@x": None}
+    assert parse("a@github/phone, a@github") == {"a@github": None}      # bare login widens
+    assert parse("a@github, a@github/phone") == {"a@github": None}
+
+
+def test_whois_rejects_non_ips_without_running_anything(monkeypatch):
+    monkeypatch.setattr(server_module.subprocess, "run", lambda *a, **k: pytest.fail("ran tailscale"))
+    assert server_module._whois("100.64.0.1; rm -rf /") is None
+    assert server_module._whois("") is None
