@@ -8,7 +8,7 @@ from faster_whisper import WhisperModel, decode_audio
 from dataclasses import dataclass
 from typing import List, Optional
 
-from skipcastify.services.state_manager import StateManager
+from skipcastify.services.state_manager import StateManager, uncut_marker
 from skipcastify.services.segment_classifier import SegmentClassifier
 from skipcastify.models.content import ContentType
 from skipcastify.services import llm_utils
@@ -400,6 +400,12 @@ class AudioProcessor:
             logger.info(f"Saving processed audio to: {processed_audio_path}")
             processed_audio.export(processed_audio_path, format="mp3", bitrate=_source_bitrate(episode_file_path))
             logger.info(f"Successfully saved processed audio")
+            # Nothing cut: R2 feeds serve the original enclosure instead of uploading a copy.
+            marker = uncut_marker(processed_audio_path)
+            if processed_audio is audio:
+                marker.touch()
+            else:
+                marker.unlink(missing_ok=True)
 
             original_s = audio.duration_seconds
             processed_s = processed_audio.duration_seconds

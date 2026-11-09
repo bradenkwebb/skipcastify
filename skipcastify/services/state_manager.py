@@ -8,6 +8,13 @@ from skipcastify.models.content import AudioSegment
 
 logger = logging.getLogger(__name__)
 
+UNCUT_SUFFIX = ".uncut"
+
+
+def uncut_marker(processed_path) -> Path:
+    """Sits next to a processed file whose audio had nothing cut."""
+    return Path(f"{processed_path}{UNCUT_SUFFIX}")
+
 class StateManager:
     def __init__(self, data_dir: str) -> None:
         self.data_dir = Path(data_dir)

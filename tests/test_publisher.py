@@ -17,6 +17,7 @@ from skipcastify.services.r2_breaker import R2Breaker
 from skipcastify.services.publisher import (CACHE_FEED, CACHE_IMMUTABLE, GB,
                                             R2Publisher, feed_fingerprint)
 from skipcastify.services.r2_client import redact_key
+from skipcastify.services.state_manager import uncut_marker
 
 SECRET = "test-secret-segment"
 SLUG = "test-podcast"
@@ -281,6 +282,29 @@ def test_fallback_alerts_only_once(pub, tmp_path):
     publish(pub, [_entry()])
 
     assert len(pub._notify.sent) == 1
+
+
+def test_uncut_episode_links_the_original_instead_of_uploading(pub, tmp_path):
+    write_audio(tmp_path, "raw", EP1)
+    processed = write_audio(tmp_path, "processed", EP1)
+    uncut_marker(processed).touch()
+
+    publish(pub, [_entry()])
+
+    assert _items(pub)[0][2] == "https://cdn.example.com/ep1.mp3"
+    assert pub.audio_key(SLUG, EP1) not in pub.client.keys
+
+
+def test_uncut_episode_already_on_r2_keeps_its_url(pub, tmp_path):
+    """Moving an enclosure an app already downloaded would only cause churn."""
+    write_audio(tmp_path, "raw", EP1)
+    processed = write_audio(tmp_path, "processed", EP1)
+    publish(pub, [_entry()])
+    uncut_marker(processed).touch()
+
+    publish(pub, [_entry()])
+
+    assert _items(pub)[0][2] == f"https://pods.example.com/audio/{SECRET}/{SLUG}/{EP1}"
 
 
 def test_backlog_episode_keeps_original_url(pub, tmp_path):
