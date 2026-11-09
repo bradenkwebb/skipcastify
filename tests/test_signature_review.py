@@ -58,3 +58,10 @@ def test_truth_follows_the_feeds_cut_policy(tmp_path, monkeypatch):
                                      {"start_ms": 40_000, "end_ms": 50_000, "label": "self_promo"}], reviewed=True)
     eps = payload_episodes(tmp_path, monkeypatch, [complete("show-a", [])])
     assert eps["show-a"]["review"]["missed"] == [{"start": 0.4, "end": 0.5}]
+
+
+def test_removed_mirrors_the_cutter_runs_including_pauses():
+    segs = [{"start": 0, "end": 4_000}, {"start": 5_000, "end": 9_000},
+            {"start": 12_000, "end": 15_000}, {"start": 16_000, "end": 20_000}]
+    spans = [{"start_ms": 6_000, "end_ms": 13_000}]
+    assert analytics._removed(segs, spans) == [(5_000, 15_000)]   # the 9–12s pause is inside the run

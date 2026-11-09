@@ -216,10 +216,24 @@ def review_overlay(cut_ms, truth_ms, dur_ms: float) -> dict:
             "extra": norm(_minus(cut, truth), MIN_DIFF_MS)}
 
 
+def _removed(segments: list[dict], spans: list[dict]) -> list[tuple[int, int]]:
+    """What the cutter removed: runs of consecutive lines overlapping a span, each
+    from its first line's start to its last line's end (pauses inside included)."""
+    runs, run = [], None
+    for seg in sorted(segments, key=lambda g: g["start"]):
+        if any(seg["start"] < sp["end_ms"] and seg["end"] > sp["start_ms"] for sp in spans):
+            run = [run[0], seg["end"]] if run else [seg["start"], seg["end"]]
+        elif run:
+            runs.append(tuple(run))
+            run = None
+    if run:
+        runs.append(tuple(run))
+    return runs
+
+
 def _with_review(data_dir: str, feeds: list[dict], events: list[dict]) -> list[dict]:
     """Mark episodes with reviewed hand labels and overlay cut vs labeled ads."""
     from skipcastify.services import (  # labeling imports this module
-        ad_eval,
         cut_policy,
         episode_detail,
         labeling,
@@ -236,10 +250,9 @@ def _with_review(data_dir: str, feeds: list[dict], events: list[dict]) -> list[d
             if not doc or not doc.get("reviewed") or not ev or not ev.get("original_duration_s"):
                 continue
             truth = [(s["start_ms"], s["end_ms"]) for s in doc.get("spans", []) if s.get("label") in wanted]
-            # What was actually removed: whole transcript lines overlapping a span.
             segments = episode_detail._segments(data_dir, ep["episode"])
             spans = ev.get("spans", [])
-            cut = ad_eval.cut_lines(segments, spans) if segments else [(s["start_ms"], s["end_ms"]) for s in spans]
+            cut = _removed(segments, spans) if segments else [(s["start_ms"], s["end_ms"]) for s in spans]
             ep["reviewed"] = True
             ep["review"] = review_overlay(cut, truth, ev["original_duration_s"] * 1000)
     return feeds
