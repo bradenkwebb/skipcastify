@@ -124,3 +124,8 @@ def test_written_file_round_trips(tmp_path):
     settings.save(str(tmp_path), {'default': ['ad'], 'feeds': {'x': []}}, 'none', None, path=path)
     assert settings.snapshot(path) == {'default': ['ad'], 'feeds': {'x': []}}
     assert path.read_text().startswith('# Edited from the dashboard')
+
+
+def test_a_missing_subscriptions_file_means_no_subscriptions(tmp_path):
+    from skipcastify.utils.utils import load_subscriptions
+    assert load_subscriptions(str(tmp_path / "subscriptions.opml")) == []
