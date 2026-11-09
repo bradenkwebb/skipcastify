@@ -1,5 +1,4 @@
 import json
-import os
 import feedparser
 import requests
 from pathlib import Path

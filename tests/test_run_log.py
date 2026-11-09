@@ -7,7 +7,7 @@ import pytest
 import pipeline
 from skipcastify.services import analytics
 from skipcastify.services.download_episode import EpisodeDownloader
-from skipcastify.services.run_log import KEEP_RUNS, RunRecord, append_run, recent_runs
+from skipcastify.services.run_log import RunRecord, append_run, recent_runs
 
 
 def test_recent_runs_newest_first_and_skips_junk(tmp_path):

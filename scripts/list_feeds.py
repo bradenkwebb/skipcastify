@@ -6,7 +6,7 @@ load_dotenv()
 import os
 import sys
 from urllib.parse import urlparse
-from skipcastify.utils.utils import load_subscriptions, slugify
+from skipcastify.utils.utils import slugify
 import xml.etree.ElementTree as ET
 
 server_base_url = os.environ.get("SERVER_BASE_URL", "").rstrip("/")

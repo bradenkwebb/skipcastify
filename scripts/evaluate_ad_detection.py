@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from skipcastify.services.ground_truth import GroundTruthStore, GroundTruthLabel, evaluate_predictions
+from skipcastify.services.ground_truth import GroundTruthStore, evaluate_predictions
 import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

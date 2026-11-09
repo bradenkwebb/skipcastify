@@ -16,7 +16,6 @@ Output:
   - Predictions: data/podcasts/processed_preview/<episode>_predictions.json
 """
 import sys
-import json
 from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()

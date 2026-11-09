@@ -1,13 +1,9 @@
 from pydub import AudioSegment
-import sys
 import logging
 import os
-import subprocess
-import datetime
 import json
 import time
 from faster_whisper import WhisperModel
-from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -872,7 +868,6 @@ class AudioProcessor:
 
         audio = self.load_and_validate_audio_file(episode_file_path)
         episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
-        working_dir = self._get_episode_working_dir(episode_file_path)
         transcripts_dir = self._get_episode_transcripts_dir(episode_file_path)
 
         logger.info(f"Using {len(segments)} cached segments (skipping transcription)")
