@@ -146,6 +146,18 @@ def test_a_published_feed_is_listed_with_its_full_url(client, tmp_path):
     assert "90 MB" in html
 
 
+def test_each_feed_offers_an_add_to_picker_defaulting_to_overcast(client, tmp_path):
+    c, tmp_path = client
+    publish(tmp_path, "odd-lots", title="Odd Lots")
+
+    html = get_page(c).get_data(as_text=True)
+
+    assert '<select class="addto"' in html
+    assert 'href="overcast://x-callback-url/add?url=' in html
+    assert 'data-href="https://antennapod.org/deeplink/subscribe?url=' in html
+    assert 'podcast://' not in html            # Apple's scheme may downgrade to http
+
+
 def test_a_locally_generated_feed_that_was_never_uploaded_is_not_listed(client, tmp_path):
     """The XML exists the moment a feed is generated, which is before it is
     uploaded and stays true if the upload failed. Subscribing to a URL whose

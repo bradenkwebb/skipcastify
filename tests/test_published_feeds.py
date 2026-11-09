@@ -129,3 +129,12 @@ def test_the_overcast_url_fully_encodes_a_query_string():
 
     assert "?token=a&b=1" not in url
     assert "%3Ftoken%3Da%26b%3D1" in url
+
+
+def test_add_links_fully_encode_the_feed_url():
+    from skipcastify.services.published_feeds import add_links
+    links = {link["app"]: link["href"] for link in add_links("https://example.com/f.xml?token=a&b=1")}
+    assert set(links) == {"overcast", "antennapod", "metacast"}
+    assert links["antennapod"] == ("https://antennapod.org/deeplink/subscribe?url="
+                                   "https%3A%2F%2Fexample.com%2Ff.xml%3Ftoken%3Da%26b%3D1")
+    assert links["metacast"].startswith("https://open.metacast.app/add-rss-feed?feedUrl=https%3A%2F%2F")

@@ -12,6 +12,7 @@
 <style>
   {% include '_theme.css' %}
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--fg);
          font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
          -webkit-text-size-adjust: 100%; }
@@ -44,6 +45,9 @@
   .actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   .actions .btn.primary { border-color: var(--accent); color: var(--accent); }
   .hint { color: var(--muted); font-size: 12px; }
+  select.addto { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+                 border-radius: 7px; padding: 9px 10px; font-size: 13.5px; min-height: 40px; }
+  .other { margin-top: 8px; line-height: 1.5; }
   @media (max-width: 520px) {
     .urlrow { flex-direction: column; }
     button, .btn { width: 100%; text-align: center; }
@@ -108,12 +112,22 @@
              spellcheck="false" autocapitalize="off" autocorrect="off">
       <button type="button" class="copy" data-url="{{ feed.url }}">Copy</button>
     </div>
+    {# Without JS the Overcast link still works; the picker swaps the href. #}
     <div class="actions">
-      {# Overcast's documented subscribe scheme (overcast.fm/podcasterinfo).
-         iOS only: on a desktop browser this link does nothing, which is why
-         Copy above is the primary control. rel=noreferrer belt-and-braces. #}
-      <a class="btn primary" rel="noreferrer" href="{{ feed.overcast_url }}">Add to Overcast</a>
-      <span class="hint">opens the Subscribe prompt — iPhone only</span>
+      <select class="addto" aria-label="Podcast app for {{ feed.title }}">
+        {%- for link in feed.add_links %}
+        <option value="{{ link.app }}" data-href="{{ link.href }}" data-hint="{{ link.hint }}">{{ link.name }}</option>
+        {%- endfor %}
+        <option value="other">Other app…</option>
+      </select>
+      {%- set first = feed.add_links[0] %}
+      <a class="btn primary addlink" rel="noreferrer" href="{{ first.href }}">Add to {{ first.name }}</a>
+      <span class="hint">{{ first.hint }}</span>
+    </div>
+    <div class="other hint" hidden>
+      Tap <b>Copy</b> above and paste it into your app's add-by-URL option.
+      Apple Podcasts: Library → ⋯ → Follow a Show by URL. Spotify can't add feeds by URL.
+      Whichever app you use, its company can see this URL.
     </div>
   </div>
   {% endfor %}
@@ -121,6 +135,37 @@
 
 </main>
 <script>
+  // Add-to picker: one choice for every feed, remembered on this device.
+  (function () {
+    var KEY = 'feeds.addto';
+    function apply(app) {
+      document.querySelectorAll('.feed').forEach(function (feed) {
+        var sel = feed.querySelector('select.addto');
+        if (!sel) return;
+        if (![].some.call(sel.options, function (o) { return o.value === app; })) app = sel.options[0].value;
+        sel.value = app;
+        var opt = sel.selectedOptions[0], link = feed.querySelector('.addlink');
+        var other = app === 'other';
+        link.hidden = other;
+        feed.querySelector('.actions .hint').hidden = other;
+        feed.querySelector('.other').hidden = !other;
+        if (!other) {
+          link.href = opt.dataset.href;
+          link.textContent = 'Add to ' + opt.textContent;
+          feed.querySelector('.actions .hint').textContent = opt.dataset.hint;
+        }
+      });
+    }
+    document.addEventListener('change', function (ev) {
+      if (!ev.target.matches('select.addto')) return;
+      try { localStorage.setItem(KEY, ev.target.value); } catch (e) {}
+      apply(ev.target.value);
+    });
+    var saved = null;
+    try { saved = localStorage.getItem(KEY); } catch (e) {}
+    if (saved) apply(saved);
+  })();
+
   // Delegated, so it survives any future re-render of the list.
   document.addEventListener('click', function (ev) {
     var btn = ev.target.closest('button.copy');
