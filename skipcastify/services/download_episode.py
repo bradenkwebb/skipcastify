@@ -64,6 +64,19 @@ class EpisodeDownloader:
         except OSError as e:
             logger.warning(f"Could not save feed cache: {e}")
 
+    def _remember_feed(self, cache: dict, url: str, slug: str, feed,
+                       fully_handled: bool) -> None:
+        """Record the slug always; the HTTP validators only when nothing is
+        left to retry. A 304 skips the feed, so a backlog or a failed
+        download would otherwise never be picked up again."""
+        entry = {"slug": slug}
+        if fully_handled:
+            for key in ("etag", "modified"):
+                value = getattr(feed, key, None)
+                if value:
+                    entry[key] = value
+        cache[url] = entry
+
     def _safe_entry_id(self, entry) -> str | None:
         """_entry_id, or None for an entry we cannot identify at all."""
         try:
@@ -180,14 +193,6 @@ class EpisodeDownloader:
             logger.info(f"Checking podcast: {podcast_title}")
             slug = slugify(podcast_title)
 
-            # Remember the validators so the next run can ask for a 304.
-            cache[subscription_url] = {
-                k: v for k, v in (("slug", slug),
-                                  ("etag", getattr(feed, "etag", None)),
-                                  ("modified", getattr(feed, "modified", None)))
-                if v
-            }
-
             feed_seen = seen.get(subscription_url)
             if feed_seen is None:
                 # First time seeing this feed — record all current episodes as seen, download none.
@@ -199,6 +204,7 @@ class EpisodeDownloader:
                         logger.warning(f"Could not derive ID for entry in '{podcast_title}': {e}")
                 seen[subscription_url] = feed_seen
                 logger.info(f"New feed '{podcast_title}': marked {len(feed_seen)} existing episodes as seen, will download future episodes only")
+                self._remember_feed(cache, subscription_url, slug, feed, True)
                 results.append({"feed": slug, "status": "baselined"})
                 continue
 
@@ -241,6 +247,7 @@ class EpisodeDownloader:
                     f"match what we have seen, so they were all marked seen and "
                     f"none downloaded. If this was not a feed migration, episodes "
                     f"have been skipped.", priority="high")
+                self._remember_feed(cache, subscription_url, slug, feed, True)
                 results.append({"feed": slug, "status": "rebaselined"})
                 continue
 
@@ -283,6 +290,10 @@ class EpisodeDownloader:
                     failed += 1
 
             seen[subscription_url] = feed_seen
+            # Anything past episode_limit waits for the next run, and a failed
+            # download is retried then, so neither may be hidden by a 304.
+            self._remember_feed(cache, subscription_url, slug, feed,
+                                failed == 0 and len(fresh) <= self.episode_limit)
             if new_entries:
                 results.append({"feed": slug, "status": "downloaded",
                                 "downloaded": downloaded, "failed": failed})
