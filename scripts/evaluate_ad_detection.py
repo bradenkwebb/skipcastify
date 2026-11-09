@@ -15,14 +15,15 @@ Example:
     python scripts/evaluate_ad_detection.py philosophize-this-episode_237_the_stoics_are_wrong_-_nietzsche_schopenhauer
 """
 
-import sys
 import json
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from skipcastify.services.ground_truth import GroundTruthStore, evaluate_predictions
 import logging
+
+from skipcastify.services.ground_truth import GroundTruthStore, evaluate_predictions
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

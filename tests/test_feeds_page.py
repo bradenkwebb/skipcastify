@@ -17,7 +17,7 @@ os.environ.update({
     'DATA_DIR': '',
 })
 
-import server as server_module                                   # noqa: E402
+import server as server_module  # noqa: E402
 from skipcastify.services.publish_manifest import PublishManifest  # noqa: E402
 
 SECRET = "path-secret-value-abcdef123456"

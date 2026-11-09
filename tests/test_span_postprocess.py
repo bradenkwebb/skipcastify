@@ -5,10 +5,10 @@ These are pure, deterministic tests — no network, no LLM, no filesystem.
 from collections import namedtuple
 
 from skipcastify.services.span_postprocess import (
-    merge_nearby_spans,
-    extend_for_cta,
-    postprocess_spans,
     _has_url_cta,
+    extend_for_cta,
+    merge_nearby_spans,
+    postprocess_spans,
 )
 
 # Minimal stand-in for audio_processor.Segment (duck-typed: .start/.end/.text)

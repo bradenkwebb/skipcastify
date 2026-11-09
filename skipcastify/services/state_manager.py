@@ -5,7 +5,6 @@ from typing import List
 
 from skipcastify.models.content import AudioSegment
 
-
 logger = logging.getLogger(__name__)
 
 class StateManager:

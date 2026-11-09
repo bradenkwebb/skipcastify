@@ -1,25 +1,27 @@
-from pydub import AudioSegment
+import json
 import logging
 import os
-import json
 import time
-import numpy as np
-from faster_whisper import WhisperModel, decode_audio
 from dataclasses import dataclass
 from typing import List, Optional
 
-from skipcastify.services.state_manager import StateManager
-from skipcastify.services.segment_classifier import SegmentClassifier
+import numpy as np
+from faster_whisper import WhisperModel, decode_audio
+from pydub import AudioSegment
+
 from skipcastify.models.ad_span import AdSpan
 from skipcastify.models.content import ContentType
-from skipcastify.services import llm_utils
-from skipcastify.services import metrics
-from skipcastify.services import section_processor
-from skipcastify.services import cut_policy, span_postprocess
-from skipcastify.services.segment_classifier import ClassifiedSegment
+from skipcastify.services import (
+    cut_policy,
+    llm_utils,
+    metrics,
+    section_processor,
+    span_postprocess,
+)
 from skipcastify.services.llm_monitor import get_monitor
+from skipcastify.services.segment_classifier import ClassifiedSegment, SegmentClassifier
+from skipcastify.services.state_manager import StateManager
 from skipcastify.services.transcript_cache import TranscriptCache
-
 from skipcastify.utils.thermal import wait_for_cool_cpu
 
 logger = logging.getLogger(__name__)

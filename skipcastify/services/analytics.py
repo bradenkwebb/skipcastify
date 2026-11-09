@@ -240,7 +240,10 @@ def feed_status(runs: list[dict]) -> list[dict]:
 
 def _with_titles(data_dir: str, rows: list[dict]) -> list[dict]:
     """Add each row's feed title and release date (keyed by its "episode" name)."""
-    from skipcastify.services.labeling import episode_titles, release_dates  # labeling imports this module
+    from skipcastify.services.labeling import (  # labeling imports this module
+        episode_titles,
+        release_dates,
+    )
     titles, released = episode_titles(data_dir), release_dates(data_dir)
     return [{**r, "title": titles.get(r["episode"]), "released": released.get(r["episode"])} for r in rows]
 

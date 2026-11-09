@@ -13,9 +13,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from skipcastify.services.publish_manifest import PublishManifest
+from skipcastify.services.publisher import (
+    CACHE_FEED,
+    CACHE_IMMUTABLE,
+    GB,
+    R2Publisher,
+    feed_fingerprint,
+)
 from skipcastify.services.r2_breaker import R2Breaker
-from skipcastify.services.publisher import (CACHE_FEED, CACHE_IMMUTABLE, GB,
-                                            R2Publisher, feed_fingerprint)
 from skipcastify.services.r2_client import redact_key
 
 SECRET = "test-secret-segment"

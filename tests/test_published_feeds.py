@@ -5,8 +5,7 @@ which is a question about the publish manifest, not about HTTP.
 """
 
 from skipcastify.services.publish_manifest import PublishManifest
-from skipcastify.services.published_feeds import (overcast_add_url,
-                                                  published_feeds)
+from skipcastify.services.published_feeds import overcast_add_url, published_feeds
 
 SECRET = "path-secret-value-abcdef123456"
 

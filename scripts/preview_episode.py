@@ -17,15 +17,18 @@ Output:
 """
 import sys
 from pathlib import Path
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import logging
+
 from skipcastify.services.audio_processor import AudioProcessor, Segment
 from skipcastify.services.transcript_cache import TranscriptCache
-import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

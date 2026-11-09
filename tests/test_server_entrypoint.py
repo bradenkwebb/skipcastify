@@ -20,7 +20,7 @@ os.environ.update({
     'DATA_DIR': '',
 })
 
-import server as server_module                    # noqa: E402
+import server as server_module  # noqa: E402
 
 UNIT = Path(__file__).resolve().parents[1] / "systemd" / "skipcastify-server.service"
 

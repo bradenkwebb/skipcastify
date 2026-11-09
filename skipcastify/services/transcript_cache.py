@@ -8,9 +8,9 @@ significantly speeding up iteration during development.
 import hashlib
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
-from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 

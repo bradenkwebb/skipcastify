@@ -9,8 +9,8 @@ import logging
 import re
 from dataclasses import dataclass
 from typing import List
-from skipcastify.models.content import ContentType
 
+from skipcastify.models.content import ContentType
 
 logger = logging.getLogger(__name__)
 

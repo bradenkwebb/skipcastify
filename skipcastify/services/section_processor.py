@@ -5,10 +5,10 @@ Section processing utilities:
 - Helpers to format a section as a time-coded transcript string for the LLM prompt
 """
 
+import logging
+import re
 from dataclasses import dataclass
 from typing import List
-import re
-import logging
 
 logger = logging.getLogger(__name__)
 

@@ -21,7 +21,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------

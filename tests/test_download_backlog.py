@@ -19,7 +19,6 @@ from skipcastify.services.download_episode import (
     EpisodeDownloader,
 )
 
-
 # A fixed clock, so "how old is this episode" is deterministic.
 NOW = calendar.timegm((2026, 11, 5, 12, 0, 0, 0, 0, 0))
 
