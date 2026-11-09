@@ -10,7 +10,6 @@ snapshot at temperature 0, so a sequential A/B measures the clock as much as
 the prompt — on 2026-11-05 it reversed the sign of two findings.
 """
 
-import pytest
 from dotenv import load_dotenv
 
 load_dotenv()

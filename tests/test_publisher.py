@@ -5,7 +5,6 @@ collaborator, so a recording fake stands in for it and every assertion is
 about which operations we would have performed.
 """
 
-import json
 import os
 import time
 from pathlib import Path

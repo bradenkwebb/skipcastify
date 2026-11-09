@@ -166,7 +166,88 @@ class TestWhyTheHeuristicCannotRunUnsupervised:
         "the offer on the table was never serious",
     ])
     def test_ordinary_conversation_trips_the_ad_keywords(self, text):
-        content_type, _ = SegmentClassifier(use_ollama=False)._classify_single_segment(text)
+        content_type, _ = SegmentClassifier()._classify_single_segment(text)
         assert content_type in AD_TYPES, (
             "this test documents a known weakness; if the heuristic improved, "
             "update the module docstring too")
+
+
+def _preview(tmp_path, segments, *, cached, llm_spans=None, llm_raises=False):
+    """Run one of the two preview paths with the heavy stages mocked.
+
+    Returns (aggregated_segments_handed_to_the_stitcher, result_dict).
+    """
+    data_dir = tmp_path / "data"
+    raw_dir = data_dir / "podcasts" / "raw" / "test-feed"
+    raw_dir.mkdir(parents=True)
+    episode_path = raw_dir / "test-feed-some_episode.mp3"
+    episode_path.write_bytes(b"not really mp3")
+    preview_path = data_dir / "podcasts" / "processed_preview" / "test-feed-some_episode_preview.mp3"
+
+    audio = MagicMock(); audio.duration_seconds = 2600.0
+    processed = MagicMock(); processed.duration_seconds = 2600.0
+    captured = []
+
+    def fake_stitch(self, audio, aggregated_segments):
+        captured.extend(aggregated_segments)
+        return processed
+
+    llm = (patch.object(AudioProcessor, "_run_section_llm",
+                        side_effect=RuntimeError("all 6 LLM section calls failed"))
+           if llm_raises else
+           patch.object(AudioProcessor, "_run_section_llm", return_value=llm_spans or []))
+
+    processor = AudioProcessor(str(data_dir))
+    with patch.object(AudioProcessor, "load_and_validate_audio_file", return_value=audio), \
+         patch.object(AudioProcessor, "_export_audio_to_wav"), \
+         patch.object(AudioProcessor, "transcribe_with_whisper", return_value=segments), \
+         llm, \
+         patch.object(AudioProcessor, "cut_and_stitch_audio", fake_stitch), \
+         patch("skipcastify.services.audio_processor._source_bitrate", return_value="128k"), \
+         patch("skipcastify.services.audio_processor.metrics.log_event"):
+        if cached:
+            result = processor.process_preview_with_segments(
+                str(episode_path), str(preview_path), segments)
+        else:
+            result = processor.process_preview(str(episode_path), str(preview_path))
+
+    return captured, result
+
+
+@pytest.mark.parametrize("cached", [False, True],
+                         ids=["process_preview", "process_preview_with_segments"])
+class TestThePreviewPathsAgreeWithProduction:
+    """Both preview paths carried the `if final_spans:` bug after process() was
+    fixed. The preview is what a human reviews before trusting a cut, and its
+    <episode>_predictions.json is what scripts/evaluate_ad_detection.py scores
+    against hand labels — so an ad-free episode scored the keyword matcher.
+    """
+
+    def test_an_ad_free_episode_keeps_the_garbled_ad_mention(self, tmp_path, cached):
+        aggregated, _ = _preview(tmp_path, _REAL_SEGMENTS, cached=cached, llm_spans=[])
+        cut = [s for s in aggregated if s.content_type in AD_TYPES]
+        assert cut == [], (
+            "the LLM returned no spans, so the preview should cut nothing; instead "
+            f"the keyword heuristic marked {[(s.start, s.end) for s in cut]}")
+
+    def test_predictions_are_not_polluted_by_the_heuristic(self, tmp_path, cached):
+        """What eval scores must be the detector's answer, not a keyword hit."""
+        _, result = _preview(tmp_path, _REAL_SEGMENTS, cached=cached, llm_spans=[])
+        assert result["ad_spans"] == [], (
+            "predictions.json would record heuristic spans for an episode the "
+            f"LLM declared ad-free: {result['ad_spans']}")
+
+    def test_spans_the_llm_does_return_are_still_cut(self, tmp_path, cached):
+        aggregated, result = _preview(
+            tmp_path, _REAL_SEGMENTS, cached=cached,
+            llm_spans=[{"start_ms": 2_520_000, "end_ms": 2_526_000,
+                        "label": "ADVERTISEMENT", "rationale": "x"}])
+        cut = [s for s in aggregated if s.content_type in AD_TYPES]
+        assert cut, "an LLM-identified span was not cut in the preview"
+        assert cut[0].start == 2_520_000
+        assert result["ad_spans"][0]["start_ms"] == 2_520_000
+
+    def test_an_llm_failure_still_falls_back_to_the_heuristic(self, tmp_path, cached):
+        aggregated, _ = _preview(tmp_path, _REAL_SEGMENTS, cached=cached, llm_raises=True)
+        cut = [s for s in aggregated if s.content_type in AD_TYPES]
+        assert cut, "an LLM outage should still fall back to keyword classification"

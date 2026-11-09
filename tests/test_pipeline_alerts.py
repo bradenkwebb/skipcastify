@@ -4,7 +4,6 @@ No network: the pipeline's collaborators are replaced after construction, and
 the alerter's notifier is a recording fake.
 """
 
-import time
 
 import pytest
 

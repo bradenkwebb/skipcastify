@@ -47,7 +47,7 @@ from skipcastify.services.publish_manifest import PublishManifest
 from skipcastify.services.r2_breaker import R2Breaker
 from skipcastify.services.r2_client import (CACHE_FEED, CACHE_IMMUTABLE,
                                             CREDENTIAL_ERROR_CODES, R2Client,
-                                            content_type_for, error_code,
+                                            error_code,
                                             redact_key)
 from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.notify import notify as ntfy_notify

@@ -1,14 +1,10 @@
 from pydub import AudioSegment
-import sys
 import logging
 import os
-import subprocess
-import datetime
 import json
 import time
 import numpy as np
 from faster_whisper import WhisperModel, decode_audio
-from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -351,7 +347,7 @@ class AudioProcessor:
             llm_ad_spans = stage1_spans
 
             # Mark segments based on LLM results or heuristic fallback
-            classifier = SegmentClassifier(use_ollama=False)
+            classifier = SegmentClassifier()
             if llm_answered:
                 # An empty span list is a real answer: no ads. Only an LLM
                 # that never answered hands over to the keyword heuristic.
@@ -800,11 +796,13 @@ class AudioProcessor:
         episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
 
         # Stage 1: LLM span identification
+        llm_answered = True
         try:
             stage1_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name)
         except Exception as e:
             logger.warning(f"Preview stage-1 LLM failed: {e}")
             stage1_spans = []
+            llm_answered = False
 
         # Stage 1b: code-level post-processing
         postprocessed_spans = span_postprocess.postprocess_spans(stage1_spans, segments) if stage1_spans else stage1_spans
@@ -822,8 +820,10 @@ class AudioProcessor:
 
         final_spans = refined_spans if refined_spans is not None else postprocessed_spans
 
-        if final_spans:
-            logger.info(f"Using {len(final_spans)} spans for preview audio cut.")
+        # An empty span list is a real answer: no ads. Only an LLM that never
+        # answered hands over to the keyword heuristic.
+        if llm_answered:
+            logger.info(f"Using {len(final_spans)} LLM spans for preview audio cut.")
             classified_segments = []
             for seg in segments:
                 is_ad = False
@@ -842,10 +842,10 @@ class AudioProcessor:
                     classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
         else:
             logger.info("Using heuristic classifier as fallback for preview...")
-            classifier = SegmentClassifier(use_ollama=False)
+            classifier = SegmentClassifier()
             classified_segments = classifier.classify_segments(segments)
 
-        classifier = SegmentClassifier(use_ollama=False)
+        classifier = SegmentClassifier()
         aggregated_segments = classifier.aggregate_segments(classified_segments)
         preview_audio = self.cut_and_stitch_audio(audio, aggregated_segments)
 
@@ -859,7 +859,7 @@ class AudioProcessor:
 
         preview_dir = os.path.dirname(preview_output_path)
         predictions_path = os.path.join(preview_dir, f"{episode_name}_predictions.json")
-        predictions_to_save = final_spans if final_spans else self._aggregated_segments_to_ad_spans(aggregated_segments)
+        predictions_to_save = final_spans if llm_answered else self._aggregated_segments_to_ad_spans(aggregated_segments)
         try:
             with open(predictions_path, 'w', encoding='utf-8') as f:
                 json.dump({"predictions": predictions_to_save}, f, indent=2, ensure_ascii=False)
@@ -897,17 +897,18 @@ class AudioProcessor:
 
         audio = self.load_and_validate_audio_file(episode_file_path)
         episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
-        working_dir = self._get_episode_working_dir(episode_file_path)
         transcripts_dir = self._get_episode_transcripts_dir(episode_file_path)
 
         logger.info(f"Using {len(segments)} cached segments (skipping transcription)")
 
         # Stage 1: LLM span identification
+        llm_answered = True
         try:
             stage1_spans = self._run_section_llm(segments, transcripts_dir, episode_name=episode_name)
         except Exception as e:
             logger.warning(f"Preview stage-1 LLM failed: {e}")
             stage1_spans = []
+            llm_answered = False
 
         # Stage 1b: code-level post-processing (merge nearby, extend for CTA)
         if stage1_spans:
@@ -931,8 +932,10 @@ class AudioProcessor:
         # Use best available spans for the audio cut
         final_spans = refined_spans if refined_spans is not None else postprocessed_spans
 
-        if final_spans:
-            logger.info(f"Using {len(final_spans)} spans for preview audio cut.")
+        # An empty span list is a real answer: no ads. Only an LLM that never
+        # answered hands over to the keyword heuristic.
+        if llm_answered:
+            logger.info(f"Using {len(final_spans)} LLM spans for preview audio cut.")
             classified_segments = []
             for seg in segments:
                 is_ad = False
@@ -951,10 +954,10 @@ class AudioProcessor:
                     classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
         else:
             logger.info("Using heuristic classifier as fallback for preview...")
-            classifier = SegmentClassifier(use_ollama=False)
+            classifier = SegmentClassifier()
             classified_segments = classifier.classify_segments(segments)
 
-        classifier = SegmentClassifier(use_ollama=False)
+        classifier = SegmentClassifier()
         aggregated_segments = classifier.aggregate_segments(classified_segments)
         preview_audio = self.cut_and_stitch_audio(audio, aggregated_segments)
 
@@ -968,7 +971,7 @@ class AudioProcessor:
 
         preview_dir = os.path.dirname(preview_output_path)
         predictions_path = os.path.join(preview_dir, f"{episode_name}_predictions.json")
-        predictions_to_save = final_spans if final_spans else self._aggregated_segments_to_ad_spans(aggregated_segments)
+        predictions_to_save = final_spans if llm_answered else self._aggregated_segments_to_ad_spans(aggregated_segments)
         try:
             with open(predictions_path, 'w', encoding='utf-8') as f:
                 json.dump({"predictions": predictions_to_save}, f, indent=2, ensure_ascii=False)

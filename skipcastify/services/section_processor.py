@@ -6,8 +6,7 @@ Section processing utilities:
 """
 
 from dataclasses import dataclass
-from typing import List, Tuple
-import math
+from typing import List
 import re
 import logging
 
@@ -57,7 +56,6 @@ def make_sections_from_segments(
 
     sections: List[Section] = []
     start = 0
-    seg_count = len(segments)
 
     while start < audio_end:
         end = start + section_ms

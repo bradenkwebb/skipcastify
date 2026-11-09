@@ -1,26 +1,27 @@
 """
 Ground-truth ad detection labels for evaluation and testing.
 
-Format: YAML files with manually-labeled ad spans for episodes.
-Stored in data/labels/ground_truth/ directory.
+Format: JSON, one file per episode, under $DATA_DIR/labels/ground_truth/.
+v2 files are written by the /label web UI and carry "spans"; older files
+carry "ads". Both are read here.
 
 Example:
-    episode_name: "philosophize-this-episode_237_the_stoics_are_wrong_-_nietzsche_schopenhauer"
-    ads:
-      - start_ms: 871760
-        end_ms: 875520
-        label: "ADVERTISEMENT"
-        description: "Diet Coke ad read"
-      - start_ms: 909920
-        end_ms: 916880
-        label: "SPONSOR"
-        description: "Subaru spot"
+    {
+      "episode_name": "philosophize-this-episode_237_the_stoics_are_wrong",
+      "ads": [
+        {"start_ms": 871760, "end_ms": 875520,
+         "label": "ADVERTISEMENT", "description": "Diet Coke ad read"},
+        {"start_ms": 909920, "end_ms": 916880,
+         "label": "SPONSOR", "description": "Subaru spot"}
+      ]
+    }
 """
 
 import logging
 import os
+import os
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional
 import json
 
 logger = logging.getLogger(__name__)
@@ -63,9 +64,12 @@ class GroundTruthLabel:
 class GroundTruthStore:
     """Manages ground-truth labels for episodes."""
     
-    def __init__(self, labels_dir: str = "data/labels/ground_truth"):
-        self.labels_dir = Path(labels_dir)
-        self.labels_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, labels_dir: Optional[str] = None):
+        # Resolve the default off DATA_DIR, not the process's cwd: a script run
+        # from anywhere else silently got an empty store. Creating the
+        # directory is save_labels' job, so a reader cannot mask a wrong path.
+        self.labels_dir = Path(labels_dir) if labels_dir else (
+            Path(os.environ.get("DATA_DIR", "data")) / "labels" / "ground_truth")
     
     def get_label_path(self, episode_name: str) -> Path:
         """Get the label file path for an episode."""
@@ -106,6 +110,7 @@ class GroundTruthStore:
         """
         label_path = self.get_label_path(episode_name)
         try:
+            label_path.parent.mkdir(parents=True, exist_ok=True)
             data = {
                 'episode_name': episode_name,
                 'ads': [label.to_dict() for label in labels]

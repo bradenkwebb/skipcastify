@@ -9,14 +9,13 @@ Tracks:
 - Performance statistics and trends
 """
 
-import time
 import logging
 import json
 import os
 import psutil
 from pathlib import Path
 from dataclasses import dataclass, asdict
-from typing import Optional, List, Dict
+from typing import Optional, List
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
