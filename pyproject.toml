@@ -50,6 +50,8 @@ filterwarnings = [
 ]
 
 [tool.uv]
+# One uv everywhere (Mac, server, CI, Docker): older versions misread newer lockfiles.
+required-version = ">=0.13.7"
 # faster-whisper pulls in onnxruntime for its Silero VAD (which we don't enable).
 # onnxruntime dropped cp310 wheels in 1.24, and this box runs Python 3.10, so
 # hold it at the last version that still publishes one.
