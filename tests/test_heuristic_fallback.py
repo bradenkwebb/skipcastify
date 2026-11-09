@@ -166,7 +166,7 @@ class TestWhyTheHeuristicCannotRunUnsupervised:
         "the offer on the table was never serious",
     ])
     def test_ordinary_conversation_trips_the_ad_keywords(self, text):
-        content_type, _ = SegmentClassifier(use_ollama=False)._classify_single_segment(text)
+        content_type, _ = SegmentClassifier()._classify_single_segment(text)
         assert content_type in AD_TYPES, (
             "this test documents a known weakness; if the heuristic improved, "
             "update the module docstring too")

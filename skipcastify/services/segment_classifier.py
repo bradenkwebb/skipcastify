@@ -1,14 +1,14 @@
 """
 Segment classification service for identifying ad segments in podcast transcriptions.
 
-Uses keyword-based heuristics with optional Ollama LLM fallback for ambiguous cases.
+Keyword-based heuristics. This runs only when every LLM section call failed —
+never as a second opinion on an LLM that answered.
 """
 
 import logging
 import re
 from dataclasses import dataclass
-from typing import List, Optional
-from enum import Enum
+from typing import List
 from skipcastify.models.content import ContentType
 
 
@@ -71,33 +71,6 @@ class SegmentClassifier:
         r'\bfrom all of us\b',
     }
     
-    def __init__(self, use_ollama: bool = False, ollama_model: str = "neural-chat"):
-        """
-        Initialize the classifier.
-        
-        Args:
-            use_ollama: Whether to use Ollama for LLM-based classification
-            ollama_model: Ollama model to use (default: neural-chat)
-        """
-        self.use_ollama = use_ollama
-        self.ollama_model = ollama_model
-        
-        if self.use_ollama:
-            self._test_ollama_connection()
-    
-    def _test_ollama_connection(self) -> bool:
-        """Test if Ollama is available and responding."""
-        try:
-            import requests
-            response = requests.get("http://localhost:11434/api/tags", timeout=2)
-            if response.status_code == 200:
-                logger.info("Ollama connection successful")
-                return True
-        except Exception as e:
-            logger.warning(f"Ollama not available: {e}. Falling back to keyword-based classification.")
-            self.use_ollama = False
-        return False
-    
     def classify_segments(self, segments: List) -> List[ClassifiedSegment]:
         """
         Classify a list of transcript segments.
@@ -152,13 +125,6 @@ class SegmentClassifier:
             confidence = min(0.95, 0.75 + (ad_matches * 0.05))
             return ContentType.ADVERTISEMENT, confidence
         
-        # If Ollama is available and we're uncertain, use LLM for borderline cases
-        if self.use_ollama and len(text) > 50:  # Only for non-trivial segments
-            try:
-                return self._classify_with_ollama(text)
-            except Exception as e:
-                logger.debug(f"Ollama classification failed, falling back to CONTENT: {e}")
-        
         # Default to content
         return ContentType.CONTENT, 0.8
     
@@ -169,70 +135,6 @@ class SegmentClassifier:
             if re.search(pattern, text, re.IGNORECASE):
                 count += 1
         return count
-    
-    def _classify_with_ollama(self, text: str) -> tuple[ContentType, float]:
-        """
-        Use Ollama LLM to classify ambiguous segments.
-        
-        Returns:
-            Tuple of (ContentType, confidence_score)
-        """
-        try:
-            import requests
-            
-            prompt = f"""Classify the following podcast transcript segment as one of: INTRO, CONTENT, ADVERTISEMENT, SPONSOR, OUTRO.
-            
-Segment: "{text}"
-
-Respond with ONLY the classification (one word) and a confidence score (0.0-1.0) separated by a colon.
-Example: CONTENT:0.95
-
-Classification:"""
-            
-            response = requests.post(
-                "http://localhost:11434/api/generate",
-                json={
-                    "model": self.ollama_model,
-                    "prompt": prompt,
-                    "stream": False,
-                    "temperature": 0.3,  # Lower temperature for more deterministic classification
-                },
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                result = response.json()["response"].strip().upper()
-                
-                # Parse response (e.g., "CONTENT:0.95")
-                if ":" in result:
-                    parts = result.split(":")
-                    classification = parts[0].strip()
-                    try:
-                        confidence = float(parts[1].strip())
-                    except (ValueError, IndexError):
-                        confidence = 0.7
-                else:
-                    # Try to match just the word
-                    classification = result.split()[0] if result else "CONTENT"
-                    confidence = 0.7
-                
-                # Map string to ContentType
-                content_type_map = {
-                    "INTRO": ContentType.INTRO,
-                    "CONTENT": ContentType.CONTENT,
-                    "ADVERTISEMENT": ContentType.ADVERTISEMENT,
-                    "SPONSOR": ContentType.SPONSOR,
-                    "OUTRO": ContentType.OUTRO,
-                }
-                
-                content_type = content_type_map.get(classification, ContentType.CONTENT)
-                logger.debug(f"Ollama classified: {classification} (confidence: {confidence:.2f})")
-                return content_type, confidence
-        
-        except Exception as e:
-            logger.warning(f"Ollama classification error: {e}")
-        
-        return ContentType.CONTENT, 0.5
     
     def aggregate_segments(
         self, 

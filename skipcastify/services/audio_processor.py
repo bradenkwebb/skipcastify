@@ -324,7 +324,7 @@ class AudioProcessor:
             llm_ad_spans = stage1_spans
 
             # Mark segments based on LLM results or heuristic fallback
-            classifier = SegmentClassifier(use_ollama=False)
+            classifier = SegmentClassifier()
             if llm_answered:
                 # An empty span list is a real answer: no ads. Only an LLM
                 # that never answered hands over to the keyword heuristic.
@@ -817,10 +817,10 @@ class AudioProcessor:
                     classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
         else:
             logger.info("Using heuristic classifier as fallback for preview...")
-            classifier = SegmentClassifier(use_ollama=False)
+            classifier = SegmentClassifier()
             classified_segments = classifier.classify_segments(segments)
 
-        classifier = SegmentClassifier(use_ollama=False)
+        classifier = SegmentClassifier()
         aggregated_segments = classifier.aggregate_segments(classified_segments)
         preview_audio = self.cut_and_stitch_audio(audio, aggregated_segments)
 
@@ -930,10 +930,10 @@ class AudioProcessor:
                     classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
         else:
             logger.info("Using heuristic classifier as fallback for preview...")
-            classifier = SegmentClassifier(use_ollama=False)
+            classifier = SegmentClassifier()
             classified_segments = classifier.classify_segments(segments)
 
-        classifier = SegmentClassifier(use_ollama=False)
+        classifier = SegmentClassifier()
         aggregated_segments = classifier.aggregate_segments(classified_segments)
         preview_audio = self.cut_and_stitch_audio(audio, aggregated_segments)
 
