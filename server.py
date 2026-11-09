@@ -20,6 +20,7 @@ from flask import (
 from skipcastify.services import analytics, feed_meta, labeling
 from skipcastify.services.episode_detail import episode_detail
 from skipcastify.services.published_feeds import published_feeds
+from skipcastify.services.artwork_thumbs import thumbnail
 from skipcastify.utils.alerts import scrub_secrets
 
 load_dotenv()
@@ -140,6 +141,17 @@ def serve_feed(podcast_name):
     return send_from_directory(path, filename)
 
 
+@app.route('/feeds/art/<slug>.jpg')
+@require_auth
+def feed_art(slug):
+    path = thumbnail(data_dir, slug) if labeling.valid_name(slug) else None
+    if path is None:
+        return abort(404)
+    resp = send_from_directory(path.parent, path.name)
+    resp.headers['Cache-Control'] = 'private, max-age=86400'
+    return resp
+
+
 @app.route('/artwork/<token>/<path:filename>')
 def serve_artwork(token, filename):
     if token != _episode_token:
@@ -219,7 +231,7 @@ def feeds_page():
     resp.headers['Cache-Control'] = 'no-store'
     resp.headers['Referrer-Policy'] = 'no-referrer'
     resp.headers['Content-Security-Policy'] = (
-        "default-src 'none'; style-src 'unsafe-inline'; "
+        "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; "
         "script-src 'unsafe-inline'; form-action 'none'; base-uri 'none'"
     )
     return resp
