@@ -23,7 +23,7 @@ Everything logged here goes through redact_key().
 
 import logging
 import os
-from typing import Iterable
+from collections.abc import Iterable
 
 import boto3
 from boto3.s3.transfer import TransferConfig

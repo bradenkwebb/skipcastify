@@ -1,5 +1,4 @@
 import json
-
 import time
 
 import pytest
@@ -66,7 +65,7 @@ def downloader(tmp_path, monkeypatch):
 def test_download_latest_reports_per_feed_status(downloader, monkeypatch):
     entries = [_E(_entry(i)) for i in range(3)]
     monkeypatch.setattr("skipcastify.services.download_episode.feedparser.parse",
-                        lambda url: _Feed("My Show", entries))
+                        lambda url, **kw: _Feed("My Show", entries))
     assert downloader.download_latest() == [{"feed": "my-show", "status": "baselined"}]
     assert downloader.download_latest() == [{"feed": "my-show", "status": "up_to_date"}]
 
@@ -80,7 +79,7 @@ def test_download_latest_reports_per_feed_status(downloader, monkeypatch):
 
 
 def test_download_latest_reports_errors_without_the_url(downloader, monkeypatch):
-    def boom(url):
+    def boom(url, **kw):
         raise ConnectionError(url)
     monkeypatch.setattr("skipcastify.services.download_episode.feedparser.parse", boom)
     assert downloader.download_latest() == [

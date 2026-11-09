@@ -2,14 +2,13 @@
 
 import re
 from pathlib import Path
-from typing import Optional
 
 from PIL import Image
 
 SIZE = 96  # 2x a 48px icon
 
 
-def thumbnail(data_dir, slug: str) -> Optional[Path]:
+def thumbnail(data_dir, slug: str) -> Path | None:
     """The newest `<slug>-<hash>.jpg` in data/artwork, shrunk once and cached."""
     art = Path(data_dir) / "artwork"
     pattern = re.compile(rf"{re.escape(slug)}-[0-9a-f]{{8}}\.jpg")

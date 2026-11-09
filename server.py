@@ -2,15 +2,25 @@ import logging
 import os
 import time
 from functools import wraps
-from flask import (Flask, send_from_directory, abort, request, Response,
-                   jsonify, make_response, render_template, send_file, redirect)
-from dotenv import load_dotenv
 
-from skipcastify.services import analytics, labeling
-from skipcastify.services.episode_detail import episode_detail
-from skipcastify.services import feed_meta
-from skipcastify.services.published_feeds import published_feeds
+from dotenv import load_dotenv
+from flask import (
+    Flask,
+    Response,
+    abort,
+    jsonify,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    send_from_directory,
+)
+
+from skipcastify.services import analytics, feed_meta, labeling
 from skipcastify.services.artwork_thumbs import thumbnail
+from skipcastify.services.episode_detail import episode_detail
+from skipcastify.services.published_feeds import published_feeds
 from skipcastify.utils.alerts import scrub_secrets
 
 load_dotenv()
@@ -186,7 +196,7 @@ def episode_meta_json(episode):
     """Description and links from the show's live RSS feed, fetched on demand."""
     if not labeling.valid_name(episode):
         return abort(404)
-    feed = labeling._feed_for(data_dir, episode, labeling._latest_completes(data_dir))
+    feed = labeling.feed_for(data_dir, episode)
     return jsonify(feed_meta.episode_meta(data_dir, feed, episode))
 
 

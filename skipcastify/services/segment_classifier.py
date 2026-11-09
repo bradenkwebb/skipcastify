@@ -8,9 +8,8 @@ never as a second opinion on an LLM that answered.
 import logging
 import re
 from dataclasses import dataclass
-from typing import List
-from skipcastify.models.content import ContentType
 
+from skipcastify.models.content import ContentType
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ class AggregatedSegment:
     """An aggregated segment containing one or more consecutive segments of same type."""
     start: int              # milliseconds
     end: int                # milliseconds
-    text: List[str]         # List of original segment texts
+    text: list[str]         # List of original segment texts
     content_type: ContentType
     segment_count: int      # Number of original segments merged
 
@@ -71,7 +70,7 @@ class SegmentClassifier:
         r'\bfrom all of us\b',
     }
     
-    def classify_segments(self, segments: List) -> List[ClassifiedSegment]:
+    def classify_segments(self, segments: list) -> list[ClassifiedSegment]:
         """
         Classify a list of transcript segments.
         
@@ -138,9 +137,9 @@ class SegmentClassifier:
     
     def aggregate_segments(
         self,
-        classified_segments: List[ClassifiedSegment],
+        classified_segments: list[ClassifiedSegment],
         gap_threshold_ms: int = 1500,
-    ) -> List[AggregatedSegment]:
+    ) -> list[AggregatedSegment]:
         """
         Aggregate consecutive segments of the same type to reduce fragmentation.
 
@@ -166,8 +165,6 @@ class SegmentClassifier:
                 current_group['count'] += 1
                 continue
 
-            # A different type, or too long a gap: close the group and open one
-            # here. Intros and outros are preserved, never absorbed.
             if current_group is not None:
                 aggregated.append(self._create_aggregated_segment(current_group))
             current_group = {

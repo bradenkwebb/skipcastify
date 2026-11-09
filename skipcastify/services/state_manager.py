@@ -1,10 +1,8 @@
 import json
 import logging
 from pathlib import Path
-from typing import List
 
 from skipcastify.models.content import AudioSegment
-
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +37,7 @@ class StateManager:
                 logger.warning(f"Could not read process baseline: {e}")
         return set()
 
-    def get_unprocessed_episodes(self) -> List[str]:
+    def get_unprocessed_episodes(self) -> list[str]:
         """Returns episodes that need processing, excluding the backlog baseline."""
         baseline = self._load_baseline()
         episodes = []
@@ -82,7 +80,7 @@ class StateManager:
     def _key(self, episode) -> str:
         return str(Path(episode).relative_to(self.raw_dir))
 
-    def get_processed_episodes(self) -> List[str]:
+    def get_processed_episodes(self) -> list[str]:
         """Returns list of episodes that have been processed"""
         episodes = []
         for podcast_dir in self.processed_dir.iterdir():

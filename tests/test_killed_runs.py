@@ -4,7 +4,12 @@ import json
 
 import pipeline as pl
 from pipeline import report_killed_run
-from skipcastify.services.run_log import RunRecord, recent_runs, take_inflight, write_inflight
+from skipcastify.services.run_log import (
+    RunRecord,
+    recent_runs,
+    take_inflight,
+    write_inflight,
+)
 from skipcastify.utils.alerts import Alerter
 from tests.test_pipeline_alerts import sent  # noqa: F401
 

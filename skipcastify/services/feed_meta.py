@@ -9,7 +9,6 @@ import time
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Optional
 
 import requests
 
@@ -26,10 +25,10 @@ NS = {"itunes": "http://www.itunes.com/dtds/podcast-1.0.dtd",
       "content": "http://purl.org/rss/1.0/modules/content/"}
 
 
-_upstream: dict[str, tuple[float, Optional[str]]] = {}
+_upstream: dict[str, tuple[float, str | None]] = {}
 
 
-def upstream_url(data_dir, slug: str) -> Optional[str]:
+def upstream_url(data_dir, slug: str) -> str | None:
     """Our generated feed's <channel><link> is the subscription URL it was built from."""
     path = Path(data_dir) / "feeds" / f"{slug}.xml"
     try:
@@ -39,8 +38,7 @@ def upstream_url(data_dir, slug: str) -> Optional[str]:
     hit = _upstream.get(str(path))
     if hit and hit[0] == mtime:
         return hit[1]
-    # ET.parse() opens the file itself, so OSError belongs here as well as on
-    # the stat() above: a feed removed between the two must not 500 the page.
+    # ET.parse() does its own open(), so a parse failure can be an OSError.
     try:
         link = ET.parse(path).getroot().find("channel").findtext("link")
     except (ET.ParseError, AttributeError, OSError):
@@ -57,7 +55,7 @@ class _Blocks(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.blocks: list[list[dict]] = [[]]
-        self.href: Optional[str] = None
+        self.href: str | None = None
 
     def handle_starttag(self, tag, attrs):
         if tag in self.BREAKS:
@@ -114,17 +112,17 @@ def notes_blocks(html: str) -> list[list[dict]]:
     return blocks
 
 
-def _http(url) -> Optional[str]:
+def _http(url) -> str | None:
     url = (url or "").strip()
     return url if url.startswith(("http://", "https://")) else None
 
 
-def _text(el, path) -> Optional[str]:
+def _text(el, path) -> str | None:
     v = el.findtext(path, namespaces=NS)
     return v.strip() if v and v.strip() else None
 
 
-def _image(el) -> Optional[str]:
+def _image(el) -> str | None:
     img = el.find("itunes:image", NS)
     return _http(img.get("href")) if img is not None else _http(el.findtext("image/url"))
 
@@ -200,7 +198,7 @@ def show_meta(data_dir, slug: str) -> dict:
         return {"show": None, "error": f"couldn't load the show's feed ({type(e).__name__})"}
 
 
-def episode_meta(data_dir, slug: Optional[str], name: str) -> dict:
+def episode_meta(data_dir, slug: str | None, name: str) -> dict:
     """{"show": ..., "episode": ... or None, "error": ... or None}."""
     url = upstream_url(data_dir, slug) if slug else None
     if not url:

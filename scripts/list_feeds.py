@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Print Overcast-ready subscription URLs for all skipcastify-hosted feeds."""
 from dotenv import load_dotenv
+
 load_dotenv()
 
 import os
 import sys
-from urllib.parse import urlparse
-from skipcastify.utils.utils import slugify
 import xml.etree.ElementTree as ET
+from urllib.parse import urlparse
+
+from skipcastify.utils.utils import slugify
 
 server_base_url = os.environ.get("SERVER_BASE_URL", "").rstrip("/")
 feed_username = os.environ.get("FEED_USERNAME", "")
@@ -48,4 +50,4 @@ for feed_url, title in titles.items():
     overcast_url = f"{auth_base}/feeds/{slug}.xml"
     print(f"[{exists}] {title:<52} {overcast_url}")
 
-print(f"\n✓ = feed XML exists on disk   ✗ = not yet generated")
+print("\n✓ = feed XML exists on disk   ✗ = not yet generated")

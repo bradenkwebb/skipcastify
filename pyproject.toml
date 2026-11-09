@@ -29,8 +29,17 @@ dependencies = [
 dev = [
     "ipykernel>=6.29.5",
     "pytest>=8.3.5",
+    "ruff>=0.14.4",
 ]
 
+
+[tool.ruff.lint]
+select = ["F", "E9", "W605", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# Importing a fixture and then naming it as a test parameter is the pytest
+# idiom for sharing fixtures across modules; F811 reads it as a redefinition.
+"tests/*" = ["F811"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

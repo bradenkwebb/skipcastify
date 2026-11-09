@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 from dotenv import load_dotenv
 
-from tests.llm.conftest import covered, any_overlap
+from tests.llm.conftest import any_overlap, covered
 
 load_dotenv()
 pytestmark = pytest.mark.llm

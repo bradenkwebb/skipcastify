@@ -33,9 +33,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dotenv import load_dotenv  # noqa: E402
 
 from skipcastify.services import cut_policy, labeling, span_postprocess  # noqa: E402
-from skipcastify.services.llm_monitor import get_monitor  # noqa: E402
 from skipcastify.services.ad_eval import score  # noqa: E402
-from skipcastify.services.audio_processor import DEFAULT_PROMPT_PATH, AudioProcessor, Segment  # noqa: E402
+from skipcastify.services.audio_processor import (  # noqa: E402
+    DEFAULT_PROMPT_PATH,
+    AudioProcessor,
+    Segment,
+)
+from skipcastify.services.llm_monitor import get_monitor  # noqa: E402
 
 
 def reviewed_episodes(data_dir: Path, filters: list[str]) -> list[str]:
@@ -132,7 +136,7 @@ def main(argv=None) -> int:
     get_monitor().profile_dir = out / "llm_profiles"
     get_monitor().profile_dir.mkdir(exist_ok=True)
     data = {ep: load(data_dir, ep) for ep in episodes}
-    feeds = {ep: labeling._feed_for(data_dir, ep, {}) for ep in episodes}
+    feeds = {ep: labeling.feed_for(data_dir, ep, {}) for ep in episodes}
 
     rows = []
     with open(out / "results.jsonl", "w") as f:

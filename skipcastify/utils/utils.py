@@ -1,7 +1,8 @@
 import re
 import xml.etree.ElementTree as ET
-import yaml
 from urllib.parse import urlparse
+
+import yaml
 
 
 def load_subscriptions(path: str, exclude_host: str = None) -> list:
@@ -44,6 +45,7 @@ def slugify(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
 
 import unicodedata
+
 
 def safe_filename(title: str, slug: str, max_len: int = 100) -> str:
     """Generates a safe filename for an audio file based on the title and slug."""

@@ -1,18 +1,24 @@
 import logging
+import os
 import socket
 import sys
-import os
 import time
 from pathlib import Path
 from urllib.parse import urlparse
+
 from dotenv import load_dotenv
 
 from skipcastify.services.audio_processor import AudioProcessor
 from skipcastify.services.download_episode import EpisodeDownloader
-from skipcastify.services.labeling import label_path
 from skipcastify.services.generate_feeds import FeedManager
-from skipcastify.services.run_log import (RunRecord, append_run, clear_inflight,
-                                          take_inflight, write_inflight)
+from skipcastify.services.labeling import label_path
+from skipcastify.services.run_log import (
+    RunRecord,
+    append_run,
+    clear_inflight,
+    take_inflight,
+    write_inflight,
+)
 from skipcastify.services.state_manager import StateManager, uncut_marker
 from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.lock import LockHeld, pipeline_lock
@@ -262,7 +268,7 @@ def main():
         load_dotenv()
         data_dir = os.getenv("DATA_DIR")
         if not data_dir:
-            raise EnvironmentError("DATA_DIR is not defined")
+            raise OSError("DATA_DIR is not defined")
         setup_logging(data_dir)
         alerter = Alerter(data_dir)
 

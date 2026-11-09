@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 from io import BytesIO
-from typing import Optional
 
 import requests
 from PIL import Image, ImageDraw
@@ -76,7 +75,7 @@ def _add_frame(img: Image.Image, border_fraction: float = 0.06) -> Image.Image:
     return Image.alpha_composite(img, overlay).convert("RGB")
 
 
-def process_artwork(source_url: str, output_dir: str, slug: str) -> Optional[str]:
+def process_artwork(source_url: str, output_dir: str, slug: str) -> str | None:
     """Download artwork, apply gradient frame, save with a content-hash filename.
 
     Returns the filename (e.g. 'philosophize-this-a1b2c3d4.jpg') on success,

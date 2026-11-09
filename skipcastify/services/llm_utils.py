@@ -4,10 +4,10 @@ import json
 import logging
 import os
 import re
-import requests
 from dataclasses import dataclass
 from typing import Any
 
+import requests
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
@@ -106,10 +106,11 @@ def call_openai_chat(prompt: str) -> LLMResponse:
 
 def call_ollama_generate(prompt: str, model: str = DEFAULT_OLLAMA_MODEL, timeout: int = 300) -> LLMResponse:
     """Call local Ollama's generate endpoint and return an LLMResponse with token counts."""
+    # Ollama reads sampling parameters from "options" only.
     payload = {
         "model": model,
         "prompt": prompt,
-        "temperature": 0.0,
+        "options": {"temperature": 0.0},
         "stream": False,
     }
 
