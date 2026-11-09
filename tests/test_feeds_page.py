@@ -227,6 +227,7 @@ def test_artwork_is_same_origin_only(client, tmp_path):
 
 def test_artwork_thumbnail_is_small_and_needs_auth(client, tmp_path):
     from io import BytesIO
+
     from PIL import Image
     c, tmp_path = client
     write_art(tmp_path, "a-show-0123abcd.jpg")

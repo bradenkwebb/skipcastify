@@ -18,9 +18,9 @@ from flask import (
 )
 
 from skipcastify.services import analytics, feed_meta, labeling
+from skipcastify.services.artwork_thumbs import thumbnail
 from skipcastify.services.episode_detail import episode_detail
 from skipcastify.services.published_feeds import published_feeds
-from skipcastify.services.artwork_thumbs import thumbnail
 from skipcastify.utils.alerts import scrub_secrets
 
 load_dotenv()
