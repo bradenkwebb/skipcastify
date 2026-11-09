@@ -112,6 +112,12 @@ class AudioProcessor:
         logger.debug(f"Working directory: {working_dir}")
         return working_dir
 
+    def _discard_transcription_wav(self, wav_path: str) -> None:
+        try:
+            os.remove(wav_path)
+        except OSError as e:
+            logger.warning(f"Could not remove {wav_path}: {e}")
+
     def _get_episode_transcripts_dir(self, episode_file_path: str) -> str:
         """Get or create the transcripts directory for an episode."""
         episode_dir = os.path.dirname(episode_file_path)
@@ -318,7 +324,10 @@ class AudioProcessor:
                 logger.info("Starting transcription with Whisper...")
                 metrics.log_event("transcription_start", feed_slug=feed_slug, episode_name=episode_name, model="base")
                 transcription_start = time.time()
-                segments = self.transcribe_with_whisper(wav_path, model_size="base")
+                try:
+                    segments = self.transcribe_with_whisper(wav_path, model_size="base")
+                finally:
+                    self._discard_transcription_wav(wav_path)
                 transcription_duration = time.time() - transcription_start
                 metrics.log_event("transcription_end", feed_slug=feed_slug, episode_name=episode_name,
                                   model="base", duration_s=round(transcription_duration, 1),
@@ -762,7 +771,10 @@ class AudioProcessor:
         self._export_audio_to_wav(audio, wav_path)
 
         logger.info("Transcribing for preview...")
-        segments = self.transcribe_with_whisper(wav_path, model_size="base")
+        try:
+            segments = self.transcribe_with_whisper(wav_path, model_size="base")
+        finally:
+            self._discard_transcription_wav(wav_path)
 
         episode_name = os.path.splitext(os.path.basename(episode_file_path))[0]
 

@@ -16,6 +16,7 @@ Across the event log, 23 episodes since the 2026-07-01 stitcher fix lost audio
 this way with span_count 0 — 9.3 minutes in total.
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -251,3 +252,36 @@ class TestThePreviewPathsAgreeWithProduction:
         aggregated, _ = _preview(tmp_path, _REAL_SEGMENTS, cached=cached, llm_raises=True)
         cut = [s for s in aggregated if s.content_type in AD_TYPES]
         assert cut, "an LLM outage should still fall back to keyword classification"
+
+
+def test_the_transcription_wav_does_not_outlive_the_run(tmp_path):
+    """Whisper reads a file, so the audio is exported first — and the export is
+    several hundred MB that pipeline._audio_size never counts, because it sums
+    *.mp3 only. Leaving it behind hides disk from the storage budget."""
+    data_dir = tmp_path / "data"
+    raw_dir = data_dir / "podcasts" / "raw" / "test-feed"
+    raw_dir.mkdir(parents=True)
+    episode_path = raw_dir / "test-feed-some_episode.mp3"
+    episode_path.write_bytes(b"not really mp3")
+
+    audio = MagicMock(); audio.duration_seconds = 2600.0
+    seen = []
+
+    def fake_export(self, audio, output_path):
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(output_path).write_bytes(b"RIFF" + b"\0" * 1024)
+        seen.append(output_path)
+
+    processor = AudioProcessor(str(data_dir))
+    with patch.object(AudioProcessor, "load_and_validate_audio_file", return_value=audio), \
+         patch.object(AudioProcessor, "_export_audio_to_wav", fake_export), \
+         patch.object(AudioProcessor, "transcribe_with_whisper", return_value=_REAL_SEGMENTS), \
+         patch.object(AudioProcessor, "_run_section_llm", return_value=[]), \
+         patch.object(AudioProcessor, "cut_and_stitch_audio", lambda self, a, b: audio), \
+         patch("skipcastify.services.audio_processor._source_bitrate", return_value="128k"), \
+         patch("skipcastify.services.audio_processor.metrics.log_event"):
+        processor.process(str(episode_path), state_manager=MagicMock())
+
+    assert seen, "no WAV was exported, so this test is no longer checking anything"
+    leftover = list((data_dir / "podcasts" / "raw").rglob("*.wav"))
+    assert leftover == [], f"transcription WAV left on disk: {leftover}"
