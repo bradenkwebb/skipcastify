@@ -24,8 +24,11 @@
   .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
+  /* Grid items default to min-width: auto and grow to their widest content. */
+  .grid2 > * { min-width: 0; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  select { max-width: 100%; }  /* a <select> is as wide as its longest option */
   button, select { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
     border-radius: 7px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
   button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
@@ -49,12 +52,21 @@
   .dayeps a { color: var(--fg); } .dayeps a:hover { color: var(--accent); }
   .track { position: relative; height: 20px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
   .track .sp { position: absolute; top: 0; bottom: 0; background: var(--ad); opacity: .85; }
+  /* Hand-reviewed episodes: cuts compared with the labels. */
+  .track { border-left: 3px solid transparent; }  /* every row, so they stay aligned */
+  .track.reviewed { border-left-color: var(--ok); }
+  .track .sp.missed { background: transparent; border: 1.5px dashed var(--ad); opacity: 1; }
+  .track .sp.extra { background: var(--warn); }
+  .siglegend { font-size: 12px; color: var(--muted); margin: 6px 0 2px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .siglegend i { display: inline-block; width: 12px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
   .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
   .err { color: var(--ad); }
   .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .tbl th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--line); }
   .tbl td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   .tbl tr:last-child td { border-bottom: 0; }
+  .tbl td.notes { overflow-wrap: anywhere; }  /* long episode slugs in run notes */
+  @media (max-width: 520px) { .tbl .wide-only { display: none; } }
   .scroll { overflow-x: auto; }
   /* One line per episode: titles truncate instead of wrapping. */
   .tbl.eps td { white-space: nowrap; }
@@ -285,12 +297,24 @@ function renderSignature() {
   const list = document.getElementById('sigList');
   if (!feed) { list.innerHTML = ''; return; }
   renderSigShow(slug, feed);
-  list.innerHTML = feed.episodes.map(ep => {
-    const about = epTooltip(ep), durS = ep.duration_min * 60;
-    const spans = ep.spans.map(s =>
-      `<div class="sp" title="${esc(`Ad ${clock(s.start * durS)}–${clock(s.end * durS)} (${clock((s.end - s.start) * durS)})\n\n${about}`)}"
-            style="left:${s.start*100}%;width:${Math.max((s.end-s.start)*100,0.4)}%"></div>`).join('');
-    return `<a class="track" href="${epUrl(ep.episode)}" title="${esc(about)}">${spans}</a>`;
+  const anyReviewed = feed.episodes.some(ep => ep.reviewed);
+  const legend = anyReviewed ? `<div class="siglegend">` +
+    `<span><i style="background:var(--ad)"></i>ad, cut</span>` +
+    `<span><i style="border:1.5px dashed var(--ad)"></i>ad, missed</span>` +
+    `<span><i style="background:var(--warn)"></i>cut, not an ad</span>` +
+    `<span><i style="border-left:3px solid var(--ok);background:var(--panel2)"></i>hand-reviewed</span></div>` : '';
+  const block = (s, cls, what, durS, about) =>
+    `<div class="sp${cls ? ' ' + cls : ''}" title="${esc(`${what} ${clock(s.start * durS)}–${clock(s.end * durS)} (${clock((s.end - s.start) * durS)})\n\n${about}`)}"
+          style="left:${s.start*100}%;width:${Math.max((s.end-s.start)*100,0.4)}%"></div>`;
+  list.innerHTML = legend + feed.episodes.map(ep => {
+    const durS = ep.duration_min * 60;
+    const about = epTooltip(ep) + (ep.reviewed ? '\nHand-reviewed' : '');
+    const spans = ep.reviewed
+      ? ep.review.hit.map(s => block(s, '', 'Ad, cut', durS, about)).join('') +
+        ep.review.missed.map(s => block(s, 'missed', 'Ad, missed (not cut)', durS, about)).join('') +
+        ep.review.extra.map(s => block(s, 'extra', 'Cut, but not an ad', durS, about)).join('')
+      : ep.spans.map(s => block(s, '', 'Ad', durS, about)).join('');
+    return `<a class="track${ep.reviewed ? ' reviewed' : ''}" href="${epUrl(ep.episode)}" title="${esc(about)}">${spans}</a>`;
   }).join('');
 }
 
@@ -379,10 +403,10 @@ function renderPipeline() {
   const rows = DATA.feed_status.map(f => {
     const [, cls] = STATUS[f.status] || ['', ''];
     return `<tr><td>${esc(f.feed_slug)}</td><td class="${cls}">${esc(feedText(f))}</td>` +
-      `<td>${ago(f.checked)}</td><td>${ago(f.last_download)}</td></tr>`;
+      `<td class="wide-only">${ago(f.checked)}</td><td>${ago(f.last_download)}</td></tr>`;
   }).join('');
   document.getElementById('feedStatus').innerHTML = rows ?
-    `<table class="tbl"><tr><th>Feed</th><th>Last check</th><th>Checked</th><th>Last download</th></tr>${rows}</table>` : '';
+    `<table class="tbl"><tr><th>Feed</th><th>Last check</th><th class="wide-only">Checked</th><th>Last download</th></tr>${rows}</table>` : '';
 }
 
 function renderRuns() {
@@ -396,7 +420,7 @@ function renderRuns() {
     if (r.outcome === 'skipped') parts.push('another run was in progress');
     if (r.stage) parts.push(`failed in ${esc(r.stage)} (${esc(r.error)})${r.episode ? ' on ' + esc(r.episode) : ''}`);
     return `<tr><td title="${esc(r.started)}">${ago(r.started)}</td><td class="${cls}">${esc(r.outcome)}</td>` +
-      `<td>${r.duration_s}s</td><td>${parts.join('<br>') || '<span class="muted">nothing new</span>'}</td></tr>`;
+      `<td>${r.duration_s}s</td><td class="notes">${parts.join('<br>') || '<span class="muted">nothing new</span>'}</td></tr>`;
   }).join('');
   document.getElementById('runs').innerHTML = rows ?
     `<table class="tbl"><tr><th>When</th><th>Outcome</th><th>Took</th><th>What happened</th></tr>${rows}</table>` :
@@ -407,13 +431,13 @@ let showAllEps = false;
 function renderEpisodes() {
   const all = DATA.recent_episodes, shown = showAllEps ? all : all.slice(0, 8);
   const rows = shown.map(e =>
-    `<tr><td title="${esc(e.ts)}">${ago(e.ts)}</td><td class="feed" title="${esc(e.feed_slug)}">${esc(e.feed_slug)}</td>` +
+    `<tr><td title="${esc(e.ts)}">${ago(e.ts)}</td><td class="feed wide-only" title="${esc(e.feed_slug)}">${esc(e.feed_slug)}</td>` +
     `<td class="ep" title="${esc(e.title || e.episode)}"><a href="${epUrl(e.episode)}">${esc(e.title || e.episode.replace(e.feed_slug + '-', ''))}</a></td>` +
-    `<td>${e.duration_min}m</td><td>${e.ad_minutes}m (${e.ad_pct}%)</td></tr>`).join('');
+    `<td class="wide-only">${e.duration_min}m</td><td>${e.ad_minutes}m (${e.ad_pct}%)</td></tr>`).join('');
   const more = all.length > 8
     ? `<button style="margin-top:10px" onclick="showAllEps=!showAllEps;renderEpisodes()">${showAllEps ? 'Show fewer' : `Show ${all.length - 8} more`}</button>` : '';
   document.getElementById('episodes').innerHTML = rows ?
-    `<table class="tbl eps"><tr><th>When</th><th>Feed</th><th>Episode</th><th>Length</th><th>Ads cut</th></tr>${rows}</table>${more}` :
+    `<table class="tbl eps"><tr><th>When</th><th class="wide-only">Feed</th><th>Episode</th><th class="wide-only">Length</th><th>Ads cut</th></tr>${rows}</table>${more}` :
     '<span class="muted">No episodes processed yet.</span>';
 }
 
