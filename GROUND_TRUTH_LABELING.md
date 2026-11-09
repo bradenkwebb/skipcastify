@@ -73,6 +73,44 @@ To force re-transcription:
 python scripts/preview_episode.py <episode> --force-transcribe
 ```
 
+## Derived labels, for feeds that insert ads server-side
+
+Hand labels decay on a feed with dynamic ad insertion: the ads are stitched in
+per request, so labels timed to one download are wrong for the next. For those
+feeds you can derive exact labels instead of annotating.
+
+```bash
+uv run python scripts/dai_ground_truth.py --feed the-ezra-klein-show --limit 3
+uv run python scripts/dai_ground_truth.py --feed odd-lots --dry-run
+```
+
+The script fetches a second rendering of an episode already on disk, aligns the
+two at the MP3 frame level, and writes the difference as labels. Insertion does
+not re-encode the episode, so the renderings share their content frames exactly
+and the ads are recoverable to about 26ms. It makes no LLM calls and no
+transcription, so a labelled episode costs one download.
+
+**The labels cover inserted ads only.** A sponsor the host reads aloud is part
+of the master and appears in both renderings, so it is in neither the diff nor
+the labels. They are written with `"source": "dai_diff"`, and `eval_ads.py`
+reports them in their own group for that reason: averaged in with hand labels, a
+recall figure would describe neither set.
+
+Three outcomes other than success, all of them useful:
+
+- *renderings are identical* — the feed inserts nothing, so it needs hand
+  labels. Mormon Stories and the Dwarkesh Podcast are both like this.
+- *below the match floor* — the host re-encodes on insertion rather than
+  stitching frames, or the episode on disk predates a re-encode of the master.
+  Recent episodes are the ones that align.
+- *truncated reference* — the second rendering came back short, which would
+  otherwise align as a prefix and read the missing tail as a single ad.
+
+Feeds vary in how they insert. Some leave the slot empty and add to it; others
+leave a fixed-length house spot and swap a paid ad in, so the reference is not
+necessarily ad-free. Either way the labels mark what the episode on disk carries
+and the reference does not.
+
 ## File Locations
 
 ```
