@@ -55,3 +55,5 @@ filterwarnings = [
 [tool.uv]
 # One uv everywhere (Mac, server, CI, Docker): older versions misread newer lockfiles.
 required-version = ">=0.13.7"
+# faster-whisper 1.2.1 calls av.open(metadata_errors=...), which PyAV 19 removed.
+constraint-dependencies = ["av<19"]
