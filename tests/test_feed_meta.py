@@ -119,9 +119,9 @@ def test_signatures_carry_titles_dates_and_cut_time(client, monkeypatch):  # noq
 def test_a_feed_that_vanishes_mid_read_is_soft(client, monkeypatch):  # noqa: F811
     """stat() succeeding does not promise parse() can open the file.
 
-    Cleanup can unlink a generated feed between the two, and upstream_url is
-    called outside episode_meta's try, so an OSError there reached the route
-    as a 500 instead of the "no upstream feed known" answer.
+    Cleanup can unlink a generated feed between the two calls, and
+    episode_meta calls upstream_url outside its own try, so an OSError there
+    reaches the route as a 500 rather than the soft "no upstream feed" answer.
     """
     c, tmp = client
     setup(tmp, monkeypatch)
@@ -138,8 +138,7 @@ def test_a_feed_that_vanishes_mid_read_is_soft(client, monkeypatch):  # noqa: F8
     assert r.status_code == 200
     assert r.get_json()['error'] == 'no upstream feed known for this show'
 
-    # A feed path that is not a readable file at all (EACCES, a stray
-    # directory) takes the same route.
+    # A feed path that is not a readable file at all: EACCES, a stray directory.
     monkeypatch.setattr(feed_meta.ET, 'parse', real_parse)
     feed_meta._upstream.clear()
     (tmp / 'feeds' / 'mypodcast.xml').unlink()

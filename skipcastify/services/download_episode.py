@@ -42,6 +42,38 @@ class EpisodeDownloader:
         with open(self._seen_path(), "w") as f:
             json.dump({k: sorted(v) for k, v in seen.items()}, f, indent=2)
 
+    def _feed_cache_path(self) -> Path:
+        return Path(self.data_dir) / "feed_cache.json"
+
+    def _load_feed_cache(self) -> dict[str, dict]:
+        path = self._feed_cache_path()
+        if path.exists():
+            try:
+                with open(path) as f:
+                    return json.load(f)
+            except (OSError, ValueError) as e:
+                logger.warning(f"Ignoring unreadable feed cache: {e}")
+        return {}
+
+    def _save_feed_cache(self, cache: dict[str, dict]) -> None:
+        try:
+            with open(self._feed_cache_path(), "w") as f:
+                json.dump(cache, f, indent=2)
+        except OSError as e:
+            logger.warning(f"Could not save feed cache: {e}")
+
+    def _remember_feed(self, cache: dict, url: str, slug: str, feed,
+                       fully_handled: bool) -> None:
+        """A 304 skips the feed entirely, so the validators are only safe to
+        store once no episode is still waiting to be downloaded."""
+        entry = {"slug": slug}
+        if fully_handled:
+            for key in ("etag", "modified"):
+                value = getattr(feed, key, None)
+                if value:
+                    entry[key] = value
+        cache[url] = entry
+
     def _safe_entry_id(self, entry) -> str | None:
         """_entry_id, or None for an entry we cannot identify at all."""
         try:
@@ -134,11 +166,21 @@ class EpisodeDownloader:
         """Returns one {feed, status, ...} per subscription for the run log."""
         now = now if now is not None else time.time()
         seen = self._load_seen()
+        cache = self._load_feed_cache()
         results = []
 
         for subscription_url in self.subscription_urls:
+            cached = cache.get(subscription_url) or {}
             try:
-                feed = feedparser.parse(subscription_url)
+                feed = feedparser.parse(subscription_url,
+                                        etag=cached.get("etag"),
+                                        modified=cached.get("modified"))
+                if getattr(feed, "status", None) == 304:
+                    # A 304 carries no body, so feed.entries is empty.
+                    logger.info(f"Unchanged since last run: {cached.get('slug') or subscription_url}")
+                    results.append({"feed": cached.get("slug"), "status": "up_to_date",
+                                    "not_modified": True})
+                    continue
                 podcast_title = feed.feed.title
             except Exception as e:
                 logger.warning(f"Skipping feed {subscription_url}: {e}")
@@ -158,6 +200,7 @@ class EpisodeDownloader:
                         logger.warning(f"Could not derive ID for entry in '{podcast_title}': {e}")
                 seen[subscription_url] = feed_seen
                 logger.info(f"New feed '{podcast_title}': marked {len(feed_seen)} existing episodes as seen, will download future episodes only")
+                self._remember_feed(cache, subscription_url, slug, feed, True)
                 results.append({"feed": slug, "status": "baselined"})
                 continue
 
@@ -200,6 +243,7 @@ class EpisodeDownloader:
                     f"match what we have seen, so they were all marked seen and "
                     f"none downloaded. If this was not a feed migration, episodes "
                     f"have been skipped.", priority="high")
+                self._remember_feed(cache, subscription_url, slug, feed, True)
                 results.append({"feed": slug, "status": "rebaselined"})
                 continue
 
@@ -242,6 +286,8 @@ class EpisodeDownloader:
                     failed += 1
 
             seen[subscription_url] = feed_seen
+            self._remember_feed(cache, subscription_url, slug, feed,
+                                failed == 0 and len(fresh) <= self.episode_limit)
             if new_entries:
                 results.append({"feed": slug, "status": "downloaded",
                                 "downloaded": downloaded, "failed": failed})
@@ -253,5 +299,6 @@ class EpisodeDownloader:
                 results.append({"feed": slug, "status": "up_to_date"})
 
         self._save_seen(seen)
+        self._save_feed_cache(cache)
         return results
 

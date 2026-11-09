@@ -127,7 +127,7 @@ def main():
     
     # Evaluate
     print(f"\n{'='*100}")
-    print(f"EVALUATION")
+    print("EVALUATION")
     print(f"{'='*100}\n")
     
     metrics = evaluate_predictions(labels, predictions, overlap_threshold_ms=1000)

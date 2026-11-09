@@ -132,7 +132,7 @@ def main(argv=None) -> int:
     get_monitor().profile_dir = out / "llm_profiles"
     get_monitor().profile_dir.mkdir(exist_ok=True)
     data = {ep: load(data_dir, ep) for ep in episodes}
-    feeds = {ep: labeling._feed_for(data_dir, ep, {}) for ep in episodes}
+    feeds = {ep: labeling.feed_for(data_dir, ep, {}) for ep in episodes}
 
     rows = []
     with open(out / "results.jsonl", "w") as f:

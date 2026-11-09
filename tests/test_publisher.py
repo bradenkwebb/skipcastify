@@ -712,7 +712,6 @@ def test_an_unreachable_bucket_alerts_once_not_every_15_minutes(tmp_path, alerts
 
 def test_one_transient_upload_failure_does_not_halt_publishing(tmp_path, alerts):
     """A single flaky PUT is not a reason to stop: the feed still updates."""
-    manifest = PublishManifest(str(tmp_path))
     pub = make_publisher(tmp_path, alerts)
     pub.client.fail_keys = {pub.audio_key(SLUG, EP1)}
     write_audio(tmp_path, "processed", EP1, size=2048)
@@ -971,7 +970,7 @@ def test_an_orphan_is_deleted(tmp_path, alerts):
 def test_a_young_orphan_is_left_alone(tmp_path, alerts):
     """It may be a PUT from a run still in flight."""
     pub = make_publisher(tmp_path, alerts)
-    key = put_in_bucket_only(pub, pub.audio_key(SLUG, "inflight.mp3"), age_s=60)
+    put_in_bucket_only(pub, pub.audio_key(SLUG, "inflight.mp3"), age_s=60)
 
     summary = pub.reconcile()
 

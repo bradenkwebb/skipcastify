@@ -186,7 +186,7 @@ def episode_meta_json(episode):
     """Description and links from the show's live RSS feed, fetched on demand."""
     if not labeling.valid_name(episode):
         return abort(404)
-    feed = labeling._feed_for(data_dir, episode, labeling._latest_completes(data_dir))
+    feed = labeling.feed_for(data_dir, episode)
     return jsonify(feed_meta.episode_meta(data_dir, feed, episode))
 
 

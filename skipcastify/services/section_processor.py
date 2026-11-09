@@ -58,7 +58,7 @@ def make_sections_from_segments(
     start = 0
 
     while start < audio_end:
-        end = start + section_ms
+        end = min(start + section_ms, audio_end)
         # find segment indices whose start is < end and end > start (overlap)
         idxs = []
         lines = []

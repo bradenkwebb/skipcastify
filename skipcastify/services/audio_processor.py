@@ -10,6 +10,7 @@ from typing import List, Optional
 
 from skipcastify.services.state_manager import StateManager
 from skipcastify.services.segment_classifier import SegmentClassifier
+from skipcastify.models.ad_span import AdSpan
 from skipcastify.models.content import ContentType
 from skipcastify.services import llm_utils
 from skipcastify.services import metrics
@@ -69,6 +70,18 @@ class Segment:
     text: str
 
 DEFAULT_PROMPT_PATH = os.path.join(os.path.dirname(__file__), '..', 'llm_prompts', 'identify_ads_prompt.txt')
+
+
+def _classify_against_spans(segments: List, spans: list[dict]) -> List[ClassifiedSegment]:
+    ad_spans = [AdSpan.from_dict(span) for span in spans]
+    classified = []
+    for seg in segments:
+        hit = next((s for s in ad_spans if s.overlaps(seg.start, seg.end)), None)
+        classified.append(ClassifiedSegment(
+            start=seg.start, end=seg.end, text=seg.text,
+            content_type=hit.content_type() if hit else ContentType.CONTENT,
+            confidence=0.9))
+    return classified
 
 
 class AudioProcessor:
@@ -349,26 +362,8 @@ class AudioProcessor:
             # Mark segments based on LLM results or heuristic fallback
             classifier = SegmentClassifier()
             if llm_answered:
-                # An empty span list is a real answer: no ads. Only an LLM
-                # that never answered hands over to the keyword heuristic.
                 logger.info(f"LLM identified {len(llm_ad_spans)} ad spans. Marking overlapping segments...")
-                classified_segments = []
-                for seg in segments:
-                    # Check overlap with any LLM ad span
-                    is_ad = False
-                    ad_label = None
-                    for span in llm_ad_spans:
-                        span_start = int(span.get("start_ms", 0))
-                        span_end = int(span.get("end_ms", 0))
-                        if seg.start < span_end and seg.end > span_start:
-                            is_ad = True
-                            ad_label = span.get("label")
-                            break
-                    if is_ad:
-                        ct = ContentType.ADVERTISEMENT if ad_label in ("ADVERTISEMENT", "OTHER_AD") else ContentType.SPONSOR
-                        classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ct, confidence=0.9))
-                    else:
-                        classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
+                classified_segments = _classify_against_spans(segments, llm_ad_spans)
             else:
                 logger.info("Using heuristic classifier as fallback...")
                 classified_segments = classifier.classify_segments(segments)
@@ -399,7 +394,7 @@ class AudioProcessor:
             
             logger.info(f"Saving processed audio to: {processed_audio_path}")
             processed_audio.export(processed_audio_path, format="mp3", bitrate=_source_bitrate(episode_file_path))
-            logger.info(f"Successfully saved processed audio")
+            logger.info("Successfully saved processed audio")
 
             original_s = audio.duration_seconds
             processed_s = processed_audio.duration_seconds
@@ -595,25 +590,9 @@ class AudioProcessor:
                 spans_found=len(parsed) if success else 0,
             )
 
-            # Validate and normalize spans
-            for item in parsed:
-                try:
-                    s = int(item.get('start_ms', 0))
-                    e = int(item.get('end_ms', 0))
-                    label = item.get('label', 'ADVERTISEMENT')
-                    rationale = item.get('rationale', '')
-                    # Ensure spans are within section bounds broadly
-                    if s < sec.start_ms:
-                        s = sec.start_ms
-                    if e > sec.end_ms:
-                        e = sec.end_ms
-                    if s >= e:
-                        logger.debug(f"Ignoring invalid span {s}-{e} in section {sec.start_ms}-{sec.end_ms}")
-                        continue
-                    all_spans.append({"start_ms": s, "end_ms": e, "label": label, "rationale": rationale})
-                except Exception as ex:
-                    logger.debug(f"Skipping malformed LLM item: {item} ({ex})")
-                    continue
+            all_spans.extend(span.to_dict() for span in AdSpan.parse_many(
+                parsed, bounds=(sec.start_ms, sec.end_ms),
+                context=f"section {sec.start_ms}-{sec.end_ms}"))
 
         logger.info(f"LLM identified {len(all_spans)} ad spans across sections")
 
@@ -723,21 +702,9 @@ class AudioProcessor:
                     pass
 
                 new_spans = llm_utils.parse_json_array_from_text(resp.text)
-                valid = []
-                for ns in new_spans:
-                    try:
-                        s = int(ns.get("start_ms", 0))
-                        e = int(ns.get("end_ms", 0))
-                        if s >= e:
-                            continue
-                        valid.append({
-                            "start_ms": s,
-                            "end_ms": e,
-                            "label": ns.get("label", "ADVERTISEMENT"),
-                            "rationale": ns.get("rationale", ""),
-                        })
-                    except Exception:
-                        pass
+                valid = [span.to_dict() for span in AdSpan.parse_many(
+                    new_spans, bounds=(sec.start_ms, sec.end_ms),
+                    context=f"refinement of section {sec.start_ms}-{sec.end_ms}")]
 
                 if valid:
                     # Replace spans in this section with the refined set
@@ -820,26 +787,9 @@ class AudioProcessor:
 
         final_spans = refined_spans if refined_spans is not None else postprocessed_spans
 
-        # An empty span list is a real answer: no ads. Only an LLM that never
-        # answered hands over to the keyword heuristic.
         if llm_answered:
             logger.info(f"Using {len(final_spans)} LLM spans for preview audio cut.")
-            classified_segments = []
-            for seg in segments:
-                is_ad = False
-                ad_label = None
-                for span in final_spans:
-                    span_start = int(span.get('start_ms', 0))
-                    span_end = int(span.get('end_ms', 0))
-                    if seg.start < span_end and seg.end > span_start:
-                        is_ad = True
-                        ad_label = span.get('label')
-                        break
-                if is_ad:
-                    ct = ContentType.ADVERTISEMENT if ad_label in ("ADVERTISEMENT", "OTHER_AD") else ContentType.SPONSOR
-                    classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ct, confidence=0.9))
-                else:
-                    classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
+            classified_segments = _classify_against_spans(segments, final_spans)
         else:
             logger.info("Using heuristic classifier as fallback for preview...")
             classifier = SegmentClassifier()
@@ -932,26 +882,9 @@ class AudioProcessor:
         # Use best available spans for the audio cut
         final_spans = refined_spans if refined_spans is not None else postprocessed_spans
 
-        # An empty span list is a real answer: no ads. Only an LLM that never
-        # answered hands over to the keyword heuristic.
         if llm_answered:
             logger.info(f"Using {len(final_spans)} LLM spans for preview audio cut.")
-            classified_segments = []
-            for seg in segments:
-                is_ad = False
-                ad_label = None
-                for span in final_spans:
-                    span_start = int(span.get('start_ms', 0))
-                    span_end = int(span.get('end_ms', 0))
-                    if seg.start < span_end and seg.end > span_start:
-                        is_ad = True
-                        ad_label = span.get('label')
-                        break
-                if is_ad:
-                    ct = ContentType.ADVERTISEMENT if ad_label in ("ADVERTISEMENT", "OTHER_AD") else ContentType.SPONSOR
-                    classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ct, confidence=0.9))
-                else:
-                    classified_segments.append(ClassifiedSegment(start=seg.start, end=seg.end, text=seg.text, content_type=ContentType.CONTENT, confidence=0.9))
+            classified_segments = _classify_against_spans(segments, final_spans)
         else:
             logger.info("Using heuristic classifier as fallback for preview...")
             classifier = SegmentClassifier()

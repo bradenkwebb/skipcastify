@@ -19,7 +19,6 @@ Example:
 
 import logging
 import os
-import os
 from pathlib import Path
 from typing import List, Optional
 import json
@@ -65,9 +64,6 @@ class GroundTruthStore:
     """Manages ground-truth labels for episodes."""
     
     def __init__(self, labels_dir: Optional[str] = None):
-        # Resolve the default off DATA_DIR, not the process's cwd: a script run
-        # from anywhere else silently got an empty store. Creating the
-        # directory is save_labels' job, so a reader cannot mask a wrong path.
         self.labels_dir = Path(labels_dir) if labels_dir else (
             Path(os.environ.get("DATA_DIR", "data")) / "labels" / "ground_truth")
     
