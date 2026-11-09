@@ -202,10 +202,7 @@ function renderDaily() {
     options: {
       onClick: (_e, els) => { if (els.length) showDayEps(d[els[0].index]); },
       onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : ''; },
-      plugins: {
-        legend: { labels: { color: css('muted') } },
-        tooltip: { callbacks: { afterBody: items => dayTip(d[items[0].dataIndex]) } },
-      },
+      plugins: { legend: { labels: { color: css('muted') } } },
       scales: {
         x: { ticks: { color: css('muted') }, grid: { color: css('line') } },
         y: { position: 'left', beginAtZero: true, ticks: { color: css('muted') }, grid: { color: css('line') } },
@@ -213,15 +210,6 @@ function renderDaily() {
       },
     },
   });
-}
-
-const DAY_TIP_MAX = 8;
-function dayTip(day) {
-  const eps = day.list || [];
-  const lines = eps.slice(0, DAY_TIP_MAX).map(e => `• ${e.title || e.episode} (${e.ad_minutes}m ads)`);
-  if (eps.length > DAY_TIP_MAX) lines.push(`…and ${eps.length - DAY_TIP_MAX} more`);
-  if (eps.length) lines.push('Click for links');
-  return lines;
 }
 
 // Canvas tooltips can't hold clickable links, so a click pins the day's list here.
