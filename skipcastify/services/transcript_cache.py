@@ -8,6 +8,7 @@ significantly speeding up iteration during development.
 import hashlib
 import json
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -25,8 +26,8 @@ class CachedSegment:
 class TranscriptCache:
     """Manages caching of transcriptions."""
     
-    def __init__(self, cache_dir: str = "data/transcripts"):
-        self.cache_dir = Path(cache_dir)
+    def __init__(self, cache_dir: str | None = None):
+        self.cache_dir = Path(cache_dir or Path(os.environ.get("DATA_DIR") or "data") / "transcripts")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
     
     def get_cache_path(self, episode_name: str) -> Path:
