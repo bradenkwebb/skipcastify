@@ -1,5 +1,5 @@
 # An alternative install for homelabs; the systemd units are the other one.
-FROM python:3.10-slim-bookworm
+FROM python:3.13-slim-bookworm
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /usr/local/bin/uv
 RUN apt-get update \
