@@ -1,0 +1,21 @@
+#!/bin/sh
+# Lint staged Python with ruff before committing (CI runs the same check).
+# Enable once per clone: git config core.hooksPath .githooks
+# Skip for one commit: git commit --no-verify
+files=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+[ -z "$files" ] && exit 0
+
+if command -v uv >/dev/null 2>&1; then
+    ruff="uv run --quiet ruff"
+elif command -v ruff >/dev/null 2>&1; then
+    ruff="ruff"
+else
+    echo "pre-commit: ruff not found (install uv); skipping lint" >&2
+    exit 0
+fi
+
+# shellcheck disable=SC2086  # $ruff is a command plus arguments
+echo "$files" | xargs $ruff check -- || {
+    echo "pre-commit: fix the above (often: uv run ruff check --fix) or commit with --no-verify" >&2
+    exit 1
+}

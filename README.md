@@ -290,6 +290,9 @@ Raw episodes live in `data/podcasts/raw/<slug>/`. Processed episodes go to `data
 
 ## Testing
 
+To lint staged Python before each commit (the same `ruff check` CI runs),
+enable the repo's hook once per clone: `git config core.hooksPath .githooks`.
+
 ```bash
 # Standard tests (no LLM calls, fast)
 uv run pytest
