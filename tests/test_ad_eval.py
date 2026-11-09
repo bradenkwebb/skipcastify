@@ -70,3 +70,43 @@ def test_summary_splits_tuned_from_held_out(tmp_path):
 def test_tuned_list_names_are_episode_ids():
     for name in eval_ads.read_tuned(eval_ads.TUNED_FILE):
         assert labeling.valid_name(name) and " " not in name, name
+
+
+def test_derived_labels_are_reported_apart_from_hand_labels(tmp_path):
+    rows = [{"round": 0, "arm": "/p/a.txt", "episode": ep, "truth_ms": 10000, "cut_ms": 10000,
+             "missed_ms": m, "wrong_ms": 0} for ep, m in (("hand-ep", 0), ("diff-ep", 4000))]
+    sources = {"hand-ep": labeling.MANUAL, "diff-ep": labeling.DAI_DIFF}
+    text = eval_ads.summarize(rows, ["/p/a.txt"], ["hand-ep", "diff-ep"], 0.0, frozenset(), sources)
+    held = text.split("## Inserted-ad truth")[0]
+    derived = text.split("## Inserted-ad truth")[1].split("## Per episode")[0]
+    assert "## Held-out: 1 episode" in held
+    assert "| a.txt | 1 | 0.0 | 0.0 | 100.0% |" in held       # the hand-labeled episode only
+    assert "| a.txt | 1 | 4.0 | 0.0 | 60.0% |" in derived     # the derived one only
+    assert "| diff-ep | inserted-ad |" in text and "| hand-ep | held-out |" in text
+
+
+def test_a_derived_label_is_never_counted_as_tuned(tmp_path):
+    rows = [{"round": 0, "arm": "/p/a.txt", "episode": "diff-ep", "truth_ms": 10000,
+             "cut_ms": 10000, "missed_ms": 0, "wrong_ms": 0}]
+    text = eval_ads.summarize(rows, ["/p/a.txt"], ["diff-ep"], 0.0, {"diff-ep"},
+                              {"diff-ep": labeling.DAI_DIFF})
+    assert "## Tuned" not in text and "| diff-ep | inserted-ad |" in text
+
+
+def test_reviewed_episodes_reports_each_label_source(tmp_path):
+    (tmp_path / "transcripts").mkdir()
+    for ep in ("show-hand", "show-diff", "show-legacy"):
+        (tmp_path / "transcripts" / f"{ep}_transcript.json").write_text(json.dumps(SEGS))
+    span = [{"start_ms": 0, "end_ms": 9000, "label": "ad"}]
+    labeling.save_labels(tmp_path, "show-hand", span, reviewed=True)
+    labeling.save_labels(tmp_path, "show-diff", span, reviewed=True, source=labeling.DAI_DIFF)
+    legacy = labeling.label_path(tmp_path, "show-legacy")
+    doc = json.loads(labeling.label_path(tmp_path, "show-hand").read_text())
+    doc.pop("source")
+    doc["episode_name"] = "show-legacy"
+    legacy.write_text(json.dumps(doc))
+    assert eval_ads.reviewed_episodes(tmp_path, []) == {
+        "show-diff": labeling.DAI_DIFF,
+        "show-hand": labeling.MANUAL,
+        "show-legacy": labeling.MANUAL,
+    }
