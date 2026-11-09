@@ -2,11 +2,15 @@
 """Exact ad labels for feeds that insert ads server-side. Makes no LLM calls.
 
 A host that inserts ads server-side stitches pre-encoded MP3 frames into the
-episode, and commonly skips the insertion for clients that do not look like a
-podcast player. Fetching a second rendering that way gives a reference copy of
-the same encode without the ads, and aligning the two recovers every inserted
-span to about 26ms -- ground truth for the episodes already on disk, with no
-hand labelling and no transcription.
+episode, and commonly serves a different rendering to clients that do not look
+like a podcast player. Fetching a second rendering that way gives a reference
+copy of the same encode, and aligning the two recovers every inserted span to
+about 26ms -- ground truth for the episodes already on disk, with no hand
+labelling and no transcription.
+
+Some feeds leave the reference unmonetized and some leave a house spot in each
+slot. Either way the ads are what the episode on disk carries and the
+reference does not.
 
     uv run python scripts/dai_ground_truth.py --feed odd-lots
     uv run python scripts/dai_ground_truth.py --feed odd-lots --limit 3 --dry-run
@@ -20,6 +24,11 @@ Nothing is written unless every check passes: the reference has to be the same
 encode, run to the length the feed declares, and differ by a plausible amount.
 A feed whose renderings are identical has no insertion, so it gets no labels
 and still needs hand labelling.
+
+Expect this to work on recent episodes. An episode downloaded months ago can
+fail the same-encode check because the show re-encoded its master since, and
+some hosts re-encode on insertion rather than stitching frames, which rules
+their feeds out altogether.
 """
 
 import argparse
@@ -48,11 +57,14 @@ REFERENCE_UA = "python-requests/2.32.3"
 
 MAX_BYTES = 600 * 1024 * 1024
 TIMEOUT_S = 60
-MAX_REDIRECTS = 6
+# Tracking prefixes chain several hops before the CDN: six is routine.
+MAX_REDIRECTS = 12
 
-# A reference rendering shorter than the feed says is a truncated download, and
-# would align as a perfect prefix while reporting the missing tail as one ad.
-DECLARED_TOLERANCE_S = 90.0
+# A truncated reference aligns as a perfect prefix and reads the missing tail
+# as one ad, so it has to run about as long as the feed declares. Running over
+# is normal: a declared duration describes the master, and a reference may
+# carry house spots of its own.
+DECLARED_SHORTFALL_S = 120.0
 # One break longer than this, or this share of the episode, means the alignment
 # found something other than ad insertion.
 MAX_SPAN_S = 600.0
@@ -109,9 +121,9 @@ def fetch_reference(url: str, dest: Path, user_agent: str) -> int:
 def check(spans: list[dict], reference_ms: float, episode_ms: float,
           declared_s: float | None) -> str | None:
     """Why these spans must not be trusted, or None when they hold up."""
-    if declared_s is not None and abs(reference_ms / 1000 - declared_s) > DECLARED_TOLERANCE_S:
-        return (f"reference runs {reference_ms / 1000:.0f}s but the feed declares "
-                f"{declared_s:.0f}s")
+    if declared_s is not None and reference_ms / 1000 < declared_s - DECLARED_SHORTFALL_S:
+        return (f"reference runs {reference_ms / 1000:.0f}s against the "
+                f"{declared_s:.0f}s the feed declares, so it is truncated")
     if not spans:
         return "renderings are identical: this feed inserts nothing, so it needs hand labels"
     inserted = sum(s["end_ms"] - s["start_ms"] for s in spans)
@@ -177,17 +189,17 @@ def run_feed(data_dir: Path, slug: str, url: str, args) -> list[dict]:
             episode = dai_diff.read_frames(mp3.read_bytes())
             reference = dai_diff.read_frames(dest.read_bytes())
             try:
-                spans = dai_diff.inserted_spans(episode, reference)
-            except dai_diff.NotTheSameEncode as e:
+                result = dai_diff.align(episode, reference)
+            except dai_diff.NotComparable as e:
                 row["skipped"] = str(e)
                 rows.append(row)
                 continue
 
+        spans = result.inserted
         episode_ms, reference_ms = dai_diff.duration_ms(episode), dai_diff.duration_ms(reference)
         row.update(episode_s=episode_ms / 1000, reference_s=reference_ms / 1000,
-                   spans=len(spans),
-                   inserted_s=sum(s["end_ms"] - s["start_ms"] for s in spans) / 1000,
-                   match=dai_diff.match_ratio(episode, reference))
+                   spans=len(spans), inserted_s=result.inserted_ms / 1000,
+                   replaced=len(result.replaced), match=result.match_ratio)
         reason = check(spans, reference_ms, episode_ms, declared_duration_s(entry))
         if reason:
             row["skipped"] = reason
@@ -241,13 +253,14 @@ def main(argv=None) -> int:
         rows += run_feed(data_dir, slug, known[slug], args)
 
     print()
-    print(f"{'episode':52} {'on disk':>9} {'reference':>10} {'inserted':>9} {'breaks':>7}  result")
+    print(f"{'episode':52} {'on disk':>9} {'reference':>10} {'inserted':>9} "
+          f"{'breaks':>7} {'match':>7}  result")
     for r in rows:
         if "episode_s" in r:
             head = (f"{r['episode'][:51]:52} {r['episode_s']:8.1f}s {r['reference_s']:9.1f}s "
-                    f"{r['inserted_s']:8.1f}s {r['spans']:7}")
+                    f"{r['inserted_s']:8.1f}s {r['spans']:7} {r['match']:6.2%}")
         else:
-            head = f"{r['episode'][:51]:52} {'':>9} {'':>10} {'':>9} {'':>7}"
+            head = f"{r['episode'][:51]:52} {'':>9} {'':>10} {'':>9} {'':>7} {'':>7}"
         outcome = r.get("skipped") or ("labels written" if r.get("written") else "ok, not written")
         print(f"{head}  {outcome}")
 

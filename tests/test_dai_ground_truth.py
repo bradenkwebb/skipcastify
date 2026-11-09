@@ -38,8 +38,10 @@ class TestCheck:
         tail as one enormous ad."""
         assert gt.check(PLAUSIBLE, 2_000_000.0, EPISODE_MS, DECLARED_S) is not None
 
-    def test_a_reference_longer_than_declared_is_refused(self):
-        assert gt.check(PLAUSIBLE, 5_152_000.0, EPISODE_MS, DECLARED_S) is not None
+    def test_a_reference_longer_than_declared_passes(self):
+        """A declared duration describes the master, and a reference may carry
+        house spots that the master does not."""
+        assert gt.check(PLAUSIBLE, REFERENCE_MS, EPISODE_MS, 4_480.0) is None
 
     def test_a_rounded_declared_duration_still_passes(self):
         assert gt.check(PLAUSIBLE, REFERENCE_MS, EPISODE_MS, 4620.0) is None
