@@ -14,6 +14,7 @@ class StateManager:
         self.raw_dir = self.data_dir / "podcasts" / "raw"
         self.processed_dir = self.data_dir / "podcasts" / "processed"
         self.baseline_path = self.data_dir / "process_baseline.json"
+        self.attempts_path = self.data_dir / "process_attempts.json"
 
         self.raw_dir.mkdir(parents=True, exist_ok=True)
         self.processed_dir.mkdir(parents=True, exist_ok=True)
@@ -45,6 +46,35 @@ class StateManager:
                         episodes.append(episode)
         return episodes
     
+    def _load_attempts(self) -> dict[str, int]:
+        try:
+            return json.loads(self.attempts_path.read_text())
+        except FileNotFoundError:
+            return {}
+        except Exception as e:
+            logger.warning(f"Could not read process attempts: {e}")
+            return {}
+
+    def attempts(self, episode) -> int:
+        """Runs that started this episode and never finished it (crash or error)."""
+        return self._load_attempts().get(self._key(episode), 0)
+
+    def start_attempt(self, episode) -> int:
+        """Counted before work starts, so a SIGKILL (OOM) still counts."""
+        attempts = self._load_attempts()
+        key = self._key(episode)
+        attempts[key] = attempts.get(key, 0) + 1
+        self.attempts_path.write_text(json.dumps(attempts, indent=1))
+        return attempts[key]
+
+    def finish_attempt(self, episode) -> None:
+        attempts = self._load_attempts()
+        if attempts.pop(self._key(episode), None) is not None:
+            self.attempts_path.write_text(json.dumps(attempts, indent=1))
+
+    def _key(self, episode) -> str:
+        return str(Path(episode).relative_to(self.raw_dir))
+
     def get_processed_episodes(self) -> List[str]:
         """Returns list of episodes that have been processed"""
         episodes = []
