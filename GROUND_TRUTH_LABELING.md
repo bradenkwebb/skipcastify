@@ -96,6 +96,11 @@ the labels. They are written with `"source": "dai_diff"`, and `eval_ads.py`
 reports them in their own group for that reason: averaged in with hand labels, a
 recall figure would describe neither set.
 
+The two metrics are not equally sound on a derived set. Recall is exact, since
+every inserted ad is labelled. Precision is a floor: a host-read sponsor the
+detector cut correctly counts against it, because the labels do not know the
+sponsor is there.
+
 Three outcomes other than success, all of them useful:
 
 - *renderings are identical* — the feed inserts nothing, so it needs hand

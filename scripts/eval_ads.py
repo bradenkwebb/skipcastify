@@ -95,7 +95,7 @@ def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: floa
     derived = [e for e in episodes if sources.get(e) == labeling.DAI_DIFF]
     groups = [("Held-out", "the honest number: the prompt never saw these", [e for e in hand if e not in tuned]),
               ("Tuned", "regression check: the prompt was tuned on these", [e for e in hand if e in tuned]),
-              ("Inserted-ad truth", "from a rendering diff, exact on inserted ads and silent on host-read sponsors", derived)]
+              ("Inserted-ad truth", "from a rendering diff: recall is exact, precision is a floor because a host-read sponsor is unlabelled", derived)]
     for name, note, eps in groups:
         if eps:
             out += [f"## {name}: {len(eps)} episode{'s' * (len(eps) != 1)} ({note})", ""]
