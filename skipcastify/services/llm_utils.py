@@ -37,6 +37,8 @@ class LLMResponse:
     completion_tokens: int = 0
     cached_tokens: int = 0
     cost_usd: float = 0.0
+    model: str = ""
+    system_fingerprint: str = ""
 
 
 def call_llm(prompt: str) -> LLMResponse:
@@ -101,6 +103,8 @@ def call_openai_chat(prompt: str) -> LLMResponse:
         completion_tokens=completion_tokens,
         cached_tokens=cached_tokens,
         cost_usd=cost_usd,
+        model=getattr(response, "model", "") or "",
+        system_fingerprint=getattr(response, "system_fingerprint", "") or "",
     )
 
 
@@ -124,6 +128,7 @@ def call_ollama_generate(prompt: str, model: str = DEFAULT_OLLAMA_MODEL, timeout
                 prompt_tokens=data.get("prompt_eval_count", 0),
                 completion_tokens=data.get("eval_count", 0),
                 cost_usd=0.0,
+                model=data.get("model", "") or "",
             )
         return LLMResponse(text=resp.text)
     except Exception as e:
