@@ -58,7 +58,9 @@ def make_sections_from_segments(
     start = 0
 
     while start < audio_end:
-        end = start + section_ms
+        # Never claim time the audio does not have: the section bounds are
+        # quoted to the model and are what an LLM span is clamped to.
+        end = min(start + section_ms, audio_end)
         # find segment indices whose start is < end and end > start (overlap)
         idxs = []
         lines = []
