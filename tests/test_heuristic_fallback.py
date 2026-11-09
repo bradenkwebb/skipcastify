@@ -111,6 +111,13 @@ class TestTheFallbackStillExists:
         cut = [s for s in aggregated if s.content_type in AD_TYPES]
         assert cut, "an LLM outage should still fall back to keyword classification"
 
+    def test_a_feed_that_keeps_ads_gets_no_heuristic_cuts(self, tmp_path, monkeypatch):
+        policy = tmp_path / "policy.yaml"
+        policy.write_text("feeds:\n  test-feed:\n    cut: []\n")
+        monkeypatch.setenv("CUT_POLICY", str(policy))
+        aggregated = _aggregated_from_process(tmp_path, _REAL_SEGMENTS, llm_raises=True)
+        assert not [s for s in aggregated if s.content_type in AD_TYPES]
+
 
 class TestAllSectionsFailingIsNotAnEmptyAnswer:
     """_run_section_llm must not report "no ads" when nothing answered."""
