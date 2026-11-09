@@ -174,3 +174,11 @@ def test_payload_days_filters_episode_stats_but_not_runs(tmp_path):
 def test_payload_days_with_no_recent_episodes_still_has_a_daily_axis(tmp_path):
     p = analytics.build_payload(str(tmp_path), days=7)
     assert [r["episodes"] for r in p["daily"]] == [0] * 7
+
+
+def test_daily_series_lists_each_days_episodes():
+    from datetime import date
+    ev = {"event": "episode_complete", "spans": [], "ts": date.today().isoformat() + "T10:00:00",
+          "feed_slug": "show", "episode_name": "show-ep1"}
+    (row,) = analytics.daily_series([ev])
+    assert [e["episode"] for e in row["list"]] == ["show-ep1"]
