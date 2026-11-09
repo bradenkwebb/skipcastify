@@ -1,20 +1,20 @@
 """
 Ground-truth ad detection labels for evaluation and testing.
 
-Format: YAML files with manually-labeled ad spans for episodes.
-Stored in data/labels/ground_truth/ directory.
+Format: JSON, one file per episode, under $DATA_DIR/labels/ground_truth/.
+v2 files are written by the /label web UI and carry "spans"; older files
+carry "ads". Both are read here.
 
 Example:
-    episode_name: "philosophize-this-episode_237_the_stoics_are_wrong_-_nietzsche_schopenhauer"
-    ads:
-      - start_ms: 871760
-        end_ms: 875520
-        label: "ADVERTISEMENT"
-        description: "Diet Coke ad read"
-      - start_ms: 909920
-        end_ms: 916880
-        label: "SPONSOR"
-        description: "Subaru spot"
+    {
+      "episode_name": "philosophize-this-episode_237_the_stoics_are_wrong",
+      "ads": [
+        {"start_ms": 871760, "end_ms": 875520,
+         "label": "ADVERTISEMENT", "description": "Diet Coke ad read"},
+        {"start_ms": 909920, "end_ms": 916880,
+         "label": "SPONSOR", "description": "Subaru spot"}
+      ]
+    }
 """
 
 import logging
