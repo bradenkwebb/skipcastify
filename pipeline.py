@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 # diagnosis from a phone. The others are set inline in run(); this one is the
 # value before run() is even reached.
 STAGE_STARTUP = "startup"
+# An episode that started this many runs without finishing is skipped, so one
+# bad file (e.g. an OOM kill) cannot block every later episode and publish.
+MAX_ATTEMPTS = 2
 
 
 class Pipeline:
@@ -184,7 +187,17 @@ class Pipeline:
                         logger.info(f"Cooling down {cooldown_s}s before next episode")
                         time.sleep(cooldown_s)
                     first = False
+                    if state_manager.attempts(episode_fpath) >= MAX_ATTEMPTS:
+                        logger.warning(f"Skipping {Path(episode_fpath).name}: failed {MAX_ATTEMPTS} runs")
+                        continue
+                    if state_manager.start_attempt(episode_fpath) == MAX_ATTEMPTS:
+                        # Last try: alert now, since a SIGKILL leaves no chance to later.
+                        self.alerter.send(f"episode-stuck:{Path(episode_fpath).name}",
+                                          "Episode keeps failing",
+                                          f"{slug}/{Path(episode_fpath).name} is on attempt "
+                                          f"{MAX_ATTEMPTS}; it will be skipped if this run fails too.")
                     self.processor.process(episode_fpath, state_manager)
+                    state_manager.finish_attempt(episode_fpath)
                     self.run_record.processed.append(
                         {"feed": slug, "episode": Path(episode_fpath).stem})
             else:
