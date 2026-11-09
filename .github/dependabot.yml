@@ -1,0 +1,23 @@
+# Routine version updates, opened against dev like any other PR. (Security
+# updates are enabled in repo settings and always target the default branch.)
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Monthly and grouped: faster-whisper/ctranslate2 bumps can change
+  # transcription, so they arrive as one reviewable batch.
+  - package-ecosystem: uv
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+    groups:
+      python-minor-and-patch:
+        update-types: [minor, patch]
