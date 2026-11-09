@@ -176,6 +176,70 @@ def ad_signatures(events: list[dict]) -> list[dict]:
     ]
 
 
+# Disagreements shorter than this are boundary noise (labels vs line-snapped cuts).
+MIN_DIFF_MS = 2000
+
+
+def _merged(intervals) -> list[tuple[int, int]]:
+    out: list[list[int]] = []
+    for a, b in sorted((int(a), int(b)) for a, b in intervals if b > a):
+        if out and a <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [(a, b) for a, b in out]
+
+
+def _minus(a: list[tuple[int, int]], b: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Parts of merged intervals a not covered by merged intervals b."""
+    out = []
+    for s, e in a:
+        cur = s
+        for bs, be in b:
+            if be <= cur or bs >= e:
+                continue
+            if bs > cur:
+                out.append((cur, bs))
+            cur = max(cur, be)
+        if cur < e:
+            out.append((cur, e))
+    return out
+
+
+def review_overlay(cut_ms, truth_ms, dur_ms: float) -> dict:
+    """Normalized hit / missed / extra spans comparing cuts against reviewed labels."""
+    cut, truth = _merged(cut_ms), _merged(truth_ms)
+    hit = _minus(cut, _minus(cut, truth))
+    norm = lambda spans, floor=0: [  # noqa: E731
+        {"start": round(a / dur_ms, 4), "end": round(b / dur_ms, 4)} for a, b in spans if b - a >= floor]
+    return {"hit": norm(hit), "missed": norm(_minus(truth, cut), MIN_DIFF_MS),
+            "extra": norm(_minus(cut, truth), MIN_DIFF_MS)}
+
+
+def _with_review(data_dir: str, feeds: list[dict], events: list[dict]) -> list[dict]:
+    """Mark episodes with reviewed hand labels and overlay cut vs labeled ads."""
+    from skipcastify.services import (  # labeling imports this module
+        cut_policy,
+        labeling,
+    )
+    cuts = {ev.get("episode_name"): ev for ev in _completes(events)}
+    for feed in feeds:
+        try:
+            wanted = cut_policy.cut_labels(feed["feed_slug"])
+        except (OSError, ValueError):
+            wanted = cut_policy.DEFAULT_CUT
+        for ep in feed["episodes"]:
+            doc = labeling._read_labels(data_dir, ep["episode"]) if labeling.valid_name(ep["episode"]) else None
+            ev = cuts.get(ep["episode"])
+            if not doc or not doc.get("reviewed") or not ev or not ev.get("original_duration_s"):
+                continue
+            truth = [(s["start_ms"], s["end_ms"]) for s in doc.get("spans", []) if s.get("label") in wanted]
+            cut = [(s["start_ms"], s["end_ms"]) for s in ev.get("spans", [])]
+            ep["reviewed"] = True
+            ep["review"] = review_overlay(cut, truth, ev["original_duration_s"] * 1000)
+    return feeds
+
+
 def drop_candidates(events: list[dict], min_episodes: int = 2) -> list[dict]:
     """Feeds whose entire recent run is ad-free — candidates to drop from the
     pipeline (the Wisdom / Politics workflow, data-driven)."""
@@ -269,7 +333,8 @@ def build_payload(data_dir: str, days: int | None = None) -> dict:
         "overview": overview(events),
         "feeds": feed_summary(events),
         "daily": [{**d, "list": _with_titles(data_dir, d["list"])} for d in daily_series(events, start)],
-        "signatures": [{**f, "episodes": _with_titles(data_dir, f["episodes"])} for f in ad_signatures(events)],
+        "signatures": _with_review(data_dir, [{**f, "episodes": _with_titles(data_dir, f["episodes"])}
+                                              for f in ad_signatures(events)], events),
         "drop_candidates": drop_candidates(events),
         "recent_episodes": _with_titles(data_dir, recent_episodes(events)),
         "runs": runs[:40],
