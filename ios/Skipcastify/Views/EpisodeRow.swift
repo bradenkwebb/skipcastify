@@ -3,7 +3,6 @@ import SwiftUI
 struct EpisodeRow: View {
     let episode: Episode
     @Environment(AudioPlayer.self) private var player
-    @Environment(StripCoordinator.self) private var stripper
 
     private var isCurrent: Bool { player.current === episode }
 
@@ -23,7 +22,6 @@ struct EpisodeRow: View {
                         Text(date, format: .dateTime.month(.abbreviated).day().year())
                     }
                     Spacer()
-                    StripBadge(status: episode.stripStatus)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -47,22 +45,9 @@ struct EpisodeRow: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .swipeActions(edge: .leading) {
-            if episode.stripStatus != .ready && episode.stripStatus != .pending {
-                Button { Task { await stripper.requestStrip(episode) } } label: {
-                    Label("Strip Ads", systemImage: "scissors")
-                }
-                .tint(.purple)
-            }
-        }
         .swipeActions(edge: .trailing) { playedButton }
         .contextMenu {
             Button { player.play(episode) } label: { Label("Play", systemImage: "play.fill") }
-            if episode.stripStatus != .ready && episode.stripStatus != .pending {
-                Button { Task { await stripper.requestStrip(episode) } } label: {
-                    Label("Strip Ads", systemImage: "scissors")
-                }
-            }
             playedButton
         }
     }

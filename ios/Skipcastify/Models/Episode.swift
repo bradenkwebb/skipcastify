@@ -1,13 +1,6 @@
 import Foundation
 import SwiftData
 
-enum AdStripStatus: String, Codable {
-    case notRequested
-    case pending
-    case ready
-    case failed
-}
-
 @Model
 final class Episode {
     /// Feed URL + GUID; GUIDs are only guaranteed unique within a feed.
@@ -22,11 +15,6 @@ final class Episode {
 
     var playbackPosition: TimeInterval = 0
     var isPlayed: Bool = false
-
-    var stripStatusRaw: String = AdStripStatus.notRequested.rawValue
-    var stripJobID: String?
-    /// The ad-free copy hosted by the Skipcastify server, once it's ready.
-    var adFreeURL: URL?
 
     var podcast: Podcast?
 
@@ -46,13 +34,7 @@ final class Episode {
         "\(feedURL.absoluteString)#\(guid)"
     }
 
-    var stripStatus: AdStripStatus {
-        get { AdStripStatus(rawValue: stripStatusRaw) ?? .notRequested }
-        set { stripStatusRaw = newValue.rawValue }
-    }
-
-    /// Prefer the ad-free copy whenever we have one.
-    var playbackURL: URL { adFreeURL ?? audioURL }
+    var playbackURL: URL { audioURL }
 
     var displayArtworkURL: URL? { artworkURL ?? podcast?.artworkURL }
 }

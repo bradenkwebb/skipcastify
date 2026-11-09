@@ -18,23 +18,6 @@ struct ArtworkView: View {
     }
 }
 
-struct StripBadge: View {
-    let status: AdStripStatus
-
-    var body: some View {
-        switch status {
-        case .notRequested:
-            EmptyView()
-        case .pending:
-            Label("Stripping…", systemImage: "hourglass").foregroundStyle(.secondary)
-        case .ready:
-            Label("Ad-free", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
-        case .failed:
-            Label("Strip failed", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-        }
-    }
-}
-
 extension TimeInterval {
     /// "1:02:03" / "4:05"
     var clockString: String {

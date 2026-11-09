@@ -8,8 +8,6 @@ final class Podcast {
     var author: String
     var summary: String
     var artworkURL: URL?
-    /// When true, every new episode is sent to the Skipcastify server for ad stripping.
-    var alwaysStripAds: Bool = false
     var dateAdded: Date = Date.now
     var lastRefreshed: Date?
 

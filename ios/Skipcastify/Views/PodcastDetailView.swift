@@ -4,7 +4,6 @@ import SwiftUI
 struct PodcastDetailView: View {
     let podcast: Podcast
     @Environment(\.modelContext) private var context
-    @Environment(StripCoordinator.self) private var stripper
     @State private var refreshError: String?
 
     var body: some View {
@@ -20,14 +19,6 @@ struct PodcastDetailView: View {
                 if !podcast.summary.isEmpty {
                     Text(podcast.summary.strippingHTML).font(.callout).foregroundStyle(.secondary).lineLimit(4)
                 }
-                Toggle(isOn: Binding(
-                    get: { podcast.alwaysStripAds },
-                    set: { enabled in Task { await stripper.setAlwaysStrip(enabled, for: podcast) } }
-                )) {
-                    Label("Always strip ads", systemImage: "scissors")
-                }
-            } footer: {
-                Text("When on, every new episode is sent to your Skipcastify server and plays ad-free once it's ready.")
             }
 
             Section("Episodes") {
@@ -38,7 +29,7 @@ struct PodcastDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .refreshable {
             do {
-                try await FeedService.refresh(podcast, in: context, stripper: stripper)
+                try await FeedService.refresh(podcast, in: context)
             } catch {
                 refreshError = error.localizedDescription
             }

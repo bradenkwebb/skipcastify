@@ -44,10 +44,6 @@ struct PlayerView: View {
                     VStack(spacing: 6) {
                         Text(episode.title).font(.title3.bold()).multilineTextAlignment(.center)
                         Text(episode.podcast?.title ?? "").foregroundStyle(.secondary)
-                        if player.isPlayingAdFree {
-                            Label("Ad-free version", systemImage: "checkmark.seal.fill")
-                                .font(.caption).foregroundStyle(.green)
-                        }
                     }
 
                     scrubber

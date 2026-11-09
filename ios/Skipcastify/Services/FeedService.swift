@@ -42,20 +42,11 @@ enum FeedService {
         return new
     }
 
-    /// Refreshes one podcast and, if it's marked "always strip", queues its new episodes.
-    static func refresh(_ podcast: Podcast, in context: ModelContext, stripper: StripCoordinator) async throws {
-        let new = try await refresh(podcast, in: context)
-        if podcast.alwaysStripAds {
-            for episode in new { await stripper.requestStrip(episode) }
-        }
-    }
-
-    static func refreshAll(in context: ModelContext, stripper: StripCoordinator) async {
+    static func refreshAll(in context: ModelContext) async {
         let podcasts = (try? context.fetch(FetchDescriptor<Podcast>())) ?? []
         for podcast in podcasts {
-            try? await refresh(podcast, in: context, stripper: stripper)
+            _ = try? await refresh(podcast, in: context)
         }
-        await stripper.pollPending(in: context)
     }
 
     @discardableResult

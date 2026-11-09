@@ -4,7 +4,7 @@ import SwiftUI
 struct LibraryView: View {
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
     @Environment(\.modelContext) private var context
-    @Environment(StripCoordinator.self) private var stripper
+    @State private var showAdd = false
 
     var body: some View {
         NavigationStack {
@@ -19,12 +19,16 @@ struct LibraryView: View {
             .overlay {
                 if podcasts.isEmpty {
                     ContentUnavailableView("No Podcasts", systemImage: "headphones",
-                                           description: Text("Find a show in the Add tab."))
+                                           description: Text("Tap + to find a show."))
                 }
             }
             .navigationTitle("Library")
             .navigationDestination(for: Podcast.self) { PodcastDetailView(podcast: $0) }
-            .refreshable { await FeedService.refreshAll(in: context, stripper: stripper) }
+            .refreshable { await FeedService.refreshAll(in: context) }
+            .toolbar {
+                Button { showAdd = true } label: { Label("Add Podcast", systemImage: "plus") }
+            }
+            .sheet(isPresented: $showAdd) { AddPodcastView() }
         }
     }
 }
@@ -38,13 +42,8 @@ private struct PodcastRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(podcast.title).font(.headline).lineLimit(2)
                 Text(podcast.author).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                HStack(spacing: 6) {
-                    Text("\(podcast.episodes.count) episodes")
-                    if podcast.alwaysStripAds {
-                        Label("Always ad-free", systemImage: "scissors").foregroundStyle(.tint)
-                    }
-                }
-                .font(.caption)
+                Text("\(podcast.episodes.count) episodes")
+                    .font(.caption)
                 .foregroundStyle(.secondary)
             }
         }

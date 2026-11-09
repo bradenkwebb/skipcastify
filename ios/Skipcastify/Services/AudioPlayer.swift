@@ -11,7 +11,6 @@ final class AudioPlayer {
 
     private(set) var current: Episode?
     private(set) var isPlaying = false
-    private(set) var isPlayingAdFree = false
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
 
@@ -110,15 +109,7 @@ final class AudioPlayer {
     // MARK: - Internals
 
     private func makeAsset(for episode: Episode) -> AVURLAsset {
-        let url = episode.playbackURL
-        isPlayingAdFree = url == episode.adFreeURL
-        // If the ad-free copy lives on your server, send the same auth header the API uses.
-        // (AVURLAssetHTTPHeaderFieldsKey is undocumented but widely used; fine for a personal app.)
-        if isPlayingAdFree, let client = SkipcastifyClient.current, url.host() == client.baseURL.host(),
-           !client.authHeaders.isEmpty {
-            return AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": client.authHeaders])
-        }
-        return AVURLAsset(url: url)
+        AVURLAsset(url: episode.playbackURL)
     }
 
     private func savePosition() {
