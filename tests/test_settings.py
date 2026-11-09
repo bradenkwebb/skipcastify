@@ -129,3 +129,11 @@ def test_written_file_round_trips(tmp_path):
 def test_a_missing_subscriptions_file_means_no_subscriptions(tmp_path):
     from skipcastify.utils.utils import load_subscriptions
     assert load_subscriptions(str(tmp_path / "subscriptions.opml")) == []
+
+
+def test_subscriptions_must_be_opml(tmp_path):
+    from skipcastify.utils.utils import load_subscriptions
+    path = tmp_path / "subs.yaml"
+    path.write_text("subscriptions: []\n")
+    with pytest.raises(ValueError, match="opml"):
+        load_subscriptions(str(path))
