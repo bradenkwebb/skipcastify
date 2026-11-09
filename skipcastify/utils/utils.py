@@ -1,8 +1,12 @@
+import logging
+import os
 import re
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 def load_subscriptions(path: str, exclude_host: str = None) -> list:
@@ -11,6 +15,10 @@ def load_subscriptions(path: str, exclude_host: str = None) -> list:
     When exclude_host is provided (the hostname of this server), feeds pointing
     at our own server are filtered out so we don't re-process our own output.
     """
+    if not os.path.exists(path):
+        # A fresh install: /settings creates the file on the first subscription.
+        logger.warning(f"No subscriptions file at {path}; nothing to download")
+        return []
     if path.lower().endswith('.opml'):
         tree = ET.parse(path)
         urls = []

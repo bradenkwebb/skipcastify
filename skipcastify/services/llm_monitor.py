@@ -78,8 +78,9 @@ class EpisodeProfileStats:
 class LLMMonitor:
     """Monitor and track LLM performance across episodes."""
     
-    def __init__(self, profile_dir: str = "data/llm_profiles"):
-        self.profile_dir = Path(profile_dir)
+    def __init__(self, profile_dir: str | None = None):
+        # Under DATA_DIR, not the working directory: the container runs from /app.
+        self.profile_dir = Path(profile_dir or Path(os.environ.get("DATA_DIR") or "data") / "llm_profiles")
         self.profile_dir.mkdir(parents=True, exist_ok=True)
         self.current_episode: str | None = None
         self.call_metrics: list[LLMCallMetrics] = []
