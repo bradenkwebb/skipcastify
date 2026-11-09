@@ -374,9 +374,13 @@ class AudioProcessor:
             if llm_answered:
                 logger.info(f"LLM identified {len(llm_ad_spans)} ad spans. Marking overlapping segments...")
                 classified_segments = _classify_against_spans(segments, llm_ad_spans)
-            else:
+            elif "ad" in cut_policy.cut_labels(feed_slug):
                 logger.info("Using heuristic classifier as fallback...")
                 classified_segments = classifier.classify_segments(segments)
+            else:
+                # The heuristic only finds ads, and this feed keeps them.
+                logger.info(f"LLM failed and {feed_slug} keeps ads; cutting nothing")
+                classified_segments = _classify_against_spans(segments, [])
 
             logger.info("Aggregating segments...")
             aggregated_segments = classifier.aggregate_segments(classified_segments)
