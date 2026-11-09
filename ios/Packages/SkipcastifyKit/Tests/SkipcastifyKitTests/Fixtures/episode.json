@@ -1,0 +1,127 @@
+{
+ "cut_labels": [
+  "ad",
+  "self_promo"
+ ],
+ "cuts": [
+  {
+   "end_ms": 33960,
+   "first_line": "This podcast is supported by Philip Morris International.",
+   "label": "ADVERTISEMENT",
+   "last_line": "Discover more at PMI.com-forward slash progress.",
+   "lines": [
+    {
+     "start_ms": 0,
+     "text": "This podcast is supported by Philip Morris International."
+    },
+    {
+     "start_ms": 2720,
+     "text": "Philip Morris International's ambition is to replace cigarettes with smoke-free alternatives"
+    },
+    {
+     "start_ms": 7020,
+     "text": "for legal age consumers, and the company is leading the smoke-free transition around the"
+    }
+   ],
+   "rationales": [
+    "The segment includes a clear sponsor attribution and a URL CTA, indicating it is a promotional block."
+   ],
+   "start_ms": 0
+  },
+  {
+   "end_ms": 1538020,
+   "first_line": "This podcast is supported by Philip Morris International.",
+   "label": "ADVERTISEMENT",
+   "last_line": "TLA should may not be suitable for all customers. Learn more at betterment.com-tlh-tash-terms.",
+   "lines": [
+    {
+     "start_ms": 1444140,
+     "text": "This podcast is supported by Philip Morris International."
+    },
+    {
+     "start_ms": 1447300,
+     "text": "Philip Morris International's ambition is to replace cigarettes with smoke-free alternatives for legal age consumers."
+    },
+    {
+     "start_ms": 1453400,
+     "text": "And the company is leading the smoke-free transition around the world. Since 2022, it has made US-related investments of over $20 billion."
+    }
+   ],
+   "rationales": [
+    "Segment includes explicit sponsor language from Philip Morris International, detailing their ambitions and investments, followed by a URL CTA.",
+    "Segment promotes Citizens Bank's mobile app with a clear CTA to learn more at their website.",
+    "Segment features Betterment's tax-loss harvesting explanation, including a disclaimer and a URL CTA."
+   ],
+   "start_ms": 1444140
+  }
+ ],
+ "feed": "the-ezra-klein-show",
+ "has_audio": false,
+ "has_transcript": true,
+ "kept": [],
+ "labels": {
+  "reviewed": true,
+  "spans": [
+   {
+    "end_ms": 61660,
+    "label": "ad",
+    "start_ms": 0
+   },
+   {
+    "end_ms": 1540520,
+    "label": "ad",
+    "start_ms": 1429840
+   },
+   {
+    "end_ms": 2639920,
+    "label": "ad",
+    "start_ms": 2530260
+   },
+   {
+    "end_ms": 4295920,
+    "label": "ad",
+    "start_ms": 4241940
+   }
+  ]
+ },
+ "latest": {
+  "ads_pct": 5.58,
+  "ads_removed_s": 239.6,
+  "completed": "2026-11-07T12:15:33.581746",
+  "cost_usd": 0.007391,
+  "llm_calls": 8,
+  "original_duration_s": 4296.3,
+  "processed_duration_s": 4056.7,
+  "prompt_tokens": 64364,
+  "span_count": 5,
+  "started": "2026-11-07T12:09:15.004956",
+  "transcribe_s": 278.5,
+  "whisper_model": "base"
+ },
+ "name": "the-ezra-klein-show-how_the_democrats_did_it",
+ "released": "2026-11-07T12:00:00+00:00",
+ "runs": [
+  {
+   "ads_pct": 5.58,
+   "ads_removed_s": 239.6,
+   "completed": "2026-11-07T12:15:33.581746",
+   "cost_usd": 0.007391,
+   "llm_calls": 8,
+   "original_duration_s": 4296.3,
+   "processed_duration_s": 4056.7,
+   "prompt_tokens": 64364,
+   "span_count": 5,
+   "started": "2026-11-07T12:09:15.004956",
+   "transcribe_s": 278.5,
+   "whisper_model": "base"
+  }
+ ],
+ "score": {
+  "cut_ms": 228220,
+  "missed_ms": 15480,
+  "spoken_ms": 3863836,
+  "truth_ms": 243700,
+  "wrong_ms": 0
+ },
+ "title": "How the Democrats Did It"
+}
