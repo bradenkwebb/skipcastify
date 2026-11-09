@@ -61,6 +61,25 @@ uv sync
 cp .env.example .env   # then edit
 ```
 
+### Docker (alternative)
+
+The image runs the same code; compose starts the web server and a pipeline
+loop that runs every 15 minutes (`PIPELINE_INTERVAL_S` to change it).
+
+```bash
+git clone <repo>
+cd skipcastify
+cp .env.example .env   # set FEED_USERNAME/FEED_PASSWORD, OPENAI_API_KEY, ENABLE_PROCESSING=true
+docker compose up -d
+```
+
+Then open http://localhost:5000/settings and add shows. Everything stateful
+(episodes, feeds, `subscriptions.opml`, `policy.yaml`, the Whisper model) lives
+in the `skipcastify-data` volume, so the paths in `.env` are ignored. The port
+is bound to loopback; put a reverse proxy or `tailscale serve` in front to
+reach it from other devices. To pick up new code: `git pull && docker compose
+up -d --build`.
+
 ### Configuration
 
 All runtime config lives in `.env` (never committed):
