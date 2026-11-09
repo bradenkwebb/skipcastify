@@ -1,0 +1,14 @@
+[Unit]
+Description=Run the skipcastify pipeline every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+AccuracySec=1min
+
+# Deliberately not Persistent: after the box has been asleep we want the next
+# scheduled run, not an immediate catch-up burst of transcription.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

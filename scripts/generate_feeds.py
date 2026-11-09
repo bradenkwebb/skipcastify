@@ -5,12 +5,14 @@ Usage:
     uv run python scripts/generate_feeds.py
 """
 from dotenv import load_dotenv
+
 load_dotenv()
 
+import logging
 import os
 import sys
-import logging
 from urllib.parse import urlparse
+
 from skipcastify.services.generate_feeds import FeedManager
 from skipcastify.utils.utils import load_subscriptions
 

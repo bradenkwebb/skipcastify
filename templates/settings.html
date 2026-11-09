@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skipcastify · Settings</title>
+<style>
+  {% include '_theme.css' %}
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 18px 16px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 19px; font-weight: 650; }
+  header a { color: var(--accent); text-decoration: none; font-size: 14px; }
+  main { padding: 16px 16px 56px; max-width: 820px; margin: 0 auto; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 26px 0 8px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .muted { color: var(--muted); }
+  .note { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+  .err { color: var(--ad); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 7px 6px; border-bottom: 1px solid var(--line); text-align: center; }
+  th:first-child, td:first-child { text-align: left; }
+  th { font-weight: 600; font-size: 12.5px; color: var(--muted); }
+  th[title] { cursor: help; text-decoration: underline dotted; }
+  tr.default td { font-weight: 600; background: var(--panel2); }
+  .show { display: flex; align-items: center; gap: 8px; }
+  .show img { width: 24px; height: 24px; border-radius: 5px; flex: none; }
+  input[type=checkbox] { width: 17px; height: 17px; cursor: pointer; }
+  input:disabled { cursor: default; opacity: .45; }
+  .bar { display: flex; gap: 10px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 7px;
+           padding: 7px 14px; font-size: 13.5px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .log { list-style: none; margin: 0; padding: 0; }
+  .log li { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .log li:last-child { border-bottom: 0; }
+  .log .what { flex: 1; font-size: 13.5px; }
+  .log .when { font-size: 12px; color: var(--muted); }
+  .subs .meta { font-size: 12px; color: var(--muted); }
+  .addrow { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .addrow input, .addrow select { flex: 1 1 260px; min-width: 0; background: var(--panel2); color: var(--fg);
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font-size: 13.5px; }
+  .card { margin-top: 12px; border: 1px solid var(--accent); border-radius: 8px; padding: 12px; font-size: 13.5px; }
+  .card h3 { margin: 0 0 4px; font-size: 15px; }
+  .card dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; margin: 8px 0; }
+  .card dt { color: var(--muted); }
+  .card dd { margin: 0; }
+  .warnbox { color: var(--warn); }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚙️ Settings</h1>
+  <a href="/dashboard">dashboard</a><a href="/feeds">feeds</a><a href="/label">label</a>
+</header>
+<main>
+  <h2>Subscriptions</h2>
+  <div class="panel">
+    <p class="note">Shows the pipeline downloads and processes. <span id="r2"></span></p>
+    <ul id="subs" class="log subs"></ul>
+    <div class="addrow">
+      <input id="addInput" placeholder="Feed URL, or search by name" autocomplete="off" spellcheck="false">
+      <button id="lookup">Look up</button>
+    </div>
+    <div class="addrow" id="upstreamRow" hidden>
+      <select id="upstream"><option value="">From your Overcast export…</option></select>
+    </div>
+    <div id="subStatus" class="muted" style="margin-top:8px"></div>
+    <ul id="results" class="log"></ul>
+    <div id="preview"></div>
+  </div>
+
+  <h2>Cut policy</h2>
+  <div class="panel">
+    <p class="note">Which labeled spans are cut from the audio. Changes apply to future processing, 
+      not retroactively.</p>
+    <div id="policyError" class="err"></div>
+    <table id="policy"></table>
+    <div class="bar">
+      <button id="save" class="primary" disabled>Save</button>
+      <button id="revert" disabled>Discard changes</button>
+      <span id="status" class="muted"></span>
+    </div>
+  </div>
+
+  <h2>Change log</h2>
+  <div class="panel"><ul id="log" class="log"></ul></div>
+
+  <h2>Skipped episodes</h2>
+  <div class="panel">
+    <p class="note">Episodes that failed two runs in a row are skipped so they can't block other feeds.
+      Retry clears the count; the next run tries again.</p>
+    <ul id="skipped" class="log"></ul>
+  </div>
+</main>
+<script>
+const LABEL_INFO = {
+  ad: ['Ad', 'Someone else pays: sponsors, underwriting, other networks’ shows'],
+  self_promo: ['Self-promo', 'The show, its host or its network: Patreon, merch, subscriptions'],
+  intro_outro: ['Intro/outro', 'Theme music, credits'],
+};
+let S = null, draft = null;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function ago(iso) {
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.round(s / 60) + 'm ago';
+  if (s < 86400) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+}
+async function call(url, method, body) {
+  const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json', 'X-Skipcastify': '1' },
+                               body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+function status(msg, cls) {
+  const el = document.getElementById('status');
+  el.textContent = msg; el.className = cls || 'muted';
+}
+
+async function load(msg) {
+  S = await (await fetch('/api/settings.json')).json();
+  draft = JSON.parse(JSON.stringify(S.policy));
+  document.getElementById('policyError').textContent = S.error || '';
+  renderSubs(); renderPolicy(); renderLog(); renderSkipped();
+  status(msg || '');
+}
+
+function dirty() { return JSON.stringify(draft) !== JSON.stringify(S.policy); }
+
+function renderPolicy() {
+  const labels = S.labels, locked = !!S.error;
+  const head = '<tr><th>Show</th>' + labels.map(l =>
+    `<th title="${esc(LABEL_INFO[l][1])}">${esc(LABEL_INFO[l][0])}</th>`).join('') + '<th>Use default</th></tr>';
+  const boxes = (row, current, disabled) => labels.map(l =>
+    `<td><input type="checkbox" data-row="${esc(row)}" data-label="${l}" aria-label="${esc(row)} ${l}"` +
+    `${current.includes(l) ? ' checked' : ''}${disabled || locked ? ' disabled' : ''}></td>`).join('');
+  const rows = [`<tr class="default"><td>Default <span class="muted">(every show unless set below)</span></td>` +
+    boxes('__default', draft.default, false) + '<td></td></tr>'];
+  for (const f of S.feeds) {
+    const own = draft.feeds[f.slug];
+    rows.push(`<tr><td><div class="show"><img src="/feeds/art/${encodeURIComponent(f.slug)}.jpg" alt="" ` +
+      `onerror="this.style.visibility='hidden'"><span title="${esc(f.slug)}">${esc(f.title)}</span></div></td>` +
+      boxes(f.slug, own || draft.default, !own) +
+      `<td><input type="checkbox" data-usedefault="${esc(f.slug)}" aria-label="${esc(f.title)} uses default"` +
+      `${own ? '' : ' checked'}${locked ? ' disabled' : ''}></td></tr>`);
+  }
+  document.getElementById('policy').innerHTML = head + rows.join('');
+  document.getElementById('save').disabled = locked || !dirty();
+  document.getElementById('revert').disabled = !dirty();
+}
+
+document.getElementById('policy').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.usedefault) {
+    const slug = t.dataset.usedefault;
+    if (t.checked) delete draft.feeds[slug];
+    else draft.feeds[slug] = [...draft.default];
+  } else if (t.dataset.label) {
+    const list = t.dataset.row === '__default' ? draft.default : draft.feeds[t.dataset.row];
+    const i = list.indexOf(t.dataset.label);
+    if (t.checked && i < 0) list.push(t.dataset.label);
+    if (!t.checked && i >= 0) list.splice(i, 1);
+    list.sort((a, b) => S.labels.indexOf(a) - S.labels.indexOf(b));
+  }
+  renderPolicy();
+  status(dirty() ? 'Unsaved changes' : '');
+});
+
+document.getElementById('revert').onclick = () => { draft = JSON.parse(JSON.stringify(S.policy)); renderPolicy(); status(''); };
+
+document.getElementById('save').onclick = async () => {
+  try {
+    const { change } = await call('/api/settings/policy.json', 'PUT', { version: S.version, policy: draft });
+    await load(change ? 'Saved' : 'Nothing changed');
+  } catch (err) { status(err.message, 'err'); }
+};
+
+function renderLog() {
+  const el = document.getElementById('log');
+  if (!S.changes.length) { el.innerHTML = '<li class="muted">No changes made from this page yet.</li>'; return; }
+  el.innerHTML = S.changes.map(c => `<li><div class="what">` +
+    c.summary.map(esc).join('<br>') +
+    `<div class="when" title="${esc(c.ts)}">${ago(c.ts)}${c.user ? ' · ' + esc(c.user) : ''}` +
+    `${c.undo_of ? ' · undo' : ''}</div></div>` +
+    `<button data-undo="${c.id}" title="Restore the policy from before this change"${S.error ? ' disabled' : ''}>Undo</button></li>`
+  ).join('');
+}
+
+document.getElementById('log').addEventListener('click', async e => {
+  const id = e.target.dataset.undo;
+  if (!id) return;
+  if (dirty() && !confirm('Discard your unsaved changes and undo this one?')) return;
+  try {
+    const { change } = await call(`/api/settings/undo/${id}.json`, 'POST', { versions: { policy: S.version, subscriptions: S.subs_version } });
+    await load(change ? 'Undone' : 'Already in that state');
+  } catch (err) { status(err.message, 'err'); }
+});
+
+function renderSkipped() {
+  const el = document.getElementById('skipped');
+  if (!S.skipped.length) { el.innerHTML = '<li class="muted">None. Every episode is processing normally.</li>'; return; }
+  el.innerHTML = S.skipped.map(s => `<li><div class="what"><code>${esc(s.episode)}</code>` +
+    `<div class="when">failed ${s.attempts} runs</div></div>` +
+    `<button data-retry="${esc(s.episode)}">Retry</button></li>`).join('');
+}
+
+document.getElementById('skipped').addEventListener('click', async e => {
+  const ep = e.target.dataset.retry;
+  if (!ep) return;
+  try { await call('/api/settings/retry.json', 'POST', { episode: ep }); await load('Will retry on the next run'); }
+  catch (err) { status(err.message, 'err'); }
+});
+
+function mb(b) { return b >= 2 ** 30 ? (b / 2 ** 30).toFixed(1) + ' GB' : Math.round(b / 2 ** 20) + ' MB'; }  // binary, like R2_CAP_GB
+function subStatus(msg, cls) { const el = document.getElementById('subStatus'); el.textContent = msg; el.className = cls || 'muted'; }
+
+function renderSubs() {
+  const r2 = S.r2;
+  document.getElementById('r2').textContent =
+    `R2 audio: ${mb(r2.used_bytes)} of the ${mb(r2.cap_bytes)} cap.`;
+  const el = document.getElementById('subs');
+  el.innerHTML = S.subscriptions.length ? S.subscriptions.map(s => `<li><div class="what"><div class="show">` +
+    `<img src="/feeds/art/${encodeURIComponent(s.slug)}.jpg" alt="" onerror="this.style.visibility='hidden'">` +
+    `<span title="${esc(s.url)}">${esc(s.title)}</span></div><div class="meta">` +
+    [s.checked ? 'checked ' + ago(s.checked) : 'not checked yet',
+     s.last_download ? 'last download ' + ago(s.last_download) : null,
+     s.published ? 'on R2' : 'not on R2 yet'].filter(Boolean).join(' · ') +
+    `</div></div><button data-remove="${esc(s.url)}" data-title="${esc(s.title)}">Remove</button></li>`).join('')
+    : '<li class="muted">No subscriptions.</li>';
+  const sel = document.getElementById('upstream');
+  document.getElementById('upstreamRow').hidden = !S.upstream.length;
+  sel.innerHTML = '<option value="">From your Overcast export…</option>' +
+    S.upstream.map(u => `<option value="${esc(u.url)}">${esc(u.title)}</option>`).join('');
+}
+
+document.getElementById('subs').addEventListener('click', async e => {
+  const url = e.target.dataset.remove;
+  if (!url) return;
+  if (!confirm(`Stop downloading and processing ${e.target.dataset.title}?\n\nIts R2 feed stays up and its audio ` +
+               'ages out over 14 days. Unsubscribe in Overcast too if you no longer want it.')) return;
+  try {
+    await call('/api/settings/subscriptions/remove.json', 'POST', { url, version: S.subs_version });
+    await load(); subStatus(`Removed. Unsubscribe in Overcast too if you're done with it.`);
+  } catch (err) { subStatus(err.message, 'err'); }
+});
+
+async function lookup() {
+  const q = document.getElementById('addInput').value.trim();
+  document.getElementById('results').innerHTML = ''; document.getElementById('preview').innerHTML = '';
+  if (!q) return;
+  if (/^https?:\/\//i.test(q)) return preview(q);
+  subStatus('Searching…');
+  try {
+    const { results } = await call('/api/settings/subscriptions/search.json', 'POST', { term: q });
+    subStatus(results.length ? '' : 'No podcasts found.');
+    document.getElementById('results').innerHTML = results.map(r => `<li><div class="what">${esc(r.title)}` +
+      `<div class="meta">${esc(r.author || '')}</div></div><button data-preview="${esc(r.url)}">Preview</button></li>`).join('');
+  } catch (err) { subStatus(err.message, 'err'); }
+}
+document.getElementById('lookup').onclick = lookup;
+document.getElementById('addInput').addEventListener('keydown', e => { if (e.key === 'Enter') lookup(); });
+document.getElementById('results').addEventListener('click', e => { if (e.target.dataset.preview) preview(e.target.dataset.preview); });
+document.getElementById('upstream').addEventListener('change', e => { if (e.target.value) preview(e.target.value); });
+
+async function preview(url) {
+  const box = document.getElementById('preview');
+  box.innerHTML = ''; subStatus('Loading feed…');
+  let p;
+  try { p = await call('/api/settings/subscriptions/preview.json', 'POST', { url }); }
+  catch (err) { return subStatus(err.message, 'err'); }
+  subStatus('');
+  const left = S.r2.cap_bytes - S.r2.used_bytes;
+  const latest = p.latest ? ago(new Date(p.latest * 1000).toISOString()) : 'unknown';
+  box.innerHTML = `<div class="card"><h3>${esc(p.title)}</h3><div class="meta">${esc(p.author || '')}</div><dl>` +
+    `<dt>Slug</dt><dd><code>${esc(p.slug)}</code></dd>` +
+    `<dt>Episodes in feed</dt><dd>${p.episodes} · newest ${latest}</dd>` +
+    `<dt>Cadence</dt><dd>~${p.per_window} episodes per 14 days (from the last 90 days)</dd>` +
+    `<dt>Typical episode</dt><dd>${p.avg_bytes ? mb(p.avg_bytes) : 'unknown'}</dd>` +
+    `<dt>R2 estimate</dt><dd>~${mb(p.est_bytes)} at steady state` +
+    (p.est_bytes > left ? ` <span class="warnbox">· more than the ${mb(Math.max(left, 0))} left under the cap</span>` : '') +
+    `<br><span class="meta">Less if episodes have nothing to cut: those link the original audio.</span></dd></dl>` +
+    `<p class="meta">Only episodes released after subscribing are processed; the current backlog is skipped.</p>` +
+    (p.already ? '<p class="warnbox">Already subscribed.</p>' :
+      `<div class="bar"><button class="primary" id="subscribe">Subscribe</button><button id="cancelPreview">Cancel</button></div>`) +
+    '</div>';
+  if (p.already) return;
+  document.getElementById('cancelPreview').onclick = () => { box.innerHTML = ''; };
+  document.getElementById('subscribe').onclick = async () => {
+    try {
+      await call('/api/settings/subscriptions/add.json', 'POST', { url: p.url, title: p.title, version: S.subs_version });
+      box.innerHTML = ''; document.getElementById('results').innerHTML = '';
+      document.getElementById('addInput').value = '';
+      await load(); subStatus(`Subscribed to ${p.title}. It's picked up on the next run.`);
+    } catch (err) { subStatus(err.message, 'err'); }
+  };
+}
+
+load();
+</script>
+</body>
+</html>

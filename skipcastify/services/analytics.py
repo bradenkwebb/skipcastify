@@ -1,0 +1,277 @@
+"""Aggregations over the pipeline event log for the stats CLI and dashboard.
+
+Single source of truth so the CLI (`scripts/stats.py`) and the web dashboard
+never drift. Reads `data/metrics/events.jsonl` (see metrics.log_event).
+
+Design note — ad volume is computed from the *merged, ad-labeled spans*, NOT
+from `ads_removed_s`. Before the "cut only ad spans" fix, the stitcher also
+dropped silence/music, so `ads_removed_s` (and `ads_pct`) over-reported ads for
+feeds with quiet passages (e.g. Wisdom of the Masters' phantom ~25%). Spans are
+the detector's actual ad calls, so deriving minutes from them is independent of
+that stitching behavior and consistent across all history.
+"""
+
+from __future__ import annotations
+
+import json
+from collections import defaultdict
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+from skipcastify.services.run_log import recent_runs
+
+AD_LABELS = {"ADVERTISEMENT", "SPONSOR"}
+
+
+def load_events(data_dir: str) -> list[dict]:
+    """Parse events.jsonl into dicts, skipping malformed lines."""
+    path = Path(data_dir) / "metrics" / "events.jsonl"
+    if not path.exists():
+        return []
+    events: list[dict] = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                events.append(json.loads(line))
+            except Exception:
+                pass
+    return events
+
+
+def _merge_ad_spans(spans: list[dict]) -> list[tuple[int, int]]:
+    """Return non-overlapping (start_ms, end_ms) for ad/sponsor spans only.
+
+    The raw detector output can overlap (adjacent windows re-flag the same
+    break), so summing durations naively double-counts. Merge first.
+    """
+    ranges = sorted(
+        (s["start_ms"], s["end_ms"])
+        for s in spans
+        if s.get("label") in AD_LABELS and s["end_ms"] > s["start_ms"]
+    )
+    if not ranges:
+        return []
+    merged = [list(ranges[0])]
+    for start, end in ranges[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return [(a, b) for a, b in merged]
+
+
+def _ad_ms(ev: dict) -> int:
+    """Milliseconds of genuine ad content in an episode_complete event."""
+    return sum(b - a for a, b in _merge_ad_spans(ev.get("spans", [])))
+
+
+def _ad_pct(ev: dict) -> float:
+    dur = ev.get("original_duration_s") or 0
+    if dur <= 0:
+        return 0.0
+    return (_ad_ms(ev) / 1000.0) / dur * 100.0
+
+
+def _completes(events: list[dict]) -> list[dict]:
+    return [e for e in events if e.get("event") == "episode_complete"]
+
+
+def _day(ev: dict) -> str:
+    return ev.get("ts", "")[:10]
+
+
+def feed_summary(events: list[dict]) -> list[dict]:
+    """Per-feed rollup: episode count, ad density, total/avg ad minutes."""
+    by_feed: dict[str, list[dict]] = defaultdict(list)
+    for ev in _completes(events):
+        by_feed[ev.get("feed_slug", "unknown")].append(ev)
+
+    rows = []
+    for slug, eps in by_feed.items():
+        eps_sorted = sorted(eps, key=lambda e: e.get("ts", ""))
+        ad_minutes = [_ad_ms(e) / 60000.0 for e in eps_sorted]
+        pcts = [_ad_pct(e) for e in eps_sorted]
+        n = len(eps_sorted)
+        # Trailing run of ad-free episodes -> drop-candidate signal.
+        ad_free_streak = 0
+        for e in reversed(eps_sorted):
+            if _ad_ms(e) == 0:
+                ad_free_streak += 1
+            else:
+                break
+        rows.append({
+            "feed_slug": slug,
+            "episodes": n,
+            "avg_ad_pct": round(sum(pcts) / n, 2) if n else 0.0,
+            "total_ad_minutes": round(sum(ad_minutes), 1),
+            "avg_ad_minutes": round(sum(ad_minutes) / n, 2) if n else 0.0,
+            "last_processed": eps_sorted[-1].get("ts", "")[:19],
+            "ad_free_streak": ad_free_streak,
+        })
+    return sorted(rows, key=lambda r: r["total_ad_minutes"], reverse=True)
+
+
+def daily_series(events: list[dict], start: date | None = None) -> list[dict]:
+    """Per-day throughput: episodes processed, distinct feeds, ad minutes."""
+    by_day_eps: dict[str, int] = defaultdict(int)
+    by_day_feeds: dict[str, set] = defaultdict(set)
+    by_day_admin: dict[str, float] = defaultdict(float)
+    by_day_list: dict[str, list] = defaultdict(list)
+    for ev in _completes(events):
+        d = _day(ev)
+        by_day_eps[d] += 1
+        by_day_list[d].append({"feed_slug": ev.get("feed_slug", "unknown"),
+                               "episode": ev.get("episode_name", ""),
+                               "ad_minutes": round(_ad_ms(ev) / 60000.0, 1)})
+        by_day_feeds[d].add(ev.get("feed_slug"))
+        by_day_admin[d] += _ad_ms(ev) / 60000.0
+    if not by_day_eps and start is None:
+        return []
+    # One row per calendar day through today, so idle stretches show as gaps.
+    day = start or date.fromisoformat(min(by_day_eps))
+    end = max([date.today()] + [date.fromisoformat(d) for d in by_day_eps])
+    rows = []
+    while day <= end:
+        d = day.isoformat()
+        rows.append({
+            "date": d,
+            "episodes": by_day_eps.get(d, 0),
+            "feeds": len(by_day_feeds.get(d, ())),
+            "ad_minutes": round(by_day_admin.get(d, 0.0), 1),
+            "list": by_day_list.get(d, []),
+        })
+        day += timedelta(days=1)
+    return rows
+
+
+def ad_signatures(events: list[dict]) -> list[dict]:
+    """Per-feed ad positions, normalized to episode length (0..1).
+
+    Each episode becomes a track of normalized [start, end] ad spans — the raw
+    material for the "where do ads live / does this feed have a recognizable
+    signature" view.
+    """
+    by_feed: dict[str, list[dict]] = defaultdict(list)
+    for ev in _completes(events):
+        dur_ms = (ev.get("original_duration_s") or 0) * 1000
+        if dur_ms <= 0:
+            continue
+        spans = [
+            {"start": round(a / dur_ms, 4), "end": round(b / dur_ms, 4)}
+            for a, b in _merge_ad_spans(ev.get("spans", []))
+        ]
+        by_feed[ev.get("feed_slug", "unknown")].append({
+            "episode": ev.get("episode_name", ""),
+            "duration_min": round((ev.get("original_duration_s") or 0) / 60.0, 1),
+            "ad_s": round(_ad_ms(ev) / 1000.0, 1),
+            "processed": _aware(ev.get("ts", "")),
+            "spans": spans,
+        })
+    return [
+        {"feed_slug": slug, "episodes": tracks}
+        for slug, tracks in sorted(by_feed.items())
+    ]
+
+
+def drop_candidates(events: list[dict], min_episodes: int = 2) -> list[dict]:
+    """Feeds whose entire recent run is ad-free — candidates to drop from the
+    pipeline (the Wisdom / Politics workflow, data-driven)."""
+    out = []
+    for row in feed_summary(events):
+        if row["episodes"] >= min_episodes and row["ad_free_streak"] == row["episodes"]:
+            out.append({
+                "feed_slug": row["feed_slug"],
+                "episodes": row["episodes"],
+                "last_processed": row["last_processed"],
+            })
+    return out
+
+
+def overview(events: list[dict]) -> dict:
+    completes = _completes(events)
+    total_ad_min = sum(_ad_ms(e) for e in completes) / 60000.0
+    llm = [e for e in events if e.get("event") == "llm_section"]
+    return {
+        "episodes_processed": len(completes),
+        "feeds": len({e.get("feed_slug") for e in completes}),
+        "total_ad_minutes": round(total_ad_min, 1),
+        "total_llm_cost_usd": round(sum(e.get("cost_usd", 0) for e in llm), 4),
+        "first_event": min((e.get("ts", "") for e in events), default=""),
+        "last_event": max((e.get("ts", "") for e in events), default=""),
+    }
+
+
+def _aware(ts: str) -> str:
+    # events.jsonl timestamps are naive server-local time.
+    try:
+        return datetime.fromisoformat(ts).astimezone().isoformat(timespec="seconds")
+    except ValueError:
+        return ts
+
+
+def recent_episodes(events: list[dict], n: int = 25) -> list[dict]:
+    """The last n processed episodes, newest first."""
+    rows = []
+    for ev in sorted(_completes(events), key=lambda e: e.get("ts", ""), reverse=True)[:n]:
+        rows.append({
+            "ts": _aware(ev.get("ts", "")),
+            "feed_slug": ev.get("feed_slug", "unknown"),
+            "episode": ev.get("episode_name", ""),
+            "duration_min": round((ev.get("original_duration_s") or 0) / 60, 1),
+            "ad_minutes": round(_ad_ms(ev) / 60000.0, 1),
+            "ad_pct": round(_ad_pct(ev), 1),
+        })
+    return rows
+
+
+def feed_status(runs: list[dict]) -> list[dict]:
+    """Latest check per feed, plus the last download seen in `runs` (newest first)."""
+    status: dict[str, dict] = {}
+    for run in runs:
+        for f in run.get("feeds", []):
+            slug = f.get("feed")
+            if not slug:
+                continue
+            row = status.setdefault(slug, {"feed_slug": slug, "status": f.get("status"),
+                                           "checked": run.get("started"), "last_download": None})
+            if row["last_download"] is None and f.get("downloaded"):
+                row["last_download"] = run.get("started")
+    return sorted(status.values(), key=lambda r: r["feed_slug"])
+
+
+def _with_titles(data_dir: str, rows: list[dict]) -> list[dict]:
+    """Add each row's feed title and release date (keyed by its "episode" name)."""
+    from skipcastify.services.labeling import (  # labeling imports this module
+        episode_titles,
+        release_dates,
+    )
+    titles, released = episode_titles(data_dir), release_dates(data_dir)
+    return [{**r, "title": titles.get(r["episode"]), "released": released.get(r["episode"])} for r in rows]
+
+
+def build_payload(data_dir: str, days: int | None = None) -> dict:
+    """One JSON blob with everything the dashboard needs.
+
+    days limits the episode stats to the last N days; runs are unaffected.
+    """
+    events = load_events(data_dir)
+    start = None
+    if days:
+        start = date.today() - timedelta(days=days - 1)
+        events = [e for e in events if e.get("ts", "") >= start.isoformat()]
+    runs = recent_runs(data_dir, 500)
+    return {
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "days": days,
+        "overview": overview(events),
+        "feeds": feed_summary(events),
+        "daily": [{**d, "list": _with_titles(data_dir, d["list"])} for d in daily_series(events, start)],
+        "signatures": [{**f, "episodes": _with_titles(data_dir, f["episodes"])} for f in ad_signatures(events)],
+        "drop_candidates": drop_candidates(events),
+        "recent_episodes": _with_titles(data_dir, recent_episodes(events)),
+        "runs": runs[:40],
+        "feed_status": feed_status(runs),
+    }

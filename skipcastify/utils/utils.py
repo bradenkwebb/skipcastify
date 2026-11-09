@@ -1,15 +1,24 @@
+import logging
+import os
 import re
 import xml.etree.ElementTree as ET
-import yaml
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
 
 
 def load_subscriptions(path: str, exclude_host: str = None) -> list:
-    """Load feed URLs from a YAML subscriptions file or an Overcast OPML export.
+    """Load feed URLs from an OPML file (ours, or a podcast app's export).
 
     When exclude_host is provided (the hostname of this server), feeds pointing
     at our own server are filtered out so we don't re-process our own output.
     """
+    if not os.path.exists(path):
+        # A fresh install: /settings creates the file on the first subscription.
+        logger.warning(f"No subscriptions file at {path}; nothing to download")
+        return []
     if path.lower().endswith('.opml'):
         tree = ET.parse(path)
         urls = []
@@ -23,9 +32,7 @@ def load_subscriptions(path: str, exclude_host: str = None) -> list:
                 continue
             urls.append(url)
         return urls
-    else:
-        with open(path) as f:
-            return yaml.safe_load(f)['subscriptions']
+    raise ValueError(f"SUBSCRIPTIONS must be an .opml file, got {path}")
 
 
 def slugify(title: str) -> str:
@@ -44,6 +51,7 @@ def slugify(title: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
 
 import unicodedata
+
 
 def safe_filename(title: str, slug: str, max_len: int = 100) -> str:
     """Generates a safe filename for an audio file based on the title and slug."""

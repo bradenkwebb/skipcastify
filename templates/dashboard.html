@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skipcastify · Processing Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  {% include '_theme.css' %}
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 650; }
+  header .gen { color: var(--muted); font-size: 13px; }
+  main { padding: 20px 24px 60px; max-width: 1200px; margin: 0 auto; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .04em; margin: 32px 0 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card .v { font-size: 26px; font-weight: 650; }
+  .card .sub { color: var(--muted); font-size: 15px; font-weight: 500; white-space: nowrap; }
+  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  button, select { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .badge { display: inline-block; background: var(--ok-tint); color: var(--ok);
+    border: 1px solid var(--ok-line); border-radius: 999px; padding: 4px 12px; margin: 0 8px 8px 0; font-size: 13px; }
+  .muted { color: var(--muted); }
+  /* ad-signature strips */
+  #sigList { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  #sigShow { display: flex; gap: 12px; align-items: center; min-height: 0; }
+  #sigShow img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--panel2); flex: none; }
+  #sigShow .t { font-weight: 600; }
+  #sigShow .t a { color: inherit; text-decoration: none; }
+  #sigShow .t a:hover { color: var(--accent); }
+  #sigShow .m { color: var(--muted); font-size: 13px; }
+  a.track { display: block; }
+  a.track:hover { outline: 1px solid var(--accent); }
+  .tbl a { color: inherit; }
+  .tbl a:hover { color: var(--accent); }
+  .dayeps { margin-top: 10px; font-size: 13px; }
+  .dayeps ul { margin: 6px 0 0; padding-left: 18px; }
+  .dayeps a { color: var(--fg); } .dayeps a:hover { color: var(--accent); }
+  .track { position: relative; height: 20px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
+  .track .sp { position: absolute; top: 0; bottom: 0; background: var(--ad); opacity: .85; }
+  .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .err { color: var(--ad); }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  .tbl td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .scroll { overflow-x: auto; }
+  /* One line per episode: titles truncate instead of wrapping. */
+  .tbl.eps td { white-space: nowrap; }
+  .tbl.eps td.ep { width: 100%; max-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .tbl.eps td.feed { max-width: 110px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+  .ok { color: var(--ok); }
+  .warn { color: var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎧 Skipcastify</h1>
+  <span class="muted">processing dashboard</span>
+  <a href="/feeds" style="color:var(--accent);text-decoration:none;font-size:14px">feeds →</a>
+  <a href="/label" style="color:var(--accent);text-decoration:none;font-size:14px">label →</a>
+  <a href="/settings" style="color:var(--accent);text-decoration:none;font-size:14px">settings →</a>
+  <span class="gen" id="gen"></span>
+  <span class="toolbar" style="margin:0 0 0 auto">
+    <button data-days="7" onclick="setRange(7)">7 days</button>
+    <button data-days="30" onclick="setRange(30)">30 days</button>
+    <button data-days="0" onclick="setRange(0)">All time</button>
+  </span>
+</header>
+<main>
+  <div class="cards" id="cards"></div>
+
+  <h2>Pipeline</h2>
+  <div class="panel"><div id="lastRun" style="margin-bottom:10px"></div><div class="scroll" id="feedStatus"></div></div>
+
+  <div class="grid2">
+    <div>
+      <h2>Recent runs</h2>
+      <div class="panel">
+        <div class="toolbar"><label class="muted"><input type="checkbox" id="hideQuiet" checked onchange="renderRuns()"> hide runs with nothing new</label></div>
+        <div class="scroll" id="runs"></div>
+      </div>
+    </div>
+    <div>
+      <h2>Recent episodes</h2>
+      <div class="panel scroll" id="episodes"></div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div>
+      <h2>Daily throughput</h2>
+      <div class="panel"><canvas id="dailyChart" height="220"></canvas>
+        <div id="dayEps" class="dayeps muted">Click a bar to list that day's episodes.</div></div>
+    </div>
+    <div>
+      <h2>Ad-heaviness leaderboard</h2>
+      <div class="panel">
+        <div class="toolbar">
+          <button id="btnPct" class="active" onclick="setLeaderboard('pct')">Avg ad %</button>
+          <button id="btnMinutes" onclick="setLeaderboard('minutes')">Total ad minutes</button>
+        </div>
+        <canvas id="feedChart" height="240"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <h2>Drop candidates <span class="muted" style="text-transform:none;letter-spacing:0">— entirely ad-free recent runs</span></h2>
+  <div class="panel" id="drops"></div>
+
+  <h2>Ad signatures <span class="muted" style="text-transform:none;letter-spacing:0">— where ads land within an episode (0 = start, 1 = end); click a row for the episode</span></h2>
+  <div class="panel">
+    <div class="toolbar">
+      <label class="muted" for="sigFeed">Feed:</label>
+      <select id="sigFeed" onchange="saveSigFeed(); renderSignature()"></select>
+    </div>
+    <div id="sigShow"></div>
+    <div id="sigList"></div>
+    <div class="axis"><span>start</span><span>25%</span><span>50%</span><span>75%</span><span>end</span></div>
+  </div>
+</main>
+
+<script>
+let DATA = null;
+let feedChart = null;
+let dailyChart = null;
+let range = 0;
+try { range = Number(localStorage.getItem('range')) || 0; } catch (e) {}
+
+function setRange(days) {
+  range = days;
+  try { localStorage.setItem('range', String(days)); } catch (e) {}
+  load();
+}
+
+async function load() {
+  try {
+    document.querySelectorAll('[data-days]').forEach(b =>
+      b.classList.toggle('active', Number(b.dataset.days) === range));
+    const r = await fetch('/api/stats.json' + (range ? '?days=' + range : ''), { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    DATA = await r.json();
+    render();
+  } catch (e) {
+    document.getElementById('cards').innerHTML =
+      '<div class="card err">Failed to load stats: ' + e.message + '</div>';
+  }
+}
+
+function card(k, v) { return `<div class="card"><div class="v">${v}</div><div class="k">${k}</div></div>`; }
+
+// 1234.5 -> "20h 35m"; 3000 -> "2d 2h 0m". Leading zero units are dropped.
+function dhm(minutes) {
+  const t = Math.round(minutes), d = Math.floor(t / 1440), h = Math.floor(t / 60) % 24, m = t % 60;
+  return d ? `${d}d ${h}h ${m}m` : h ? `${h}h ${m}m` : `${m}m`;
+}
+
+function render() {
+  const o = DATA.overview;
+  document.getElementById('gen').textContent = 'updated ' + DATA.generated_at;
+  document.getElementById('cards').innerHTML = [
+    card('episodes', o.episodes_processed),
+    card('feeds', o.feeds),
+    card('ad minutes removed', `${Math.round(o.total_ad_minutes).toLocaleString()} <span class="sub">(${dhm(o.total_ad_minutes)})</span>`),
+    card('LLM cost', '$' + o.total_llm_cost_usd.toFixed(2)),
+  ].join('');
+
+  renderPipeline();
+  renderRuns();
+  renderEpisodes();
+  renderDaily();
+  setLeaderboard('pct');
+  renderDrops();
+  renderSignatureSelector();
+}
+
+const css = name => getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim();
+
+function renderDaily() {
+  const d = DATA.daily;
+  if (dailyChart) dailyChart.destroy();
+  dailyChart = new Chart(document.getElementById('dailyChart'), {
+    data: {
+      labels: d.map(x => x.date),
+      datasets: [
+        { type: 'bar', label: 'episodes', data: d.map(x => x.episodes),
+          backgroundColor: css('accent'), yAxisID: 'y', order: 2 },
+        { type: 'line', label: 'ad minutes', data: d.map(x => x.ad_minutes),
+          borderColor: css('ad'), backgroundColor: css('ad'), yAxisID: 'y1', tension: .3, order: 1 },
+      ],
+    },
+    options: {
+      onClick: (_e, els) => { if (els.length) showDayEps(d[els[0].index]); },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : ''; },
+      plugins: { legend: { labels: { color: css('muted') } } },
+      scales: {
+        x: { ticks: { color: css('muted') }, grid: { color: css('line') } },
+        y: { position: 'left', beginAtZero: true, ticks: { color: css('muted') }, grid: { color: css('line') } },
+        y1: { position: 'right', beginAtZero: true, ticks: { color: css('muted') }, grid: { drawOnChartArea: false } },
+      },
+    },
+  });
+}
+
+// Canvas tooltips can't hold clickable links, so a click pins the day's list here.
+function showDayEps(day) {
+  const box = document.getElementById('dayEps');
+  const eps = day.list || [];
+  box.classList.toggle('muted', !eps.length);
+  box.innerHTML = `<b>${esc(day.date)}</b> · ${eps.length} episode${eps.length === 1 ? '' : 's'}` +
+    (eps.length ? '<ul>' + eps.map(e =>
+      `<li><a href="${epUrl(e.episode)}">${esc(e.title || e.episode)}</a> ` +
+      `<span class="muted">${esc(shorten(e.feed_slug))} · ${e.ad_minutes}m ads</span></li>`).join('') + '</ul>' : '');
+}
+
+let lbMode = 'pct';
+function setLeaderboard(mode) {
+  lbMode = mode;
+  document.getElementById('btnMinutes').classList.toggle('active', mode === 'minutes');
+  document.getElementById('btnPct').classList.toggle('active', mode === 'pct');
+  const key = mode === 'minutes' ? 'total_ad_minutes' : 'avg_ad_pct';
+  const rows = [...DATA.feeds].sort((a, b) => b[key] - a[key]).slice(0, 12);
+  const label = mode === 'minutes' ? 'total ad minutes' : 'avg ad %';
+  if (feedChart) feedChart.destroy();
+  feedChart = new Chart(document.getElementById('feedChart'), {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => shorten(r.feed_slug)),
+      datasets: [{ label, data: rows.map(r => r[key]), backgroundColor: css('ad') }],
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, ticks: { color: css('muted') }, grid: { color: css('line') } },
+        y: { ticks: { color: css('fg'), font: { size: 11 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+function renderDrops() {
+  const el = document.getElementById('drops');
+  if (!DATA.drop_candidates.length) {
+    el.innerHTML = '<span class="muted">None — every feed still shows ads.</span>';
+    return;
+  }
+  el.innerHTML = DATA.drop_candidates.map(d =>
+    `<span class="badge">${d.feed_slug} · ${d.episodes} ep, all ad-free</span>`).join('');
+}
+
+function saveSigFeed() {
+  try { localStorage.setItem('sigFeed', document.getElementById('sigFeed').value); } catch (e) {}
+}
+
+function renderSignatureSelector() {
+  const sel = document.getElementById('sigFeed');
+  const withAds = DATA.signatures
+    .filter(f => f.episodes.some(e => e.spans.length))
+    .sort((a, b) => a.feed_slug.localeCompare(b.feed_slug));
+  // Keep the current pick; else the one saved before the last reload; else the latest episode's feed.
+  let saved = null;
+  try { saved = localStorage.getItem('sigFeed'); } catch (e) {}
+  const latest = (DATA.recent_episodes[0] || {}).feed_slug;
+  const pick = [sel.value, saved, latest].find(f => withAds.some(w => w.feed_slug === f));
+  sel.innerHTML = withAds.map(f => `<option value="${esc(f.feed_slug)}">${esc(f.feed_slug)}</option>`).join('');
+  if (pick) sel.value = pick;
+  renderSignature();
+}
+
+function renderSignature() {
+  const slug = document.getElementById('sigFeed').value;
+  const feed = DATA.signatures.find(f => f.feed_slug === slug);
+  const list = document.getElementById('sigList');
+  if (!feed) { list.innerHTML = ''; return; }
+  renderSigShow(slug, feed);
+  list.innerHTML = feed.episodes.map(ep => {
+    const about = epTooltip(ep), durS = ep.duration_min * 60;
+    const spans = ep.spans.map(s =>
+      `<div class="sp" title="${esc(`Ad ${clock(s.start * durS)}–${clock(s.end * durS)} (${clock((s.end - s.start) * durS)})\n\n${about}`)}"
+            style="left:${s.start*100}%;width:${Math.max((s.end-s.start)*100,0.4)}%"></div>`).join('');
+    return `<a class="track" href="${epUrl(ep.episode)}" title="${esc(about)}">${spans}</a>`;
+  }).join('');
+}
+
+function clock(sec) {
+  const t = Math.round(sec), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+}
+
+// Multi-line native tooltip for one episode's strip.
+function epTooltip(ep) {
+  const day = iso => new Date(iso).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
+  const len = ep.duration_min >= 60 ? `${Math.floor(ep.duration_min / 60)}h ${Math.round(ep.duration_min % 60)}m` : `${Math.round(ep.duration_min)}m`;
+  const pct = ep.duration_min ? (ep.ad_s / (ep.duration_min * 60) * 100).toFixed(1) : '0';
+  const n = ep.spans.length;
+  return [ep.title || ep.episode,
+    [ep.released ? 'Released ' + day(ep.released) : null, len].filter(Boolean).join(' · '),
+    n ? `${clock(ep.ad_s)} cut (${pct}%) in ${n} break${n === 1 ? '' : 's'}` : 'Nothing cut',
+    ep.processed ? 'Processed ' + day(ep.processed) : null,
+    'Click for details'].filter(Boolean).join('\n');
+}
+
+// Show artwork, title and website above the strips; fetched once per feed.
+const showMeta = {};
+async function renderSigShow(slug, feed) {
+  const box = document.getElementById('sigShow');
+  const n = feed.episodes.length, avg = feed.episodes.reduce((a, e) => a + e.ad_s, 0) / (n || 1);
+  const stats = `${n} episode${n === 1 ? '' : 's'} processed · ${clock(avg)} cut on average`;
+  const paint = S => {
+    if (document.getElementById('sigFeed').value !== slug) return;
+    const http = u => typeof u === 'string' && /^https?:\/\//.test(u) ? u : null;
+    const img = http(S && S.image), site = http(S && S.website), title = (S && S.title) || slug;
+    box.style.marginTop = '12px';
+    box.innerHTML = (img ? `<img src="${esc(img)}" alt="" referrerpolicy="no-referrer">` : '')
+      + `<div><div class="t">${site ? `<a href="${esc(site)}" target="_blank" rel="noopener noreferrer">${esc(title)}</a>` : esc(title)}</div>`
+      + `<div class="m">${S && S.author && S.author !== title ? esc(S.author) + ' · ' : ''}${stats}</div></div>`;
+  };
+  paint(showMeta[slug]);
+  if (!(slug in showMeta)) {
+    try {
+      const r = await fetch('/api/feed/' + encodeURIComponent(slug) + '/meta.json', { credentials: 'same-origin' });
+      showMeta[slug] = r.ok ? (await r.json()).show : null;
+    } catch (e) { showMeta[slug] = null; }
+    paint(showMeta[slug]);
+  }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function ago(iso) {
+  if (!iso) return '—';
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 3600) return Math.max(0, Math.round(s / 60)) + 'm ago';
+  if (s < 86400) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+}
+
+const STATUS = {
+  up_to_date: ['nothing new', 'muted'], downloaded: ['downloaded', 'ok'],
+  baselined: ['baselined (new feed)', 'warn'], rebaselined: ['re-baselined (GUID change)', 'warn'],
+  skipped_old: ['skipped, older than the catch-up window', 'warn'],
+  error: ['error', 'err'],
+};
+
+function feedText(f) {
+  const [label] = STATUS[f.status] || [f.status];
+  if (f.status !== 'downloaded') return label;
+  return `downloaded ${f.downloaded}` + (f.failed ? `, ${f.failed} failed` : '');
+}
+
+function isQuiet(r) {
+  return r.outcome === 'ok' && !r.processed.length &&
+    r.feeds.every(f => f.status === 'up_to_date');
+}
+
+function renderPipeline() {
+  const r = DATA.runs[0];
+  const last = document.getElementById('lastRun');
+  if (!r) { last.innerHTML = '<span class="muted">No runs recorded yet.</span>'; }
+  else {
+    const cls = r.outcome === 'ok' ? 'ok' : r.outcome === 'skipped' ? 'warn' : 'err';
+    last.innerHTML = `Last run <b>${ago(r.started)}</b> · <span class="${cls}">${esc(r.outcome)}</span>` +
+      (r.stage ? ` in ${esc(r.stage)} (${esc(r.error)})` : '') + ` · ${r.duration_s}s`;
+  }
+  const rows = DATA.feed_status.map(f => {
+    const [, cls] = STATUS[f.status] || ['', ''];
+    return `<tr><td>${esc(f.feed_slug)}</td><td class="${cls}">${esc(feedText(f))}</td>` +
+      `<td>${ago(f.checked)}</td><td>${ago(f.last_download)}</td></tr>`;
+  }).join('');
+  document.getElementById('feedStatus').innerHTML = rows ?
+    `<table class="tbl"><tr><th>Feed</th><th>Last check</th><th>Checked</th><th>Last download</th></tr>${rows}</table>` : '';
+}
+
+function renderRuns() {
+  const hide = document.getElementById('hideQuiet').checked;
+  const runs = DATA.runs.filter(r => !(hide && isQuiet(r)));
+  const rows = runs.map(r => {
+    const cls = r.outcome === 'ok' ? 'ok' : r.outcome === 'skipped' ? 'warn' : 'err';
+    const parts = r.feeds.filter(f => f.status !== 'up_to_date')
+      .map(f => `${esc(f.feed || '?')}: ${esc(feedText(f))}`);
+    if (r.processed.length) parts.push(`processed ${r.processed.length}`);
+    if (r.outcome === 'skipped') parts.push('another run was in progress');
+    if (r.stage) parts.push(`failed in ${esc(r.stage)} (${esc(r.error)})${r.episode ? ' on ' + esc(r.episode) : ''}`);
+    return `<tr><td title="${esc(r.started)}">${ago(r.started)}</td><td class="${cls}">${esc(r.outcome)}</td>` +
+      `<td>${r.duration_s}s</td><td>${parts.join('<br>') || '<span class="muted">nothing new</span>'}</td></tr>`;
+  }).join('');
+  document.getElementById('runs').innerHTML = rows ?
+    `<table class="tbl"><tr><th>When</th><th>Outcome</th><th>Took</th><th>What happened</th></tr>${rows}</table>` :
+    `<span class="muted">${DATA.runs.length} recent run(s), none with anything new.</span>`;
+}
+
+let showAllEps = false;
+function renderEpisodes() {
+  const all = DATA.recent_episodes, shown = showAllEps ? all : all.slice(0, 8);
+  const rows = shown.map(e =>
+    `<tr><td title="${esc(e.ts)}">${ago(e.ts)}</td><td class="feed" title="${esc(e.feed_slug)}">${esc(e.feed_slug)}</td>` +
+    `<td class="ep" title="${esc(e.title || e.episode)}"><a href="${epUrl(e.episode)}">${esc(e.title || e.episode.replace(e.feed_slug + '-', ''))}</a></td>` +
+    `<td>${e.duration_min}m</td><td>${e.ad_minutes}m (${e.ad_pct}%)</td></tr>`).join('');
+  const more = all.length > 8
+    ? `<button style="margin-top:10px" onclick="showAllEps=!showAllEps;renderEpisodes()">${showAllEps ? 'Show fewer' : `Show ${all.length - 8} more`}</button>` : '';
+  document.getElementById('episodes').innerHTML = rows ?
+    `<table class="tbl eps"><tr><th>When</th><th>Feed</th><th>Episode</th><th>Length</th><th>Ads cut</th></tr>${rows}</table>${more}` :
+    '<span class="muted">No episodes processed yet.</span>';
+}
+
+function epUrl(name) { return '/dashboard/episode/' + encodeURIComponent(name); }
+
+function shorten(slug) { return slug.length > 26 ? slug.slice(0, 24) + '…' : slug; }
+
+load();
+// Charts bake in colors when drawn, so redraw them when the system theme flips.
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+  if (DATA) { renderDaily(); setLeaderboard(lbMode); }
+});
+</script>
+</body>
+</html>

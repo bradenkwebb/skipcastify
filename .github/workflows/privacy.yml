@@ -1,0 +1,22 @@
+name: privacy
+# Fails when a change adds a private value (tailnet name, ntfy topic, ...) to a
+# file or commit message. Patterns live in the PRIVACY_PATTERNS secret.
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: No private values added
+        env:
+          PRIVACY_PATTERNS: ${{ secrets.PRIVACY_PATTERNS }}
+          RANGE: >-
+            ${{ github.event_name == 'pull_request'
+                && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha)
+                || format('{0}..{1}', github.event.before, github.sha) }}
+        run: python3 scripts/privacy_guard.py "$RANGE"

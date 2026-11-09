@@ -1,4 +1,5 @@
 .venv/
+.ruff_cache/
 .vscode/
 data/
 rss_data/
@@ -6,3 +7,7 @@ skipcastify/**.cpython-310.pyc**/
 **__pycache__**/
 .env
 *.opml
+# Pipeline event log; metrics.log_event writes it under DATA_DIR,
+# but a run with DATA_DIR unset drops one at the repo root.
+metrics/
+policy.yaml

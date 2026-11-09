@@ -33,13 +33,35 @@ Task:
 
 WHAT TO FLAG:
 
-1. Standard ads and sponsor reads: product pitches, promo codes, CTAs ("visit X.com", "use code Y").
+1. Standard ads and sponsor reads: product pitches, promo codes, CTAs ("visit X.com", "use code Y"). URL-based CTAs are a hard signal — any segment containing "go to X.com", "learn more at X.com/Y", "visit X slash Y", or a vanity URL is advertisement content; include that segment and its immediately preceding product-setup in the same span.
 
-2. Sponsored content inserts: a clip promoting another podcast, service, or show that is explicitly paid for. Signs include a different voice reading promotional copy, phrases like "an original podcast from [company]", "listen at [brand].com", or a sponsor sign-off that follows immediately after. A brief 5-second transition line is fine to keep; flag content inserts that run 15 seconds or longer.
+2. Sponsored content inserts: a clip promoting another podcast, service, or show that is explicitly paid for. Signs of a paid insert: "brought to you in partnership with [company]", "an original podcast from [company]", "sponsored by", a partner-branded URL or app link (e.g. "listen on the iHeart radio app", "visit brand.com/podcast"), or a sponsor sign-off immediately after. A brief 5-second transition line is fine to keep; flag content inserts that run 15 seconds or longer.
+   NOT a paid insert: a host saying "for more on this, listen to [show from the same network]" or "available wherever you get your podcasts" — when there is no explicit sponsor attribution, no external/partner URL, and no promo code. This is editorial cross-promotion. Do not flag it.
 
-3. Ad breaks: when two ad spans appear within roughly 2 minutes of each other, treat any content between them as part of the same ad break — unless it is clearly substantive editorial content (e.g., a full interview answer, a news report). A short clip promoting another podcast or product that sits sandwiched between two ad spans is almost certainly part of that break.
+3. Ad breaks: when you have already identified TWO separate ad spans within roughly 2 minutes of each other, treat the content between those two spans as part of the same continuous ad break — unless it is clearly substantive editorial content (e.g., a full interview answer, a news report, at least 15 seconds of genuine editorial speech). A short tease, hook, or product-promo fragment between two identified ads is almost certainly part of the break; output a single merged span from the start of the first to the end of the last. Important: this rule applies only to content between two spans you have already flagged, not to content that precedes the first ad in a section.
 
-4. Boundary completeness: if the text of a segment clearly continues from or leads into an identified ad (same product language, same voice, same campaign), expand the span to include it even if it starts a few seconds before the obvious "ad" opening.
+4. Boundary completeness: when boundaries are uncertain, usually expand the span outward:
+   - Expand forward to include the CTA: end_ms must be set PAST the segment containing the URL, promo code, or sign-off — not at the segment before it. If you know a URL CTA is coming, include the segment that actually contains "Go to X.com" or "Use code Y" inside the span. The CTA segment is part of the ad, not a segment that follows the ad.
+   - Expand backward for cut-off sentences: if a segment ends with an incomplete sentence ("Back for season two of...") and the next segment completes that sentence with sponsor language, the incomplete segment is part of the ad — pull start_ms back to include it.
+   - Expand backward for teasers: an opening hook ("Guess who's back?") or problem-setup immediately before a sponsor attribution is part of that ad unit.
+   A span that stops before the product's URL/CTA, or that starts after the product's tease, is incomplete.
+
+5. Branded narrative content: ads sometimes disguise themselves as a short podcast preview or branded story ("On this episode of [Show], we explore...") where the product appears shortly after. The narrative framing is part of the ad — flag the whole thing from its fictional "episode intro" through the product name and close.
+
+6. Problem-setup → product-reveal pattern (expand in BOTH directions): many ads open with a relatable problem, symptom list, or hook before naming the product, and may not reveal a brand or CTA until the very end.
+   - Forward: if you've flagged a problem-setup segment, the product-reveal, benefits, and CTA in the following segments are part of the same ad unit — include them even if they sound more descriptive than promotional.
+   - Backward: if you've flagged a brand mention or a CTA/URL, look back through the immediately preceding contiguous segments and pull start_ms back to include the entire lead-in that builds to it — the problem/symptom framing, "talk to your doctor"-style advice, or storytelling hook.
+   - Pre-roll position: a promotional block at the very start of a section — before the show's name, theme music, or the host's greeting — is very likely a pre-roll ad. When such an opening block ends in a brand or CTA, flag it from the first segment (start_ms at or near 0 / the section start). Position at the top of the episode is itself a strong ad signal.
+   An ad's lead-in can sound like a neutral consumer tip or public-health message (listing memory symptoms, explaining a medical condition, describing a relatable frustration) right up until the brand is named. A HARD CTA at the end is what signals the whole preceding contiguous block was an ad: an external URL, a promo code, an app-download prompt, or "visit / go to / use code X". Apply this backward expansion ONLY when such a hard CTA is present.
+   Critically, this does NOT loosen the editorial guard: a bare recommendation to check out another show ("listen to the X Podcast", "available wherever you get your podcasts") with no URL, no promo code, and no sponsor attribution is NOT a CTA — it is editorial cross-promotion and must stay (see Examples C and E). Ordinary news reports and interview answers are never ad lead-ins, even when they mention a company or product.
+
+7. House ads (the publisher promoting itself): a network promoting its own products is still advertising when it is a produced spot rather than the host's aside. Flag a block when both hold:
+   - it is spoken by someone who is not the host of this episode, or is otherwise plainly a produced read — a named introduction like "This is <name>, I'm the publisher of <org>" or "Hey, it's <name> from <org>", a voice dropped into an ad slot; and
+   - it offers the publisher's own subscription, app, newsletter, games, store or other shows, or urges the listener to subscribe, download or support.
+   An institutional message from the publisher counts under the second bullet even when it is framed as public interest rather than a pitch: an appeal to subscribe, a case for supporting journalism, a note about the organisation itself. It still counts when it generously tells the listener to support some other publication too ("your local newspaper, a national paper, or ours"). What makes it an ad is that the publisher produced it and placed it in an ad slot, not whether it asks for money or names only itself.
+   No external sponsor, no promo code and no URL is required. "It's in the <org> app", "subscribe to the Times", "follow a show today" are CTAs. Such a spot occupies an ad slot and the listener did not ask for it, so it is an ad even though no third party paid for it.
+   Still NOT an ad, and this rule does not reach them: a brief mention in the host's own voice that offers nothing ("my email is...", "for more on this, listen to [show]"), the closing credits and staff name-checks, and any mention of the publisher inside the conversation itself. The test is a produced spot that offers something, not whether the publisher is named.
+   That carve-out is narrow. It does not apply when a URL, a promo code, a subscription or donation ask, or an app-download prompt is present: rule 1 governs those whoever reads them and whoever owns the product, so "for more, go to ourshow.com, and here's how to support us" is an ad even in the host's own voice in the outro. An email or postal address offered for listener feedback is not a CTA.
 
 ---
 
@@ -84,7 +106,63 @@ Transcript snippet:
 Expected JSON response:
 []
 
-Example E - Editorial mention of another show (false positive):
+Example H - Cut-off sentence at segment boundary signals backward expansion:
+Transcript snippet:
+[1083000 - 1091000] ...Get maximum performance even when unplugged. Snap Dragon. That's how.
+[1091000 - 1099000] Guess who's back in the house? It's Robert, Jesse, Bill, and Mick. Back for season two of
+[1099000 - 1120000] Silver Linings with the Old Gays. Brought to you in partnership with iHeart's Ruby Studio.
+[1120000 - 1155000] Listen on the iHeart radio app or wherever you get your podcasts.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 1083000,
+    "end_ms": 1155000,
+    "label": "ADVERTISEMENT",
+    "rationale": "Full ad break. Segment [1091000-1099000] ends mid-sentence ('Back for season two of...') and is directly completed by the sponsor attribution in the next segment — expand backward to include it."
+  }
+]
+
+Note: 'Back for season two of' ending without a noun is a broken sentence — it is not editorial content. It is a teaser cut at a segment boundary. The sponsor attribution in the next segment completes the sentence, confirming the tease is part of the same ad.
+
+Example F - Multi-product opening block; second ad's CTA must be included:
+Transcript snippet:
+[0 - 25000] Take the leash off your laptop with long battery life. Snapdragon. That's how.
+[25000 - 42000] Imagine your business software was completely fragmented. That sucks. Oh-do changes that — it's everything your business needs in one place.
+[42000 - 58000] Stop paying for missing pieces. Go to oh-do-dot-com to learn more.
+[58000 - 65000] This is the Global News Podcast from the BBC World Service.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 0,
+    "end_ms": 58000,
+    "label": "ADVERTISEMENT",
+    "rationale": "Two consecutive product ads (Snapdragon, then Odoo) followed by a URL CTA. The CTA at [42000-58000] closes the ad block; [58000] is the editorial open."
+  }
+]
+
+Note: even though the product setup at [25000-42000] sounds descriptive rather than promotional, the URL CTA that immediately follows it ([42000-58000]) is a hard signal that it is part of the same ad. A span ending before the CTA is incomplete.
+
+Example G - Branded narrative / sponsored podcast preview:
+Transcript snippet:
+[1190000 - 1202000] On this episode of Plant Killers, we'll explore one nation's most notorious fruit and vegetable killer. This story has a happy ending.
+[1202000 - 1215000] Miracle Grow organic raised bed soil — made with quality organic ingredients from upcycled green waste.
+[1215000 - 1222000] Unlike the other guys who can't say the same. Thanks to Miracle Grow. Join us next time on Plant Killers.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 1190000,
+    "end_ms": 1222000,
+    "label": "ADVERTISEMENT",
+    "rationale": "Branded narrative ad: 'Plant Killers' episode preview is a Miracle Grow sponsored segment. The fictional storytelling frame and the product-name reveal are all part of the same ad."
+  }
+]
+
+Note: the narrative framing ('On this episode of Plant Killers...') is part of the advertisement — it must be included in the span alongside the product mention and close.
+
+Example E - Editorial mention of another show (false positive — do NOT flag this):
 Transcript snippet:
 [1880000 - 1892000] For more on the World Cup, listen to the BBC World Service Sports Podcast — more than the score. Available wherever you get your podcasts.
 [1892000 - 1900000] And that's all from us for now.
@@ -92,7 +170,73 @@ Transcript snippet:
 Expected JSON response:
 []
 
-Note: a host mentioning a sibling show from the same network in passing is editorial, not a paid promotion. Compare to Example D, where a different voice reads a scripted promo clip for an external podcast and a sponsor sign-off follows immediately.
+Note: do NOT flag this. There is no "brought to you by", no "in partnership with", no external partner URL, and no promo code. "Available wherever you get your podcasts" alone is not a paid-ad signal — it is standard editorial phrasing that any host uses when recommending their own network's shows. The critical distinction from Examples D and H: those have explicit sponsor attribution ("brought to you by SnapDrive", "in partnership with iHeart's Ruby Studio") and partner-branded app links. This example has none of those. Absence of attribution = editorial cross-promotion, not an ad.
+
+Example J - House ad for the publisher's own app (no sponsor, no URL - still an ad):
+Transcript snippet:
+[1276000 - 1282000] Hey, it's Dana from The Chronicle. Wherever you get your podcasts. You've heard that line before, right?
+[1282000 - 1293000] But what if I told you you never have to hear it again? Okay, you caught me, I can't tell you that.
+[1293000 - 1303000] But I can tell you somewhere you might want to go. It's the shows tab in The Chronicle app.
+[1303000 - 1320000] Full episodes, new and classic, so much to listen to and watch. I think that's really special.
+[1320000 - 1333000] Find it wherever you get your - just kidding. It's in The Chronicle app. Explore the shows tab and follow a show today.
+[1333000 - 1340000] Okay, can I riff for one second? I would love you to riff.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 1276000,
+    "end_ms": 1333000,
+    "label": "ADVERTISEMENT",
+    "rationale": "House ad: a produced 57-second spot read by someone other than the host, promoting the publisher's own app. No third-party sponsor and no URL, but it sits in an ad slot and closes on a 'follow a show today' CTA. Editorial resumes at [1333000]."
+  }
+]
+
+Note: 'wherever you get your podcasts' appears here and is NOT what makes something editorial - compare Example E, which is a single line in the host's own voice inside the outro. This is a produced read by a guest voice whose whole purpose is to drive app installs. A produced read plus a first-party offer is the signal; the absence of an external sponsor, and the length of the spot, are not defences.
+
+Example K - Publisher's institutional appeal in the pre-roll slot (still a house ad):
+Transcript snippet:
+[0 - 5000] This is Dana Reyes. I'm the publisher of The Chronicle, and I'm also a former reporter
+[5000 - 9500] who's watched with alarm as our profession has shrunk in recent years.
+[9500 - 15000] Normally this is where I'd ask you to subscribe to The Chronicle. But today I'm encouraging
+[15000 - 21000] you to support any news organization dedicated to original reporting. Whether that's
+[21000 - 26000] your local newspaper, a national paper, or The Chronicle, what matters most is that
+[26000 - 31000] you subscribe to a real news organization doing first-hand, fact-based reporting.
+[31000 - 32500] And if you already do, thank you.
+[59000 - 65000] The Big Ten is real and the political map is fake. That is the lesson of Tuesday's midterm.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 0,
+    "end_ms": 32500,
+    "label": "ADVERTISEMENT",
+    "rationale": "House ad: a produced 32-second pre-roll read by the publisher, not the host, appealing for news subscriptions. Editorial opens at [59000]."
+  }
+]
+
+Note: this asks the listener to support journalism generally rather than pitching one product, and it never gives a URL or a promo code - and it is still an ad. It is a produced spot by a non-host voice in the pre-roll slot, promoting subscription to the publisher's own paper among others. Do not read 'public interest' framing, or the generosity of naming other newspapers, as editorial content.
+
+
+Example L - Short produced subscription offer opening an ad break (still a house ad):
+Transcript snippet:
+[132560 - 141780] If you're not a subscriber to The Chronicle we have some news for you you can explore the Chronicle for free
+[151200 - 156480] This message comes from Betteryield. Betteryield's Dan Egan talks about tax loss harvesting.
+[157020 - 171680] Tax loss harvesting is a tax management strategy. When you have a position that's gone down over time we intend to sell it.
+[173820 - 181540] Investing involves risk, performance not guaranteed. Betteryield does not offer tax advice.
+[183420 - 193280] I think that brings together a couple of interesting things here, because as you mentioned
+
+Expected JSON response:
+[
+  {
+    "start_ms": 132560,
+    "end_ms": 181540,
+    "label": "ADVERTISEMENT",
+    "rationale": "House ad opening a sponsor pod: a nine-second produced read offering free access to the publisher's own subscription, then a third-party sponsor read. One ad break; editorial resumes at [183420]."
+  }
+]
+
+Note: the nine-second opening line is a produced offer of the publisher's own subscription, not editorial, and it opens the break — the span starts there, not at the first third-party sponsor. It is short, it names no URL and no promo code, and the transcript is garbled; none of that makes it content. A gap of a few seconds between it and the sponsor read is the pause between two spots in the same break. The span still ends with the last ad segment: the interview line at [183420] follows immediately and is not part of it. Never extend a span through the segment that resumes the conversation, and never add a further span for it.
+
 
 Example D - Sponsored content insert sandwiched between ads:
 Transcript snippet:
@@ -112,6 +256,28 @@ Expected JSON response:
     "rationale": "Full ad break: product ad followed by two sponsored podcast promos, all within ~75 seconds."
   }
 ]
+
+Example I - Health-PSA-style ad; backward expansion through the symptom hook:
+Transcript snippet:
+[0 - 6800] If you walk into a room and can't remember why, it could be nothing, or something more. If you
+[6800 - 12640] confuse a familiar recipe, it could be a slip-up, or it could be associated with Amaloid
+[12640 - 17320] plaque build up in the brain. Amaloid is a protein that your body produces naturally, but a
+[17320 - 21440] build up in the brain could lead to memory and thinking issues. To see what may be behind
+[21440 - 25400] your memory and thinking issues, talk to your doctor about getting a full assessment.
+[25400 - 30040] It's never too early to start the conversation. Visit Amaloid.com to learn more.
+[56040 - 62920] You could really make a case that Chris Rufo is the most successful activist on the right.
+
+Expected JSON response:
+[
+  {
+    "start_ms": 0,
+    "end_ms": 30040,
+    "label": "ADVERTISEMENT",
+    "rationale": "Health-PSA-style ad: the symptom hook and 'talk to your doctor' framing all build to the branded CTA 'Visit Amaloid.com'. Expand backward from the CTA through the entire lead-in; editorial does not resume until [56040]."
+  }
+]
+
+Note: the opening segments sound like a neutral public-health message about memory and amyloid plaque, but they culminate in a branded URL CTA — that retroactively makes the whole contiguous block an ad. This is also a pre-roll: it runs at the very top of the episode, before the show's intro/branding. The span must start at [0], not at the CTA segment.
 
 ---
 

@@ -20,9 +20,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from skipcastify.services.transcript_cache import TranscriptCache
-from skipcastify.services.ground_truth import GroundTruthStore, GroundTruthLabel
 import logging
+
+from skipcastify.services.ground_truth import GroundTruthLabel, GroundTruthStore
+from skipcastify.services.transcript_cache import TranscriptCache
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -62,7 +63,7 @@ def parse_segment_input(input_str: str, max_segment: int) -> set:
                 if 0 <= idx <= max_segment:
                     segments.add(idx)
     except ValueError:
-        logger.error(f"Invalid input format. Use: 15 or 15,16,17 or 15-20 or 15-20,25")
+        logger.error("Invalid input format. Use: 15 or 15,16,17 or 15-20 or 15-20,25")
         return set()
     
     return segments
@@ -117,7 +118,7 @@ def main():
     segments = cache.load_cached_transcript(episode_name)
     if not segments:
         logger.error(f"No cached transcript found for {episode_name}")
-        logger.info(f"First run: python scripts/preview_episode.py <episode>")
+        logger.info("First run: python scripts/preview_episode.py <episode>")
         sys.exit(1)
     
     logger.info(f"Loaded {len(segments)} segments from cache")
@@ -273,8 +274,8 @@ def main():
     logger.info(f"Saved {len(ad_ranges)} ad spans to ground-truth labels")
     logger.info(f"  File: {store.get_label_path(episode_name)}")
     
-    print(f"\n✓ Annotations saved!")
-    print(f"\nNow evaluate with:")
+    print("\n✓ Annotations saved!")
+    print("\nNow evaluate with:")
     print(f"  python scripts/evaluate_ad_detection.py {episode_name}")
 
 

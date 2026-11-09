@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skipcastify · Label</title>
+<style>
+  {% include '_theme.css' %}
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; overflow: hidden; }
+  body { margin: 0; background: var(--bg); color: var(--fg); display: flex; flex-direction: column;
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--accent); text-decoration: none; }
+  header { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex;
+           align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 17px; font-weight: 650; white-space: nowrap; }
+  #title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .muted { color: var(--muted); }
+  .tools { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+           border-radius: 7px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+  button.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  kbd { font: 11px ui-monospace, Menlo, monospace; background: var(--panel2); border: 1px solid var(--line);
+        border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; color: var(--muted); }
+  a.btn { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 7px;
+          padding: 5px 10px; font-size: 13px; white-space: nowrap; }
+  #done { display: flex; gap: 10px; align-items: center; padding: 8px 16px; flex-wrap: wrap;
+          background: var(--ok-tint); border-bottom: 1px solid var(--ok-line); }
+  #done b { color: var(--ok); }
+  body.locked #legend .chip[data-l], body.locked #bFill { opacity: .4; cursor: not-allowed; }
+  #legend { display: flex; gap: 6px; padding: 8px 16px; border-bottom: 1px solid var(--line);
+            flex-wrap: wrap; align-items: center; }
+  .chip { display: inline-flex; gap: 6px; align-items: center; padding: 3px 9px; border-radius: 999px;
+          border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 13px; user-select: none; }
+  .chip i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  #stats { margin-left: auto; font-size: 13px; font-variant-numeric: tabular-nums; }
+  #stats b { font-weight: 600; }
+  #save { font-size: 12px; min-width: 70px; text-align: right; }
+
+  #wrap { flex: 1; display: flex; min-height: 0; }
+  #rows { flex: 1; overflow-y: auto; outline: none; user-select: none; position: relative; }
+  #mini { width: 56px; flex: none; border-left: 1px solid var(--line); cursor: pointer; display: block; }
+  .row { display: grid; grid-template-columns: 58px 8px 5px 1fr auto; gap: 0 8px; padding: 2px 12px 2px 6px;
+         align-items: stretch; border-left: 3px solid transparent; }
+  .row .t { color: var(--muted); font: 12px/1.45 ui-monospace, Menlo, monospace; padding-top: 1px;
+            text-align: right; cursor: pointer; }
+  .row .t:hover { color: var(--accent); }
+  .row .b, .row .p { border-radius: 2px; }
+  .row .tag { font-size: 11px; padding-top: 2px; white-space: nowrap; }
+  .row .tag.miss { color: var(--ad); }
+  .row .tag.over { color: var(--warn); }
+  .row.sel { background: var(--sel); }
+  .row.cur { border-left-color: var(--accent); background: var(--sel-strong); }
+  .row.playing .t { color: var(--fg); font-weight: 700; }
+  .row.match .x { text-decoration: underline var(--warn) 2px; }
+  body.nopred .row .p, body.nopred .row .tag { visibility: hidden; }
+
+  #picker { flex: 1; overflow-y: auto; padding: 12px 16px 60px; max-width: 1100px; width: 100%; margin: 0 auto; }
+  #pickbar { position: sticky; top: -12px; z-index: 1; background: var(--bg); padding: 12px 0 8px; margin-top: -12px; }
+  #filter { width: 100%; padding: 8px 12px; font-size: 15px; background: var(--panel); color: var(--fg);
+            border: 1px solid var(--line); border-radius: 8px; }
+  #pickopts { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 13px; }
+  #pickopts .sep { width: 12px; }
+  #pickopts button { padding: 3px 10px; }
+  .ep .f { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .ep .d { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+  .ep .d.approx { font-style: italic; opacity: .7; }
+  .feed { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 4px; }
+  .feed.tog { cursor: pointer; user-select: none; }
+  .feed.tog:hover { color: var(--fg); }
+  .feed .chev { display: inline-block; width: 16px; font-size: 17px; line-height: 0; transition: transform .12s; }
+  .feed .chev.open { transform: rotate(90deg) translateX(3px); }
+  .feed .todo { text-transform: none; letter-spacing: 0; }
+  .ep { display: grid; gap: 10px; grid-template-columns: 1fr 96px 64px 56px 92px; align-items: baseline; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+        border-left: 3px solid transparent; }
+  .ep.cur { background: var(--sel-strong); border-left-color: var(--accent); }
+  .ep.wf { grid-template-columns: 210px 1fr 96px 64px 56px 92px; }
+  .ep.wf .f:first-child { overflow: hidden; text-overflow: ellipsis; }
+  .ep > :not(.n):not(:first-child) { justify-self: end; }
+  @media (max-width: 760px) {
+    .ep, .ep.wf { grid-template-columns: 1fr 96px 92px; }
+    .ep.wf .f:first-child, .ep > :nth-last-child(2), .ep > :nth-last-child(3) { display: none; }
+  }
+  .ep .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .badge { font-size: 11px; border-radius: 999px; padding: 1px 8px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .badge.done { color: var(--ok); border-color: var(--ok-line); }
+  .badge.wip { color: var(--warn); border-color: var(--warn-line); }
+
+  #find { display: none; padding: 4px 8px; background: var(--panel); color: var(--fg);
+          border: 1px solid var(--accent); border-radius: 6px; width: 220px; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--panel2);
+           border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s;
+           pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #help { position: fixed; inset: 0; background: var(--overlay); display: none; align-items: center; justify-content: center; }
+  #help.show { display: flex; }
+  #help > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px;
+                max-width: 760px; max-height: 90vh; overflow-y: auto; }
+  #help table { border-collapse: collapse; }
+  #help td { padding: 3px 14px 3px 0; vertical-align: top; }
+  #help h3 { margin: 12px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/label" style="color:inherit">🎧 Label</a></h1>
+  <a id="back" class="btn" href="/label" title="Back to episodes (b)" hidden>← Episodes</a>
+  <span id="title" class="muted"></span>
+  <input id="find" placeholder="find text…" title="Find text (/); Enter jumps, Esc closes">
+  <span class="tools" id="tools" hidden>
+    <button id="bPred" title="Toggle predictions (p)">Predictions</button>
+    <button id="bFill" title="Replace labels with the pipeline's cuts (P)">Start from cuts</button>
+    <button id="bRev" title="Mark the whole episode fully labeled, so unlabeled lines count as content (R)">Reviewed</button>
+    <button id="bHelp" title="Keyboard shortcuts (?)">Keys</button>
+    <span id="save" class="muted"></span>
+  </span>
+  <a href="/dashboard" style="font-size:13px">dashboard →</a>
+</header>
+<div id="legend" hidden></div>
+<div id="done" hidden><b>✓ Reviewed</b>
+  <a class="btn" id="doneNext" hidden></a>
+  <span class="muted" style="font-size:12px" title="Press R to unlock">locked</span></div>
+<div id="picker" hidden>
+  <div id="pickbar">
+    <input id="filter" placeholder="Filter episodes…" title="Focus with /; j/k or ↑/↓ to move, Enter to open">
+    <div id="pickopts">
+      <span class="muted" title="Cycle with s">Sort</span>
+      <button data-sort="show">By show</button><button data-sort="new">Newest</button><button data-sort="old">Oldest</button>
+      <span class="sep"></span>
+      <span class="muted" title="Cycle with f">Show</span>
+      <button data-st="all">All</button><button data-st="todo">To do</button><button data-st="wip">In progress</button><button data-st="done">Reviewed</button>
+      <span id="counts" class="muted" style="margin-left:auto"></span>
+    </div>
+  </div>
+  <div id="eps"></div>
+</div>
+<div id="wrap" hidden><div id="rows" tabindex="0"></div><canvas id="mini"></canvas></div>
+<div id="toast"></div>
+<div id="help"><div>
+  <h3>Move & select</h3>
+  <table>
+    <tr><td><kbd>j</kbd> <kbd>k</kbd> / <kbd>↓</kbd> <kbd>↑</kbd></td><td>move</td><td><kbd>J</kbd> <kbd>K</kbd> / <kbd>⇧↓</kbd> <kbd>⇧↑</kbd></td><td>extend selection</td></tr>
+    <tr><td><kbd>g</kbd> <kbd>G</kbd> / <kbd>Home</kbd> <kbd>End</kbd></td><td>top / bottom</td><td><kbd>^d</kbd> <kbd>^u</kbd> / <kbd>PgDn</kbd> <kbd>PgUp</kbd></td><td>half page</td></tr>
+    <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>prev / next boundary</td><td><kbd>Esc</kbd></td><td>collapse selection</td></tr>
+    <tr><td><kbd>/</kbd></td><td>find text</td><td><kbd>n</kbd> <kbd>N</kbd></td><td>next / prev match</td></tr>
+    <tr><td>click, drag, <kbd>⇧</kbd>click</td><td>select rows</td><td>minimap</td><td>click or drag to jump</td></tr>
+    <tr><td>scroll</td><td>moves the centered cursor</td><td><kbd>⇧</kbd>scroll</td><td>extend selection</td></tr>
+  </table>
+  <h3>Label</h3>
+  <table>
+    <tr><td><kbd>1</kbd></td><td>ad (third-party)</td><td><kbd>2</kbd></td><td>self-promo / house ad</td></tr>
+    <tr><td><kbd>3</kbd></td><td>intro / outro / credits</td><td></td><td></td></tr>
+    <tr><td><kbd>0</kbd> / <kbd>⌫</kbd></td><td>back to content</td><td><kbd>u</kbd> <kbd>^z</kbd> · <kbd>^r</kbd> <kbd>^⇧z</kbd></td><td>undo · redo</td></tr>
+    <tr><td><kbd>,</kbd> <kbd>.</kbd> / <kbd>⌥←</kbd> <kbd>⌥→</kbd></td><td>nudge span start ∓0.5s</td><td><kbd>&lt;</kbd> <kbd>&gt;</kbd> / <kbd>⌥⇧←</kbd> <kbd>⌥⇧→</kbd></td><td>nudge span end ∓0.5s</td></tr>
+    <tr><td><kbd>b</kbd></td><td>back to the episode list</td><td><kbd>Enter</kbd></td><td>next unreviewed episode (once reviewed)</td></tr>
+    <tr><td><kbd>R</kbd></td><td>mark the whole episode reviewed (locks edits)</td><td><kbd>P</kbd></td><td>start from the pipeline's cuts</td></tr>
+  </table>
+  <h3>Listen (raw audio, off until you press play)</h3>
+  <table>
+    <tr><td><kbd>space</kbd></td><td>play selection / pause</td><td><kbd>e</kbd></td><td>play around the nearest span edge</td></tr>
+    <tr><td>click a timestamp</td><td>play from there</td><td><kbd>p</kbd></td><td>toggle the pipeline-cut stripe</td></tr>
+  </table>
+  <p class="muted" style="margin:12px 0 0">Saves automatically. Stripe right of the label bar = what the pipeline cut
+    (whole Whisper lines it touched). Ads and self-promo should be cut; intro/outro and content kept.
+    <span style="color:var(--ad)">missed</span> = should-cut left in;
+    <span style="color:var(--warn)">cut</span> = removed but should have stayed.</p>
+</div></div>
+
+<script>
+const EP = {{ episode|tojson }};
+const LABELS = [
+  {key: 'ad', n: '1', name: 'Ad'},
+  {key: 'self_promo', n: '2', name: 'Self-promo'},
+  {key: 'intro_outro', n: '3', name: 'Intro/outro'},
+];
+// Labels say what a span is; this says which ones should be cut.
+let CUT = ['ad', 'self_promo'];  // replaced by this feed's policy on load
+const css = name => getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim();
+const COLOR = {};
+const loadColors = () => { for (const l of LABELS) COLOR[l.key] = css(l.key); };
+loadColors();
+const $ = id => document.getElementById(id);
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmt(ms) {
+  const s = Math.max(0, Math.round(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+}
+function store(k, v) { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } }
+let toastTimer;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+function typing(e) { return e.target.tagName === 'INPUT'; }
+
+// ---------- episode picker ----------
+async function picker() {
+  $('picker').hidden = false;
+  $('title').textContent = 'pick an episode';
+  const eps = await (await fetch('/api/label/episodes.json')).json();
+  const SORTS = ['show', 'new', 'old'], STATUSES = ['all', 'todo', 'wip', 'done'];
+  let sort = SORTS.includes(store('label.sort')) ? store('label.sort') : 'show';
+  let status = STATUSES.includes(store('label.status')) ? store('label.status') : 'all';
+  let cur = 0, shown = [];
+  let collapsed = new Set();
+  try { collapsed = new Set(JSON.parse(store('label.collapsed') || '[]')); } catch (e) {}
+  const saveCollapsed = () => store('label.collapsed', JSON.stringify([...collapsed]));
+  const pretty = e => e.feed && e.name.startsWith(e.feed + '-') ? e.name.slice(e.feed.length + 1).replace(/_/g, ' ') : e.name;
+  const stateOf = e => e.reviewed ? 'done' : e.labeled_spans != null ? 'wip' : 'todo';
+  const day = iso => new Date(iso).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
+  const mins = s => s ? (s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.round(s % 3600 / 60)}m` : `${Math.round(s / 60)}m`) : '';
+  function row(e, i, withFeed) {
+    const st = e.reviewed ? '<span class="badge done">reviewed</span>'
+      : e.labeled_spans != null ? `<span class="badge wip">${e.labeled_spans} spans</span>` : '';
+    const date = e.released ? `<span class="d" title="released">${day(e.released)}</span>`
+      : `<span class="d approx" title="release date unknown; transcribed ${day(e.transcribed)}">~${day(e.transcribed)}</span>`;
+    // Fixed columns: [show] title | status | cuts | length | date
+    return `<div class="ep${withFeed ? ' wf' : ''}${i === cur ? ' cur' : ''}" data-i="${i}">`
+      + (withFeed ? `<span class="f" title="${esc(e.feed || '')}">${esc(e.feed || '?')}</span>` : '')
+      + `<span class="n">${esc(pretty(e))}</span><span>${st}</span>`
+      + `<span>${e.has_predictions ? '' : '<span class="badge">no cuts</span>'}</span>`
+      + `<span class="f">${mins(e.duration_s)}</span>${date}</div>`;
+  }
+  function render(follow = true) {
+    document.querySelectorAll('[data-sort]').forEach(b => b.classList.toggle('on', b.dataset.sort === sort));
+    document.querySelectorAll('[data-st]').forEach(b => b.classList.toggle('on', b.dataset.st === status));
+    const words = $('filter').value.toLowerCase().split(/[\s_-]+/).filter(Boolean);
+    const matched = eps.filter(e => {
+      const hay = (e.name + ' ' + (e.feed || '')).toLowerCase().replace(/[_-]/g, ' ');
+      return words.every(w => hay.includes(w));
+    });
+    const n = {todo: 0, wip: 0, done: 0};
+    matched.forEach(e => n[stateOf(e)]++);
+    $('counts').textContent = `${n.done} reviewed · ${n.wip} in progress · ${n.todo} to do`;
+    shown = matched.filter(e => status === 'all' || stateOf(e) === status);
+    let html = '';
+    if (sort === 'show') {
+      const groups = new Map();
+      for (const e of shown) { const f = e.feed || 'unknown feed'; if (!groups.has(f)) groups.set(f, []); groups.get(f).push(e); }
+      // A filter search shows every match, collapsed or not.
+      const isShut = f => collapsed.has(f) && !words.length;
+      shown = [...groups].flatMap(([f, list]) => isShut(f) ? [] : list);
+      cur = Math.min(cur, Math.max(0, shown.length - 1));
+      let i = 0;
+      for (const [feed, list] of groups) {
+        const shut = isShut(feed), todo = list.filter(e => stateOf(e) !== 'done').length;
+        html += `<div class="feed tog" data-feed="${esc(feed)}" title="${shut ? 'Expand' : 'Collapse'} (c on an episode; C for all)">`
+          + `<span class="chev${shut ? '' : ' open'}">›</span>${esc(feed)} · ${list.length}`
+          + (shut && todo ? ` <span class="todo">· ${todo} not reviewed</span>` : '') + '</div>';
+        if (!shut) for (const e of list) html += row(e, i++, false);
+      }
+    } else {
+      if (sort === 'old') shown = [...shown].reverse();
+      cur = Math.min(cur, Math.max(0, shown.length - 1));
+      html = shown.map((e, i) => row(e, i, true)).join('');
+    }
+    $('eps').innerHTML = html || '<p class="muted">No matching episodes.</p>';
+    if (follow) document.querySelector('.ep.cur')?.scrollIntoView({block: 'nearest'});
+  }
+  // Keep the highlighted episode across re-sorts and filters.
+  const rerender = () => { const keep = shown[cur]?.name; render(); const i = shown.findIndex(e => e.name === keep); if (i >= 0) { cur = i; render(); } };
+  const setSort = v => { sort = v; store('label.sort', v); rerender(); };
+  const setStatus = v => { status = v; store('label.status', v); rerender(); };
+  document.querySelectorAll('[data-sort]').forEach(b => b.onclick = () => setSort(b.dataset.sort));
+  document.querySelectorAll('[data-st]').forEach(b => b.onclick = () => setStatus(b.dataset.st));
+  const open = i => { if (shown[i]) location.href = '/label/' + encodeURIComponent(shown[i].name); };
+  $('filter').addEventListener('input', () => { cur = 0; render(); });
+  // Pin the show's heading where it is on screen, and put the cursor on its first episode when opening.
+  const toggleFeed = f => {
+    const head = () => [...document.querySelectorAll('.feed.tog')].find(h => h.dataset.feed === f);
+    const before = head()?.getBoundingClientRect().top;
+    const opening = collapsed.has(f);
+    opening ? collapsed.delete(f) : collapsed.add(f); saveCollapsed();
+    const keep = opening ? null : shown[cur]?.name;
+    render(false);
+    const i = opening ? shown.findIndex(e => (e.feed || 'unknown feed') === f) : shown.findIndex(e => e.name === keep);
+    if (i >= 0) cur = i;
+    render(false);
+    const after = head()?.getBoundingClientRect().top;
+    if (before != null && after != null) $('picker').scrollTop += after - before;
+  };
+  $('eps').addEventListener('click', e => {
+    const h = e.target.closest('.feed.tog');
+    if (h) return toggleFeed(h.dataset.feed);
+    const el = e.target.closest('.ep'); if (el) open(+el.dataset.i);
+  });
+  document.addEventListener('keydown', e => {
+    const k = e.key;
+    if (k === '/' && !typing(e)) { e.preventDefault(); $('filter').focus(); return; }
+    if (k === 'Escape') { $('filter').blur(); return; }
+    if (k === 'Enter') { open(cur); return; }
+    if (!typing(e) && k === 's') { setSort(SORTS[(SORTS.indexOf(sort) + 1) % SORTS.length]); return; }
+    if (!typing(e) && k === 'f') { setStatus(STATUSES[(STATUSES.indexOf(status) + 1) % STATUSES.length]); return; }
+    if (!typing(e) && sort === 'show' && k === 'c' && shown[cur]) { toggleFeed(shown[cur].feed || 'unknown feed'); return; }
+    if (!typing(e) && sort === 'show' && k === 'C') {
+      const feeds = [...new Set(eps.map(x => x.feed || 'unknown feed'))];
+      collapsed = collapsed.size ? new Set() : new Set(feeds); saveCollapsed(); rerender(); return;
+    }
+    const down = k === 'ArrowDown' || (k === 'j' && !typing(e)), up = k === 'ArrowUp' || (k === 'k' && !typing(e));
+    if (down || up) { e.preventDefault(); cur = Math.max(0, Math.min(shown.length - 1, cur + (down ? 1 : -1))); render(); }
+  });
+  const from = new URLSearchParams(location.search).get('from');
+  if (from) { render(); cur = Math.max(0, shown.findIndex(e => e.name === from)); }
+  render();
+  document.querySelector('.ep.cur')?.scrollIntoView({block: 'center'});
+}
+
+// ---------- editor ----------
+let S = [], spans = [], predCut = [], reviewed = false, dur = 1;
+let cur = 0, anchor = 0, rowEls = [];
+let undo = [], redo = [], lastNudged = null;
+let audio = null, playEnd = null;
+let showPred = store('label.pred') !== '0';
+
+function rowsOverlapping(sp) { return S.filter(r => r.start < sp.end_ms && r.end > sp.start_ms); }
+function labelAt(i) {
+  const mid = (S[i].start + S[i].end) / 2;
+  const s = spans.find(s => s.start_ms <= mid && s.end_ms > mid);
+  return s ? s.label : '';
+}
+function spanAtRow(i) {
+  const r = S[i];
+  return spans.find(s => s.start_ms < r.end && s.end_ms > r.start) || null;
+}
+// Bar fill for partial coverage, e.g. after an edge nudge.
+function barBg(r) {
+  const d = (r.end - r.start) || 1, stops = [];
+  for (const s of spans) {
+    if (s.end_ms <= r.start || s.start_ms >= r.end) continue;
+    const a = Math.max(0, (s.start_ms - r.start) / d * 100), b = Math.min(100, (s.end_ms - r.start) / d * 100);
+    const c = COLOR[s.label];
+    stops.push(`transparent ${a}%`, `${c} ${a}%`, `${c} ${b}%`, `transparent ${b}%`);
+  }
+  return stops.length ? `linear-gradient(to bottom, ${stops.join(',')})` : 'none';
+}
+
+// Interval helpers on sorted, disjoint [start, end] pairs.
+function union(iv) {
+  const out = [];
+  for (const [a, b] of [...iv].sort((x, y) => x[0] - y[0])) {
+    if (out.length && a <= out[out.length - 1][1]) out[out.length - 1][1] = Math.max(out[out.length - 1][1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+function total(iv) { return iv.reduce((t, [a, b]) => t + b - a, 0); }
+function overlap(x, y) {
+  let i = 0, j = 0, t = 0;
+  while (i < x.length && j < y.length) {
+    t += Math.max(0, Math.min(x[i][1], y[j][1]) - Math.max(x[i][0], y[j][0]));
+    x[i][1] < y[j][1] ? i++ : j++;
+  }
+  return t;
+}
+function intersect(x, y) {
+  const out = []; let i = 0, j = 0;
+  while (i < x.length && j < y.length) {
+    const a = Math.max(x[i][0], y[j][0]), b = Math.min(x[i][1], y[j][1]);
+    if (b > a) out.push([a, b]);
+    x[i][1] < y[j][1] ? i++ : j++;
+  }
+  return out;
+}
+let SPOKEN = [];  // transcribed time; Whisper gaps can't be cut, so they don't score
+function ofLabel(...ls) { return intersect(union(spans.filter(s => ls.includes(s.label)).map(s => [s.start_ms, s.end_ms])), SPOKEN); }
+
+function snapshot() { undo.push(JSON.stringify({spans, reviewed})); if (undo.length > 300) undo.shift(); redo = []; }
+function restore(from, to) {
+  if (!from.length) return toast('Nothing to ' + (from === undo ? 'undo' : 'redo'));
+  to.push(JSON.stringify({spans, reviewed}));
+  ({spans, reviewed} = JSON.parse(from.pop()));
+  lastNudged = null; changed();
+}
+
+// No row midpoint in the gap means the two spans are visually contiguous.
+function gapEmpty(a, b) { return !S.some(r => { const m = (r.start + r.end) / 2; return m > a && m < b; }); }
+function setRange(a, b, label) {
+  const out = [];
+  for (const s of spans) {
+    if (s.end_ms <= a || s.start_ms >= b) { out.push(s); continue; }
+    if (s.start_ms < a) out.push({...s, end_ms: a});
+    if (s.end_ms > b) out.push({...s, start_ms: b});
+  }
+  if (label) out.push({start_ms: a, end_ms: b, label});
+  spans = mergeSpans(out);
+}
+function mergeSpans(list) {
+  const merged = [];
+  for (const s of [...list].sort((x, y) => x.start_ms - y.start_ms)) {
+    const p = merged[merged.length - 1];
+    if (p && p.label === s.label && gapEmpty(p.end_ms, s.start_ms)) p.end_ms = Math.max(p.end_ms, s.end_ms);
+    else merged.push({...s});
+  }
+  return merged;
+}
+// Spans covering no line midpoint are invisible slivers (old labels left in the gaps between lines).
+function tidySpans() {
+  const before = JSON.stringify(spans);
+  spans = mergeSpans(spans.filter(s => S.some(r => { const m = (r.start + r.end) / 2; return m > s.start_ms && m < s.end_ms; })));
+  return JSON.stringify(spans) !== before;
+}
+// Reviewed episodes are ground truth; edits need an explicit R first.
+function locked() { if (reviewed) toast('Reviewed — press R to edit'); return reviewed; }
+function applyLabel(label) {
+  if (locked()) return;
+  const [i, j] = selRange();
+  snapshot();
+  // Take the silent gaps on either side too, so no old label survives between lines.
+  setRange(i ? Math.min(S[i].start, S[i - 1].end) : S[i].start,
+           j < S.length - 1 ? Math.max(S[j].end, S[j + 1].start) : S[j].end, label);
+  lastNudged = null;
+  if (i === j) move(1, false);
+  changed();
+}
+
+function nudge(edge, delta) {
+  if (locked()) return;
+  let sp = spanAtRow(cur);
+  if (lastNudged && spans.includes(lastNudged)) sp = lastNudged;
+  if (!sp) return toast('No labeled span on this line');
+  snapshot();
+  const k = spans.indexOf(sp), prev = spans[k - 1], next = spans[k + 1];
+  if (edge === 'start') sp.start_ms = Math.max(prev ? prev.end_ms : 0, Math.min(sp.end_ms - 250, sp.start_ms + delta));
+  else sp.end_ms = Math.min(next ? next.start_ms : dur, Math.max(sp.start_ms + 250, sp.end_ms + delta));
+  lastNudged = sp;
+  toast(`${edge} → ${fmt(edge === 'start' ? sp.start_ms : sp.end_ms)} (${((edge === 'start' ? sp.start_ms : sp.end_ms) / 1000).toFixed(1)}s)`);
+  changed();
+}
+
+function selRange() { return [Math.min(cur, anchor), Math.max(cur, anchor)]; }
+function move(d, extend) {
+  cur = Math.max(0, Math.min(S.length - 1, cur + d));
+  if (!extend) anchor = cur;
+  lastNudged = null;
+  paintSel(); centerCur();
+}
+// Half a panel of padding lets the first and last rows reach the center.
+function padRows() { const h = $('wrap').clientHeight / 2; $('rows').style.padding = `${h}px 0`; }
+function centerCur() {
+  const box = $('rows'), el = rowEls[cur];
+  box.scrollTop = el.offsetTop + el.offsetHeight / 2 - box.clientHeight / 2;
+}
+function rowAtCenter() {
+  const box = $('rows'), y = box.scrollTop + box.clientHeight / 2;
+  let lo = 0, hi = rowEls.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; rowEls[m].offsetTop <= y ? lo = m : hi = m - 1; }
+  return lo;
+}
+function jumpBoundary(d) {
+  const key = i => labelAt(i) + '|' + (showPred && predCut[i] ? 1 : 0);
+  let i = cur;
+  const here = key(i);
+  while (i + d >= 0 && i + d < S.length && key(i + d) === here) i += d;
+  move(i + d - cur, false);
+}
+
+function render() {
+  $('rows').innerHTML = S.map((r, i) =>
+    `<div class="row" data-i="${i}"><span class="t">${fmt(r.start)}</span><span class="b"></span>`
+    + `<span class="p"></span><span class="x">${esc(r.text)}</span><span class="tag"></span></div>`).join('');
+  rowEls = [...$('rows').children];
+}
+function paintSel() {
+  const [i, j] = selRange();
+  rowEls.forEach((el, k) => { el.classList.toggle('sel', k >= i && k <= j); el.classList.toggle('cur', k === cur); });
+  drawMini();
+}
+function changed() {
+  const ads = ofLabel(...CUT), cut = union(S.filter((r, i) => predCut[i]).map(r => [r.start, r.end]));
+  rowEls.forEach((el, i) => {
+    const r = S[i], d = r.end - r.start || 1;
+    el.querySelector('.b').style.background = barBg(r);
+    el.querySelector('.p').style.background = predCut[i] ? 'var(--cut)' : 'none';
+    const adMs = overlap(ads, [[r.start, r.end]]), lab = labelAt(i), tag = el.querySelector('.tag');
+    if (adMs > d / 2 && !predCut[i]) { tag.className = 'tag miss'; tag.textContent = 'missed'; }
+    else if (predCut[i] && !CUT.includes(lab) && (spans.length || reviewed)) { tag.className = 'tag over'; tag.textContent = 'cut'; }
+    else { tag.className = 'tag'; tag.textContent = ''; }
+  });
+  const adMs = total(ads), missed = adMs - overlap(ads, cut);
+  const over = total(cut) - overlap(cut, ads);
+  const cutTxt = PRED_N ? `pipeline cut <b>${fmt(total(cut))}</b>` : '<span class="muted">no pipeline cuts</span>';
+  $('stats').innerHTML = !spans.length && !reviewed ? `${cutTxt} · <span class="muted">not labeled yet</span>`
+    : `should cut <b>${fmt(adMs)}</b> · ${cutTxt}` + (PRED_N ? ` · <span style="color:var(--ad)">missed <b>${fmt(missed)}</b></span>`
+      + ` · <span style="color:var(--warn)">wrongly cut <b>${fmt(over)}</b></span>` : '');
+  $('bRev').classList.toggle('on', reviewed);
+  document.body.classList.toggle('locked', reviewed);
+  if ($('done').hidden === reviewed) { $('done').hidden = !reviewed; if (reviewed) findNext(); padRows(); centerCur(); }
+  paintSel();
+  queueSave();
+}
+
+let saveTimer, dirty = false, loaded = false;
+function queueSave() {
+  if (!loaded) return;
+  dirty = true; $('save').textContent = 'unsaved';
+  clearTimeout(saveTimer); saveTimer = setTimeout(save, 700);
+}
+async function save() {
+  $('save').textContent = 'saving…';
+  try {
+    const r = await fetch(`/api/label/${encodeURIComponent(EP)}.json`, {
+      method: 'PUT', headers: {'Content-Type': 'application/json', 'X-Skipcastify': '1'},
+      body: JSON.stringify({spans, reviewed})});
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+    dirty = false; $('save').textContent = 'saved';
+  } catch (e) { $('save').textContent = 'save failed'; toast('Save failed: ' + e.message); }
+}
+window.addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
+
+// ---------- audio (lazy: nothing loads until you play) ----------
+let HAS_AUDIO = false, PRED_N = 0, FEED = null;
+function play(fromMs, toMs) {
+  if (!HAS_AUDIO) return toast('No raw audio on the server for this episode');
+  if (!audio) {
+    audio = new Audio(`/api/label/${encodeURIComponent(EP)}/audio`);
+    audio.addEventListener('timeupdate', onTime);
+  }
+  playEnd = toMs ?? null;
+  audio.currentTime = fromMs / 1000;
+  audio.play().catch(e => toast('Playback failed: ' + e.message));
+}
+let playingRow = -1;
+function onTime() {
+  const ms = audio.currentTime * 1000;
+  if (playEnd != null && ms >= playEnd) { audio.pause(); playEnd = null; }
+  let i = S.findIndex(r => r.end > ms);
+  if (audio.paused) i = -1;
+  if (i !== playingRow) {
+    rowEls[playingRow]?.classList.remove('playing');
+    rowEls[i]?.classList.add('playing');
+    playingRow = i;
+  }
+}
+function togglePlay() {
+  if (audio && !audio.paused) { audio.pause(); onTime(); return; }
+  const [i, j] = selRange();
+  play(S[i].start, i === j ? null : S[j].end);
+}
+function playEdge() {
+  const sp = (lastNudged && spans.includes(lastNudged)) ? lastNudged : spanAtRow(cur);
+  if (!sp) return toast('No labeled span on this line');
+  const t = Math.abs(S[cur].start - sp.start_ms) <= Math.abs(S[cur].end - sp.end_ms) ? sp.start_ms : sp.end_ms;
+  play(Math.max(0, t - 2500), t + 2500);
+}
+
+// ---------- minimap ----------
+function visibleRange() {
+  const box = $('rows'), top = box.scrollTop, bot = top + box.clientHeight;
+  let a = 0, b = rowEls.length - 1;
+  while (a < rowEls.length - 1 && rowEls[a].offsetTop + rowEls[a].offsetHeight < top) a++;
+  for (b = a; b < rowEls.length - 1 && rowEls[b + 1].offsetTop < bot; b++);
+  return [a, b];
+}
+function drawMini() {
+  const c = $('mini'), dpr = devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
+  if (!W || !H) return;
+  c.width = W * dpr; c.height = H * dpr;
+  const g = c.getContext('2d'); g.scale(dpr, dpr);
+  const y = ms => ms / dur * H;
+  g.fillStyle = css('panel'); g.fillRect(0, 0, W, H);
+  for (const s of spans) { g.fillStyle = COLOR[s.label]; g.fillRect(4, y(s.start_ms), W * .6 - 4, Math.max(2, y(s.end_ms) - y(s.start_ms))); }
+  if (showPred) {
+    g.fillStyle = css('cut');
+    S.forEach((r, i) => { if (predCut[i]) g.fillRect(W * .66, y(r.start), W * .3, Math.max(1, y(r.end) - y(r.start))); });
+  }
+  const [a, b] = visibleRange();
+  g.strokeStyle = css('accent'); g.lineWidth = 1.5;
+  g.strokeRect(1, y(S[a].start), W - 2, Math.max(4, y(S[b].end) - y(S[a].start)));
+  g.fillStyle = css('accent'); g.fillRect(0, y(S[cur].start) - 1, W, 2);
+}
+function miniJump(e) {
+  const ms = (e.offsetY / $('mini').clientHeight) * dur;
+  let i = S.findIndex(r => r.end > ms); if (i < 0) i = S.length - 1;
+  cur = anchor = i; paintSel(); centerCur();
+}
+
+// ---------- find ----------
+let matches = [];
+function runFind() {
+  const q = $('find').value.toLowerCase().trim();
+  matches = q ? S.map((r, i) => r.text.toLowerCase().includes(q) ? i : -1).filter(i => i >= 0) : [];
+  rowEls.forEach((el, i) => el.classList.toggle('match', matches.includes(i)));
+}
+function nextMatch(d) {
+  if (!matches.length) return toast('No matches');
+  const i = d > 0 ? (matches.find(m => m > cur) ?? matches[0]) : ([...matches].reverse().find(m => m < cur) ?? matches[matches.length - 1]);
+  cur = anchor = i; paintSel(); centerCur();
+}
+
+function prefill() {
+  if (locked()) return;
+  if (!PRED_N) return toast('No pipeline cuts for this episode');
+  if (spans.length && !confirm('Replace your labels with the pipeline\'s cuts? (undo with u)')) return;
+  snapshot();
+  spans = [];
+  S.forEach((r, i) => { if (predCut[i]) setRange(r.start, r.end, 'ad'); });
+  changed();
+}
+function setPred(v) {
+  showPred = v; store('label.pred', v ? '1' : '0');
+  document.body.classList.toggle('nopred', !v); $('bPred').classList.toggle('on', v); drawMini();
+}
+
+// Next unreviewed episode: same show first, newest first, then any show with cuts.
+let nextEp = null;
+async function findNext() {
+  const eps = (await (await fetch('/api/label/episodes.json')).json()).filter(e => !e.reviewed && e.name !== EP);
+  nextEp = eps.find(e => e.feed === FEED) || eps.find(e => e.has_predictions) || null;
+  const a = $('doneNext');
+  a.hidden = !nextEp;
+  if (nextEp) { a.href = '/label/' + encodeURIComponent(nextEp.name); a.title = 'Open next (Enter)'; a.innerHTML = `Next: ${esc(nextEp.name)} →`; }
+}
+async function go(url) {
+  clearTimeout(saveTimer);
+  if (dirty) await save();
+  location.href = url;
+}
+
+async function editor() {
+  $('wrap').hidden = $('legend').hidden = $('tools').hidden = $('back').hidden = false;
+  $('back').href = '/label?from=' + encodeURIComponent(EP);
+  $('title').textContent = EP;
+  $('title').title = EP;
+  const d = await (await fetch(`/api/label/${encodeURIComponent(EP)}.json`)).json();
+  FEED = d.feed;
+  if (d.cut_labels) CUT = d.cut_labels;
+  S = d.segments; spans = d.spans; reviewed = d.reviewed; HAS_AUDIO = d.has_audio; PRED_N = d.predictions.length;
+  dur = Math.max(1, ...S.map(r => r.end));
+  SPOKEN = union(S.map(r => [r.start, r.end]));
+  // The pipeline cuts every whole line a predicted span touches.
+  predCut = S.map(r => d.predictions.some(p => r.start < p.end_ms && r.end > p.start_ms));
+  $('legend').innerHTML = LABELS.map(l => `<span class="chip" data-l="${l.key}"><i style="background:var(--${l.key})"></i>${l.name} <kbd>${l.n}</kbd></span>`).join('')
+    + `<span class="chip" data-l=""><i style="background:transparent;border:1px solid var(--line)"></i>Content <kbd>0</kbd></span>`
+    + `<span class="chip" style="cursor:default"><i style="background:var(--cut)"></i>pipeline cut</span>`
+    + (HAS_AUDIO ? '' : '<span class="muted" style="font-size:12px">no raw audio</span>')
+    + '<span id="stats"></span>';
+  $('bFill').disabled = !PRED_N;
+  render(); setPred(showPred); changed(); padRows(); centerCur();
+  loaded = true; $('save').textContent = d.spans.length || d.reviewed ? 'saved' : '';
+  if (tidySpans()) { changed(); toast('Cleaned up leftover label slivers between lines'); }
+  $('rows').focus();
+  bindEditor();
+}
+
+function bindEditor() {
+  const box = $('rows');
+  let dragging = false;
+  box.addEventListener('mousedown', e => {
+    const el = e.target.closest('.row'); if (!el) return;
+    const i = +el.dataset.i;
+    if (e.target.classList.contains('t')) { cur = anchor = i; paintSel(); centerCur(); play(S[i].start, null); return; }
+    cur = i; if (!e.shiftKey) anchor = i;
+    dragging = true; lastNudged = null; paintSel();
+  });
+  box.addEventListener('mousemove', e => {
+    if (!dragging || !(e.buttons & 1)) return;
+    const el = e.target.closest('.row'); if (el && +el.dataset.i !== cur) { cur = +el.dataset.i; paintSel(); }
+  });
+  addEventListener('mouseup', () => { if (dragging) { dragging = false; centerCur(); } });
+  let shiftHeld = false;
+  addEventListener('keydown', e => shiftHeld = e.shiftKey);
+  addEventListener('keyup', e => shiftHeld = e.shiftKey);
+  // The wheel steps the cursor a line at a time so the centered bar never moves.
+  let wheelAcc = 0;
+  box.addEventListener('wheel', e => {
+    if (e.ctrlKey) return;  // pinch-zoom
+    e.preventDefault();
+    const d = (e.deltaY || (e.shiftKey ? e.deltaX : 0)) * (e.deltaMode === 1 ? 32 : 1);
+    if (Math.sign(d) !== Math.sign(wheelAcc)) wheelAcc = 0;
+    wheelAcc += d;
+    const steps = Math.trunc(wheelAcc / 32);
+    if (steps) { wheelAcc -= steps * 32; move(steps, e.shiftKey); }
+  }, {passive: false});
+  // Scrollbar drags still scroll freely; snap the middle line to center when they stop.
+  let snapTimer;
+  box.addEventListener('scroll', () => {
+    if (!dragging) {
+      const i = rowAtCenter();
+      if (i !== cur) { cur = i; if (!shiftHeld) anchor = i; lastNudged = null; paintSel(); }
+      clearTimeout(snapTimer); snapTimer = setTimeout(centerCur, 150);
+    }
+    requestAnimationFrame(drawMini);
+  });
+  addEventListener('resize', () => { padRows(); centerCur(); drawMini(); });
+  let miniDrag = false;
+  $('mini').addEventListener('mousedown', e => { miniDrag = true; miniJump(e); });
+  $('mini').addEventListener('mousemove', e => { if (miniDrag && (e.buttons & 1)) miniJump(e); });
+  addEventListener('mouseup', () => miniDrag = false);
+  $('legend').addEventListener('click', e => { const c = e.target.closest('.chip[data-l]'); if (c) applyLabel(c.dataset.l || null); });
+  $('bPred').onclick = () => setPred(!showPred);
+  $('bFill').onclick = prefill;
+  for (const id of ['back', 'doneNext'])
+    $(id).addEventListener('click', e => { e.preventDefault(); go($(id).href); });
+  $('bRev').onclick = () => { snapshot(); reviewed = !reviewed; changed(); };
+  $('bHelp').onclick = () => $('help').classList.add('show');
+  $('help').onclick = () => $('help').classList.remove('show');
+  $('find').addEventListener('input', runFind);
+  $('find').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); nextMatch(e.shiftKey ? -1 : 1); }
+    if (e.key === 'Escape') { $('find').blur(); $('rows').focus(); }
+  });
+
+  document.addEventListener('keydown', e => {
+    if (typing(e)) return;
+    const k = e.key, ctl = e.ctrlKey || e.metaKey;
+    const [va, vb] = visibleRange(), half = Math.max(1, (vb - va) >> 1);
+    if ($('help').classList.contains('show')) { if (k === 'Escape' || k === '?') $('help').classList.remove('show'); return; }
+    const label = LABELS.find(l => l.n === k);
+    let handled = true;
+    if (ctl && (k === 'z' || k === 'Z')) e.shiftKey ? restore(redo, undo) : restore(undo, redo);
+    else if (ctl && k === 'r' && !e.metaKey) restore(redo, undo);
+    else if (ctl && k === 'd') move(half, false);
+    else if (ctl && k === 'u') move(-half, false);
+    else if (ctl) handled = false;
+    else if (e.altKey && (k === 'ArrowLeft' || k === 'ArrowRight')) nudge(e.shiftKey ? 'end' : 'start', k === 'ArrowLeft' ? -500 : 500);
+    else if (k === 'j' || k === 'ArrowDown') move(1, e.shiftKey);
+    else if (k === 'k' || k === 'ArrowUp') move(-1, e.shiftKey);
+    else if (k === 'J') move(1, true);
+    else if (k === 'K') move(-1, true);
+    else if (k === 'g' || k === 'Home') move(-S.length, e.shiftKey);
+    else if (k === 'G' || k === 'End') move(S.length, e.shiftKey);
+    else if (k === 'PageDown') move(half, e.shiftKey);
+    else if (k === 'PageUp') move(-half, e.shiftKey);
+    else if (k === '[') jumpBoundary(-1);
+    else if (k === ']') jumpBoundary(1);
+    else if (label) applyLabel(label.key);
+    else if (k === '0' || k === 'Backspace' || k === 'Delete') applyLabel(null);
+    else if (k === ',') nudge('start', -500);
+    else if (k === '.') nudge('start', 500);
+    else if (k === '<') nudge('end', -500);
+    else if (k === '>') nudge('end', 500);
+    else if (k === ' ') togglePlay();
+    else if (k === 'e') playEdge();
+    else if (k === 'u') restore(undo, redo);
+    else if (k === 'p') setPred(!showPred);
+    else if (k === 'P') prefill();
+    else if (k === 'R') { snapshot(); reviewed = !reviewed; changed(); toast(reviewed ? 'Marked reviewed' : 'Unmarked'); }
+    else if (k === '/') { $('find').style.display = 'inline-block'; $('find').focus(); $('find').select(); }
+    else if (k === 'n') nextMatch(1);
+    else if (k === 'N') nextMatch(-1);
+    else if (k === '?') $('help').classList.add('show');
+    else if (k === 'b') go($('back').href);
+    else if (k === 'Enter' && reviewed && nextEp) go($('doneNext').href);
+    else if (k === 'Escape') { anchor = cur; paintSel(); }
+    else handled = false;
+    if (handled) e.preventDefault();
+  });
+}
+
+// Label bars and the minimap bake in colors; repaint when the system theme flips.
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+  loadColors();
+  if (EP && rowEls.length) { loaded = false; changed(); loaded = true; }  // repaint without re-saving
+});
+
+EP ? editor() : picker();
+</script>
+</body>
+</html>

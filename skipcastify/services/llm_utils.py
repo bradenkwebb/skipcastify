@@ -4,9 +4,10 @@ import json
 import logging
 import os
 import re
-import requests
+from dataclasses import dataclass
 from typing import Any
 
+import requests
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
@@ -14,9 +15,34 @@ logger = logging.getLogger(__name__)
 DEFAULT_OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e2b")
 DEFAULT_OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
+# Input/output price per token by model. Update if OpenAI changes pricing.
+# "cached_input" is the discounted rate for prompt-prefix tokens served from
+# OpenAI's automatic prompt cache (50% of input for the 4o family).
+_OPENAI_PRICE: dict[str, dict[str, float]] = {
+    "gpt-4o-mini": {"input": 0.15 / 1_000_000, "cached_input": 0.075 / 1_000_000, "output": 0.60 / 1_000_000},
+    "gpt-4o":      {"input": 2.50 / 1_000_000, "cached_input": 1.25 / 1_000_000, "output": 10.00 / 1_000_000},
+}
 
-def call_llm(prompt: str) -> str:
-    """Call the configured LLM provider and return raw text."""
+
+def price_for(model: str) -> dict[str, float]:
+    """Prices for a model or a dated snapshot of it (gpt-4o-mini-2024-07-18 -> gpt-4o-mini)."""
+    base = re.sub(r"-\d{4}-\d{2}-\d{2}$", "", model)
+    return _OPENAI_PRICE.get(base, {"input": 0.0, "output": 0.0})
+
+
+@dataclass
+class LLMResponse:
+    text: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cached_tokens: int = 0
+    cost_usd: float = 0.0
+    model: str = ""
+    system_fingerprint: str = ""
+
+
+def call_llm(prompt: str) -> LLMResponse:
+    """Call the configured LLM provider and return an LLMResponse."""
     provider = os.environ.get("LLM_PROVIDER", "ollama")
     if provider == "openai":
         return call_openai_chat(prompt)
@@ -24,8 +50,8 @@ def call_llm(prompt: str) -> str:
         return call_ollama_generate(prompt)
 
 
-def call_openai_chat(prompt: str) -> str:
-    """Call OpenAI chat completions and return raw text."""
+def call_openai_chat(prompt: str) -> LLMResponse:
+    """Call OpenAI chat completions and return an LLMResponse with token counts."""
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise ValueError("OPENAI_API_KEY not set in environment")
@@ -50,15 +76,45 @@ def call_openai_chat(prompt: str) -> str:
         messages=messages,
         temperature=0.0,
     )
-    return response.choices[0].message.content or ""
+
+    usage = response.usage
+    prompt_tokens = usage.prompt_tokens if usage else 0
+    completion_tokens = usage.completion_tokens if usage else 0
+
+    # Tokens served from OpenAI's automatic prompt cache (the stable system
+    # prompt prefix) are billed at the discounted cached_input rate.
+    cached_tokens = 0
+    details = getattr(usage, "prompt_tokens_details", None) if usage else None
+    if details is not None:
+        cached_tokens = getattr(details, "cached_tokens", 0) or 0
+
+    prices = price_for(DEFAULT_OPENAI_MODEL)
+    cached_rate = prices.get("cached_input", prices["input"])
+    uncached_tokens = prompt_tokens - cached_tokens
+    cost_usd = (
+        uncached_tokens * prices["input"]
+        + cached_tokens * cached_rate
+        + completion_tokens * prices["output"]
+    )
+
+    return LLMResponse(
+        text=response.choices[0].message.content or "",
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        cached_tokens=cached_tokens,
+        cost_usd=cost_usd,
+        model=getattr(response, "model", "") or "",
+        system_fingerprint=getattr(response, "system_fingerprint", "") or "",
+    )
 
 
-def call_ollama_generate(prompt: str, model: str = DEFAULT_OLLAMA_MODEL, timeout: int = 300) -> str:
-    """Call local Ollama's generate endpoint and return raw text."""
+def call_ollama_generate(prompt: str, model: str = DEFAULT_OLLAMA_MODEL, timeout: int = 300) -> LLMResponse:
+    """Call local Ollama's generate endpoint and return an LLMResponse with token counts."""
+    # Ollama reads sampling parameters from "options" only.
     payload = {
         "model": model,
         "prompt": prompt,
-        "temperature": 0.0,
+        "options": {"temperature": 0.0},
         "stream": False,
     }
 
@@ -67,8 +123,14 @@ def call_ollama_generate(prompt: str, model: str = DEFAULT_OLLAMA_MODEL, timeout
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, dict) and "response" in data:
-            return data["response"]
-        return resp.text
+            return LLMResponse(
+                text=data["response"],
+                prompt_tokens=data.get("prompt_eval_count", 0),
+                completion_tokens=data.get("eval_count", 0),
+                cost_usd=0.0,
+                model=data.get("model", "") or "",
+            )
+        return LLMResponse(text=resp.text)
     except Exception as e:
         logger.error("Ollama generate call failed; is the model available? %s", e)
         raise

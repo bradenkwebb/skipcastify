@@ -1,5 +1,6 @@
-import pytest
 import os
+
+import pytest
 
 # Set env vars before importing server, which reads them at module level
 os.environ.update({

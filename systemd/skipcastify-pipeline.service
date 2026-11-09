@@ -1,0 +1,21 @@
+[Unit]
+Description=Skipcastify podcast ad-removal pipeline
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bwebb
+WorkingDirectory=/home/bwebb/skipcastify
+EnvironmentFile=/home/bwebb/skipcastify/.env
+ExecStart=/home/bwebb/skipcastify/.venv/bin/python pipeline.py
+
+# Transcription saturates every core on a fanless laptop that has no thermal
+# governor (thermald is disabled because the screen removal broke its sensors),
+# so the pipeline yields to anything interactive.
+Nice=10
+CPUWeight=50
+
+# A long episode can take a while to transcribe; the lockfile in pipeline.py
+# already prevents two runs overlapping, so a generous ceiling is safe.
+TimeoutStartSec=3h

@@ -1,29 +1,30 @@
 """
 Ground-truth ad detection labels for evaluation and testing.
 
-Format: YAML files with manually-labeled ad spans for episodes.
-Stored in data/labels/ground_truth/ directory.
+Format: JSON, one file per episode, under $DATA_DIR/labels/ground_truth/.
+v2 files are written by the /label web UI and carry "spans"; older files
+carry "ads". Both are read here.
 
 Example:
-    episode_name: "philosophize-this-episode_237_the_stoics_are_wrong_-_nietzsche_schopenhauer"
-    ads:
-      - start_ms: 871760
-        end_ms: 875520
-        label: "ADVERTISEMENT"
-        description: "Diet Coke ad read"
-      - start_ms: 909920
-        end_ms: 916880
-        label: "SPONSOR"
-        description: "Subaru spot"
+    {
+      "episode_name": "philosophize-this-episode_237_the_stoics_are_wrong",
+      "ads": [
+        {"start_ms": 871760, "end_ms": 875520,
+         "label": "ADVERTISEMENT", "description": "Diet Coke ad read"},
+        {"start_ms": 909920, "end_ms": 916880,
+         "label": "SPONSOR", "description": "Subaru spot"}
+      ]
+    }
 """
 
+import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional, Tuple
-import json
 
 logger = logging.getLogger(__name__)
+
+CUT_LABELS = {"ad", "self_promo"}
 
 
 class GroundTruthLabel:
@@ -61,15 +62,15 @@ class GroundTruthLabel:
 class GroundTruthStore:
     """Manages ground-truth labels for episodes."""
     
-    def __init__(self, labels_dir: str = "data/labels/ground_truth"):
-        self.labels_dir = Path(labels_dir)
-        self.labels_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, labels_dir: str | None = None):
+        self.labels_dir = Path(labels_dir) if labels_dir else (
+            Path(os.environ.get("DATA_DIR", "data")) / "labels" / "ground_truth")
     
     def get_label_path(self, episode_name: str) -> Path:
         """Get the label file path for an episode."""
         return self.labels_dir / f"{episode_name}_labels.json"
     
-    def load_labels(self, episode_name: str) -> Optional[List[GroundTruthLabel]]:
+    def load_labels(self, episode_name: str) -> list[GroundTruthLabel] | None:
         """Load ground-truth labels for an episode.
         
         Returns:
@@ -81,12 +82,13 @@ class GroundTruthStore:
             return None
         
         try:
-            with open(label_path, 'r', encoding='utf-8') as f:
+            with open(label_path, encoding='utf-8') as f:
                 data = json.load(f)
             
-            labels = []
-            for item in data.get('ads', []):
-                labels.append(GroundTruthLabel.from_dict(item))
+            labels = [GroundTruthLabel.from_dict(item) for item in data.get('ads', [])]
+            # v2 files come from the /label GUI; labels say what a span is, CUT_LABELS what gets removed.
+            labels += [GroundTruthLabel(s['start_ms'], s['end_ms'], 'ADVERTISEMENT')
+                       for s in data.get('spans', []) if s.get('label') in CUT_LABELS]
             
             logger.info(f"Loaded {len(labels)} ground-truth labels for {episode_name}")
             return labels
@@ -94,7 +96,7 @@ class GroundTruthStore:
             logger.warning(f"Failed to load ground-truth labels: {e}")
             return None
     
-    def save_labels(self, episode_name: str, labels: List[GroundTruthLabel]) -> None:
+    def save_labels(self, episode_name: str, labels: list[GroundTruthLabel]) -> None:
         """Save ground-truth labels for an episode.
         
         Args:
@@ -103,6 +105,7 @@ class GroundTruthStore:
         """
         label_path = self.get_label_path(episode_name)
         try:
+            label_path.parent.mkdir(parents=True, exist_ok=True)
             data = {
                 'episode_name': episode_name,
                 'ads': [label.to_dict() for label in labels]
@@ -119,7 +122,7 @@ class GroundTruthStore:
         """Check if labels exist for an episode."""
         return self.get_label_path(episode_name).exists()
     
-    def list_labeled(self) -> List[str]:
+    def list_labeled(self) -> list[str]:
         """List all episodes with ground-truth labels."""
         labeled = []
         for f in self.labels_dir.glob("*_labels.json"):
@@ -168,8 +171,8 @@ class EvaluationMetrics:
                 f"TP={self.tp} FP={self.fp} FN={self.fn} TN={self.tn}")
 
 
-def evaluate_predictions(ground_truth: List[GroundTruthLabel], 
-                        predictions: List[dict],
+def evaluate_predictions(ground_truth: list[GroundTruthLabel], 
+                        predictions: list[dict],
                         overlap_threshold_ms: int = 1000) -> EvaluationMetrics:
     """Evaluate predicted ad spans against ground-truth labels.
     

@@ -5,11 +5,9 @@ Section processing utilities:
 - Helpers to format a section as a time-coded transcript string for the LLM prompt
 """
 
-from dataclasses import dataclass
-from typing import List, Tuple
-import math
-import re
 import logging
+import re
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +16,8 @@ logger = logging.getLogger(__name__)
 class Section:
     start_ms: int
     end_ms: int
-    segment_indices: List[int]
-    text_lines: List[str]  # lines already formatted as "[start - end] text"
+    segment_indices: list[int]
+    text_lines: list[str]  # lines already formatted as "[start - end] text"
 
 
 DEFAULT_SECTION_MS = 10 * 60 * 1000  # 10 minutes
@@ -39,10 +37,10 @@ SECTION_KEYWORD_PATTERNS = [
 
 
 def make_sections_from_segments(
-    segments: List,  # list of Segment objects with start/end/text (ms)
+    segments: list,  # list of Segment objects with start/end/text (ms)
     section_ms: int = DEFAULT_SECTION_MS,
     overlap_ms: int = DEFAULT_OVERLAP_MS,
-) -> List[Section]:
+) -> list[Section]:
     """Chunk segments into sections and return list of Section objects.
 
     segments: list of objects with start (ms), end (ms), text (str)
@@ -55,12 +53,11 @@ def make_sections_from_segments(
     if step <= 0:
         raise ValueError("section_ms must be greater than overlap_ms")
 
-    sections: List[Section] = []
+    sections: list[Section] = []
     start = 0
-    seg_count = len(segments)
 
     while start < audio_end:
-        end = start + section_ms
+        end = min(start + section_ms, audio_end)
         # find segment indices whose start is < end and end > start (overlap)
         idxs = []
         lines = []

@@ -16,17 +16,19 @@ Output:
   - Predictions: data/podcasts/processed_preview/<episode>_predictions.json
 """
 import sys
-import json
 from pathlib import Path
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import logging
+
 from skipcastify.services.audio_processor import AudioProcessor, Segment
 from skipcastify.services.transcript_cache import TranscriptCache
-import logging
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -54,19 +56,19 @@ def main():
         if use_cached and not force_transcribe:
             cached_segments = cache.load_cached_transcript(ep_name)
             if cached_segments:
-                logger.info(f"Using cached transcript (--use-cached flag)")
+                logger.info("Using cached transcript (--use-cached flag)")
                 # Convert cached segments to Segment objects
                 segments = [Segment(start=cs.start, end=cs.end, text=cs.text) for cs in cached_segments]
                 result = processor.process_preview_with_segments(ep, str(out_path), segments)
             else:
-                logger.info(f"No cached transcript found, transcribing...")
+                logger.info("No cached transcript found, transcribing...")
                 result = processor.process_preview(ep, str(out_path))
                 cache.save_transcript(ep_name, result.get('segments', []))
         else:
             result = processor.process_preview(ep, str(out_path))
             cache.save_transcript(ep_name, result.get('segments', []))
         
-        logger.info(f"\n✓ Preview complete!")
+        logger.info("\n✓ Preview complete!")
         logger.info(f"  Audio:        {result['audio_path']}")
         logger.info(f"  Transcript:   {result['transcript_path']}")
         logger.info(f"  Predictions:  {result.get('predictions_path', 'N/A')}")
@@ -76,15 +78,15 @@ def main():
         print("PREVIEW TRANSCRIPT (showing what will be removed):")
         print("="*100 + "\n")
         
-        with open(result['transcript_path'], 'r', encoding='utf-8') as f:
+        with open(result['transcript_path'], encoding='utf-8') as f:
             print(f.read())
         
-        # Also show predictions summary
-        if result.get('ad_spans'):
+        # Show span comparison across all stages
+        def _print_spans(title: str, spans: list) -> None:
             print("\n" + "="*100)
-            print(f"PREDICTIONS: {len(result['ad_spans'])} ad spans detected")
+            print(f"{title}: {len(spans)} ad span(s) detected")
             print("="*100 + "\n")
-            for i, span in enumerate(result['ad_spans'], 1):
+            for i, span in enumerate(spans, 1):
                 start = int(span.get('start_ms', 0))
                 end = int(span.get('end_ms', 0))
                 duration_s = (end - start) / 1000
@@ -93,11 +95,27 @@ def main():
                 print(f"{i}. [{start}ms-{end}ms] ({duration_s:.1f}s) - {label}")
                 if rationale:
                     print(f"   {rationale}")
+
+        stage1 = result.get('stage1_spans') or []
+        postprocessed = result.get('postprocessed_spans') or []
+        refined = result.get('refined_spans')
+
+        if stage1:
+            _print_spans("STAGE 1 — raw LLM output", stage1)
+        if postprocessed and postprocessed != stage1:
+            _print_spans("POST-PROCESSING — merged + CTA extended", postprocessed)
+        elif postprocessed:
+            print("\n(Post-processing: no changes from stage 1)")
+        if refined is not None:
+            _print_spans("STAGE 2 — LLM boundary refinement", refined)
+
+        if not stage1:
+            _print_spans("PREDICTIONS", result.get('ad_spans') or [])
         
-        print(f"\nNext steps:")
+        print("\nNext steps:")
         print(f"  1. Annotate ads:  python scripts/annotate_ads.py {ep_name}")
         print(f"  2. Evaluate:      python scripts/evaluate_ad_detection.py {ep_name}")
-        print(f"  3. Re-run (fast): python scripts/preview_episode.py <episode> --use-cached")
+        print("  3. Re-run (fast): python scripts/preview_episode.py <episode> --use-cached")
         
     except Exception as e:
         logger.error(f"Preview failed: {e}")
