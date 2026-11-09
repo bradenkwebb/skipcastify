@@ -7,6 +7,10 @@ on:
   push:
     branches: [dev, main]
     paths: [Dockerfile, .dockerignore, docker-compose.yml, pyproject.toml, uv.lock]
+  # Weekly too: a code-only change (e.g. importing from a .dockerignore'd dir)
+  # can break the image without touching the paths above.
+  schedule:
+    - cron: "17 6 * * 1"
   workflow_dispatch:
 jobs:
   build:
