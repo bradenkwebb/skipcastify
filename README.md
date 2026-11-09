@@ -115,7 +115,9 @@ lists every one of them.
 
 ### Subscriptions
 
-Export your podcast subscriptions as OPML and save to `upstream.opml` (gitignored). The pipeline downloads from every feed listed there.
+`SUBSCRIPTIONS` points at an OPML file (gitignored) listing the feeds to
+download. Manage it from `/settings`, or start from your podcast app's OPML
+export.
 
 ### Running the server
 
