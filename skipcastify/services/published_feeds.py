@@ -42,6 +42,10 @@ class PublishedFeed:
     def overcast_url(self) -> str:
         return overcast_add_url(self.url)
 
+    @property
+    def add_links(self) -> list[dict]:
+        return add_links(self.url)
+
 
 def overcast_add_url(feed_url: str) -> str:
     """Overcast's documented subscribe scheme.
@@ -55,6 +59,23 @@ def overcast_add_url(feed_url: str) -> str:
     the Copy button is the page's primary control and this is the shortcut.
     """
     return f"overcast://x-callback-url/add?url={quote(feed_url, safe='')}"
+
+
+# Apps with a documented subscribe link. Apple Podcasts is left out: its
+# podcast:// scheme has been reported to rewrite https feed URLs to http.
+# Spotify can't add feeds by URL at all.
+def add_links(feed_url: str) -> list[dict]:
+    enc = quote(feed_url, safe='')
+    return [
+        {"app": "overcast", "name": "Overcast", "href": overcast_add_url(feed_url),
+         "hint": "iPhone and iPad; opens the Subscribe prompt"},
+        # https://antennapod.org/documentation/podcasters-hosters/add-on-antennapod
+        {"app": "antennapod", "name": "AntennaPod", "href": f"https://antennapod.org/deeplink/subscribe?url={enc}",
+         "hint": "Android; goes via antennapod.org, which sees the URL"},
+        # https://metacast.app/blog/product/private-rss-feeds-deep-links
+        {"app": "metacast", "name": "Metacast", "href": f"https://open.metacast.app/add-rss-feed?feedUrl={enc}",
+         "hint": "iOS and Android; goes via metacast.app, which sees the URL"},
+    ]
 
 
 def _channel_title(path: str) -> str | None:

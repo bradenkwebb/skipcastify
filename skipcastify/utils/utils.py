@@ -6,6 +6,8 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 
 def load_subscriptions(path: str, exclude_host: str = None) -> list:
     """Load feed URLs from an OPML file (ours, or a podcast app's export).
