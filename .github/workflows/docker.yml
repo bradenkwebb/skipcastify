@@ -1,0 +1,20 @@
+name: docker
+# Builds the image (no push) when the packaging could break, so the Docker
+# install doesn't rot while day-to-day work uses uv + systemd.
+on:
+  pull_request:
+    paths: [Dockerfile, .dockerignore, docker-compose.yml, pyproject.toml, uv.lock]
+  push:
+    branches: [dev, main]
+    paths: [Dockerfile, .dockerignore, docker-compose.yml, pyproject.toml, uv.lock]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t skipcastify .
+      - name: Imports and serves
+        run: |
+          docker run --rm skipcastify python -c "import server, pipeline"
+          touch .env && docker compose config -q

@@ -1,0 +1,11 @@
+.git
+.github
+.venv
+data
+tests
+docs
+assets
+*.opml
+.env
+policy.yaml
+**/__pycache__
