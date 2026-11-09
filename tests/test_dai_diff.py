@@ -25,10 +25,17 @@ def id3(size: int) -> bytes:
     return b"ID3\x04\x00\x00" + syncsafe + b"\x00" * size
 
 
+def align(with_tags, without_tags, **kw) -> dai_diff.Alignment:
+    return dai_diff.align(dai_diff.read_frames(mp3(with_tags)),
+                          dai_diff.read_frames(mp3(without_tags)), **kw)
+
+
+CONTENT = range(400)
+
+
 class TestReadFrames:
     def test_every_frame_is_found(self):
-        frames = dai_diff.read_frames(mp3(range(50)))
-        assert len(frames) == 50
+        assert len(dai_diff.read_frames(mp3(range(50)))) == 50
 
     def test_frame_duration_is_reported(self):
         frames = dai_diff.read_frames(mp3(range(10)))
@@ -39,82 +46,121 @@ class TestReadFrames:
         assert len(set(digests)) == 20
 
     def test_an_id3_header_is_skipped(self):
-        frames = dai_diff.read_frames(id3(1234) + mp3(range(5)))
-        assert len(frames) == 5
-        assert frames == dai_diff.read_frames(mp3(range(5)))
+        assert dai_diff.read_frames(id3(1234) + mp3(range(5))) == \
+            dai_diff.read_frames(mp3(range(5)))
 
     def test_a_truncated_trailing_frame_is_dropped(self):
-        frames = dai_diff.read_frames(mp3(range(5)) + _HEADER + b"\x00" * 10)
-        assert len(frames) == 5
+        assert len(dai_diff.read_frames(mp3(range(5)) + _HEADER + b"\x00" * 10)) == 5
 
 
-class TestInsertedSpans:
-    def _spans(self, with_tags, without_tags, **kw):
-        return dai_diff.inserted_spans(dai_diff.read_frames(mp3(with_tags)),
-                                       dai_diff.read_frames(mp3(without_tags)), **kw)
+class TestInsertion:
+    """A feed that inserts ads into empty space: the reference loses nothing."""
 
-    def test_identical_renderings_have_no_spans(self):
-        assert self._spans(range(100), range(100)) == []
+    def test_identical_renderings_have_no_ads(self):
+        result = align(CONTENT, CONTENT)
+        assert result.inserted == [] and result.replaced == []
+        assert result.match_ratio == 1.0
 
     def test_a_leading_insertion_starts_at_zero(self):
-        spans = self._spans(list(range(900, 980)) + list(range(100)), range(100))
-        assert len(spans) == 1
-        assert spans[0]["start_ms"] == 0
-        assert spans[0]["end_ms"] == round(80 * FRAME_MS)
-        assert spans[0]["label"] == "ad"
+        result = align(list(range(900, 980)) + list(CONTENT), CONTENT)
+        assert len(result.inserted) == 1
+        assert result.inserted[0]["start_ms"] == 0
+        assert result.inserted[0]["end_ms"] == round(80 * FRAME_MS)
+        assert result.inserted[0]["label"] == "ad"
+        assert result.replaced == []
 
-    def test_a_mid_roll_insertion_uses_the_monetized_timeline(self):
-        with_ads = list(range(40)) + list(range(900, 980)) + list(range(40, 100))
-        spans = self._spans(with_ads, range(100))
-        assert len(spans) == 1
-        assert spans[0]["start_ms"] == round(40 * FRAME_MS)
-        assert spans[0]["end_ms"] == round(120 * FRAME_MS)
+    def test_a_mid_roll_uses_the_monetized_timeline(self):
+        with_ads = list(range(40)) + list(range(900, 980)) + list(range(40, 400))
+        result = align(with_ads, CONTENT)
+        assert len(result.inserted) == 1
+        assert result.inserted[0]["start_ms"] == round(40 * FRAME_MS)
+        assert result.inserted[0]["end_ms"] == round(120 * FRAME_MS)
 
-    def test_several_insertions_come_back_in_order(self):
+    def test_several_breaks_come_back_in_order(self):
         with_ads = (list(range(20)) + list(range(900, 980))
                     + list(range(20, 60)) + list(range(980, 1060))
-                    + list(range(60, 100)))
-        spans = self._spans(with_ads, range(100))
-        assert len(spans) == 2
-        assert [s["start_ms"] for s in spans] == sorted(s["start_ms"] for s in spans)
-        assert spans[0]["end_ms"] <= spans[1]["start_ms"]
+                    + list(range(60, 400)))
+        starts = [s["start_ms"] for s in align(with_ads, CONTENT).inserted]
+        assert len(starts) == 2 and starts == sorted(starts)
 
     def test_the_spans_account_for_the_whole_difference(self):
-        with_ads = list(range(30)) + list(range(900, 1000)) + list(range(30, 100))
-        spans = self._spans(with_ads, range(100))
-        assert sum(s["end_ms"] - s["start_ms"] for s in spans) == pytest.approx(
-            100 * FRAME_MS, abs=1)
+        with_ads = list(range(30)) + list(range(900, 1000)) + list(range(30, 400))
+        assert align(with_ads, CONTENT).inserted_ms == pytest.approx(100 * FRAME_MS, abs=1)
 
-    def test_an_insertion_below_the_floor_is_ignored(self):
-        """A one-frame difference is an encoder artifact, not an ad."""
-        with_ads = list(range(40)) + [999] + list(range(40, 100))
-        assert self._spans(with_ads, range(100)) == []
+
+class TestReplacement:
+    """A feed that swaps a fixed-length house spot for a paid one."""
+
+    def test_a_replaced_slot_reports_only_the_paid_ad_as_inserted(self):
+        filler, paid = list(range(700, 740)), list(range(900, 980))
+        reference = list(range(40)) + filler + list(range(40, 400))
+        monetized = list(range(40)) + paid + list(range(40, 400))
+        result = align(monetized, reference)
+        assert len(result.inserted) == 1
+        assert result.inserted[0]["start_ms"] == round(40 * FRAME_MS)
+        assert result.inserted[0]["end_ms"] == round(120 * FRAME_MS)
+
+    def test_the_replaced_run_is_reported_in_the_reference_timeline(self):
+        filler, paid = list(range(700, 740)), list(range(900, 980))
+        reference = list(range(40)) + filler + list(range(40, 400))
+        monetized = list(range(40)) + paid + list(range(40, 400))
+        result = align(monetized, reference)
+        assert len(result.replaced) == 1
+        assert result.replaced[0]["start_ms"] == round(40 * FRAME_MS)
+        assert result.replaced[0]["end_ms"] == round(80 * FRAME_MS)
+        assert "label" not in result.replaced[0]
+
+    def test_an_unsold_slot_leaves_the_filler_unlabelled(self):
+        """Nothing was inserted, so the episode on disk holds no ad there."""
+        filler = list(range(700, 740))
+        reference = list(range(40)) + filler + list(range(40, 400))
+        result = align(list(CONTENT), reference)
+        assert result.inserted == []
+        assert len(result.replaced) == 1
+
+    def test_replacement_does_not_drag_the_ratio_under_the_floor(self):
+        filler, paid = list(range(700, 740)), list(range(900, 980))
+        reference = list(range(40)) + filler + list(range(40, 400))
+        monetized = list(range(40)) + paid + list(range(40, 400))
+        assert align(monetized, reference).match_ratio >= dai_diff.MATCH_FLOOR
+
+
+class TestArtifacts:
+    def test_a_one_frame_difference_is_ignored(self):
+        """The Xing header differs because it records the file's own length."""
+        with_ads = list(range(40)) + [999] + list(range(40, 400))
+        assert align(with_ads, CONTENT).inserted == []
 
     def test_the_floor_is_adjustable(self):
-        with_ads = list(range(40)) + [999] + list(range(40, 100))
-        assert len(self._spans(with_ads, range(100), min_span_ms=0)) == 1
+        with_ads = list(range(40)) + [999] + list(range(40, 400))
+        assert len(align(with_ads, CONTENT, min_span_ms=0).inserted) == 1
 
-    def test_unrelated_renderings_are_refused(self):
-        with pytest.raises(dai_diff.NotTheSameEncode):
-            self._spans(range(200, 300), range(100))
+
+class TestRefusals:
+    def test_a_re_encode_shares_no_frames(self):
+        with pytest.raises(dai_diff.NotComparable, match="same encode"):
+            align(range(5000, 5400), CONTENT)
 
     def test_an_empty_rendering_is_refused(self):
-        with pytest.raises(dai_diff.NotTheSameEncode):
-            dai_diff.inserted_spans([], dai_diff.read_frames(mp3(range(10))))
+        with pytest.raises(dai_diff.NotComparable):
+            dai_diff.align([], dai_diff.read_frames(mp3(range(10))))
 
-    def test_a_reference_longer_than_the_monetized_copy_is_refused(self):
-        """Ads are only ever added, so the reference cannot hold extra content."""
-        with pytest.raises(dai_diff.NotTheSameEncode):
-            self._spans(range(10), range(100))
+    def test_a_reference_longer_than_the_episode_is_refused(self):
+        with pytest.raises(dai_diff.NotComparable):
+            align(range(10), CONTENT)
 
+    def test_scattered_differences_are_refused(self):
+        """Interleaved mismatch is not ad placement, whatever its total."""
+        monetized = []
+        for n in range(400):
+            monetized.append(n)
+            if n % 4 == 0:
+                monetized.append(5000 + n)
+        with pytest.raises(dai_diff.NotComparable, match="differ in"):
+            align(monetized, CONTENT, min_span_ms=0)
 
-class TestMatchRatio:
-    def test_a_subsequence_matches_completely(self):
-        with_ads = dai_diff.read_frames(mp3(list(range(900, 950)) + list(range(100))))
-        without = dai_diff.read_frames(mp3(range(100)))
-        assert dai_diff.match_ratio(with_ads, without) == 1.0
-
-    def test_unrelated_renderings_match_poorly(self):
-        a = dai_diff.read_frames(mp3(range(200, 300)))
-        b = dai_diff.read_frames(mp3(range(100)))
-        assert dai_diff.match_ratio(a, b) < dai_diff.FRAME_MATCH_FLOOR
+    def test_the_break_budget_is_adjustable(self):
+        monetized = (list(range(20)) + list(range(900, 980)) + list(range(20, 60))
+                     + list(range(980, 1060)) + list(range(60, 400)))
+        with pytest.raises(dai_diff.NotComparable, match="differ in"):
+            align(monetized, CONTENT, max_breaks=1)

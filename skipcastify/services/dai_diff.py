@@ -1,16 +1,22 @@
 """Ad spans recovered by diffing two renderings of one episode.
 
-Server-side ad insertion stitches pre-encoded MP3 frames into an episode rather
-than re-encoding it, so a rendering served without ads is a frame-exact
-subsequence of one served with them. Aligning the two recovers every inserted
-span to the frame, which is roughly 26ms at 44.1kHz.
+Server-side ad insertion stitches pre-encoded MP3 frames into the episode
+rather than re-encoding it, so two renderings of one episode share their
+content frames exactly and differ only where the ads sit. Aligning them
+recovers every inserted span to about 26ms.
 
-The spans are in the timeline of the rendering that carries the ads, which is
-the file the pipeline downloads and transcribes.
+Some feeds insert into empty space and some replace a fixed-length house spot,
+so a rendering may both gain and lose frames. The ads are what the monetized
+rendering gained; what it lost belongs to the reference and never appears in
+the episode on disk.
+
+Spans are in the timeline of the rendering that carries the ads, which is the
+file the pipeline downloads and transcribes.
 """
 
 import difflib
 import hashlib
+from dataclasses import dataclass, field
 
 # MPEG audio frame header tables, indexed as the header stores them.
 _BITRATES_V1 = (0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0)
@@ -18,17 +24,32 @@ _BITRATES_V2 = (0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0)
 _SAMPLE_RATES = (44100, 48000, 32000)
 _LAYER_III = 1
 
-# Below this share of matching frames the two files are not the same encode of
-# the same content, and their differences are not ad insertions.
-FRAME_MATCH_FLOOR = 0.99
+# Re-encoding changes every frame, so two renderings of one episode that share
+# less than this are not the same encode and their diff means nothing.
+MATCH_FLOOR = 0.80
 
-# An insertion this short is an encoder artifact, such as the Xing header frame
-# that differs because it records the file's own length.
+# Ad breaks are few and contiguous. Many scattered runs mean the renderings
+# differ for some reason other than ad placement.
+MAX_BREAKS = 24
+
+# A difference this short is an encoder artifact, such as the Xing header frame
+# that records the file's own length.
 MIN_SPAN_MS = 1000.0
 
 
-class NotTheSameEncode(Exception):
-    """The two renderings do not share enough frames to be aligned."""
+class NotComparable(Exception):
+    """The two renderings cannot be read as the same episode."""
+
+
+@dataclass
+class Alignment:
+    inserted: list[dict] = field(default_factory=list)
+    replaced: list[dict] = field(default_factory=list)
+    match_ratio: float = 0.0
+
+    @property
+    def inserted_ms(self) -> int:
+        return sum(s["end_ms"] - s["start_ms"] for s in self.inserted)
 
 
 def read_frames(data: bytes) -> list[tuple[bytes, float]]:
@@ -73,53 +94,65 @@ def duration_ms(frames: list[tuple[bytes, float]]) -> float:
     return sum(length for _, length in frames)
 
 
-def inserted_spans(with_ads: list[tuple[bytes, float]],
-                   without_ads: list[tuple[bytes, float]],
-                   min_span_ms: float = MIN_SPAN_MS) -> list[dict]:
-    """Spans present in one rendering and absent from the other.
-
-    Raises NotTheSameEncode when too few frames match for the difference to
-    mean anything.
-    """
-    if not with_ads or not without_ads:
-        raise NotTheSameEncode("one rendering has no audio frames")
-
-    reference = [digest for digest, _ in without_ads]
-    monetized = [digest for digest, _ in with_ads]
-    blocks = difflib.SequenceMatcher(None, reference, monetized,
-                                     autojunk=False).get_matching_blocks()
-    matched = sum(size for _, _, size in blocks)
-    ratio = matched / len(reference)
-    if ratio < FRAME_MATCH_FLOOR:
-        raise NotTheSameEncode(
-            f"only {ratio:.1%} of the reference frames appear in the other "
-            f"rendering; expected at least {FRAME_MATCH_FLOOR:.0%}")
-
-    starts = []
-    elapsed = 0.0
-    for _, length in with_ads:
-        starts.append(elapsed)
+def _starts(frames: list[tuple[bytes, float]]) -> list[float]:
+    """Start time of each frame, plus the end of the last one."""
+    out, elapsed = [], 0.0
+    for _, length in frames:
+        out.append(elapsed)
         elapsed += length
-    starts.append(elapsed)
+    out.append(elapsed)
+    return out
 
+
+def _runs(starts: list[float], gaps: list[tuple[int, int]], min_span_ms: float,
+          label: str | None) -> list[dict]:
     spans = []
-    cursor = 0
-    for _, begin, size in blocks:
-        if begin > cursor and starts[begin] - starts[cursor] >= min_span_ms:
-            spans.append({"start_ms": round(starts[cursor]),
-                          "end_ms": round(starts[begin]),
-                          "label": "ad"})
-        cursor = begin + size
+    for begin, end in gaps:
+        if starts[end] - starts[begin] < min_span_ms:
+            continue
+        span = {"start_ms": round(starts[begin]), "end_ms": round(starts[end])}
+        if label:
+            span["label"] = label
+        spans.append(span)
     return spans
 
 
-def match_ratio(with_ads: list[tuple[bytes, float]],
-                without_ads: list[tuple[bytes, float]]) -> float:
-    """Share of reference frames found in the other rendering."""
+def align(with_ads: list[tuple[bytes, float]], without_ads: list[tuple[bytes, float]],
+          min_span_ms: float = MIN_SPAN_MS, max_breaks: int = MAX_BREAKS) -> Alignment:
+    """What one rendering carries and the other does not.
+
+    Raises NotComparable when the two cannot be read as renderings of the same
+    episode, which a bad download or a re-encode both cause.
+    """
+    if not with_ads or not without_ads:
+        raise NotComparable("a rendering has no audio frames")
+
     reference = [digest for digest, _ in without_ads]
     monetized = [digest for digest, _ in with_ads]
-    if not reference:
-        return 0.0
     blocks = difflib.SequenceMatcher(None, reference, monetized,
                                      autojunk=False).get_matching_blocks()
-    return sum(size for _, _, size in blocks) / len(reference)
+    ratio = sum(size for _, _, size in blocks) / len(reference)
+    if ratio < MATCH_FLOOR:
+        raise NotComparable(
+            f"the renderings share {ratio:.1%} of their frames, below the "
+            f"{MATCH_FLOOR:.0%} that means the same encode")
+
+    added, dropped = [], []
+    ref_cursor = mon_cursor = 0
+    for ref_at, mon_at, size in blocks:
+        if mon_at > mon_cursor:
+            added.append((mon_cursor, mon_at))
+        if ref_at > ref_cursor:
+            dropped.append((ref_cursor, ref_at))
+        ref_cursor, mon_cursor = ref_at + size, mon_at + size
+
+    if max(len(added), len(dropped)) > max_breaks:
+        raise NotComparable(
+            f"the renderings differ in {max(len(added), len(dropped))} places, "
+            f"more than the {max_breaks} that ad breaks would explain")
+
+    return Alignment(
+        inserted=_runs(_starts(with_ads), added, min_span_ms, "ad"),
+        replaced=_runs(_starts(without_ads), dropped, min_span_ms, None),
+        match_ratio=ratio,
+    )
