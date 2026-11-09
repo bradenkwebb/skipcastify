@@ -221,7 +221,7 @@ document.getElementById('skipped').addEventListener('click', async e => {
   catch (err) { status(err.message, 'err'); }
 });
 
-function mb(b) { return b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round(b / 1e6) + ' MB'; }
+function mb(b) { return b >= 2 ** 30 ? (b / 2 ** 30).toFixed(1) + ' GB' : Math.round(b / 2 ** 20) + ' MB'; }  // binary, like R2_CAP_GB
 function subStatus(msg, cls) { const el = document.getElementById('subStatus'); el.textContent = msg; el.className = cls || 'muted'; }
 
 function renderSubs() {
