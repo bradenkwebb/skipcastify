@@ -232,7 +232,23 @@ private struct DailyChart: View {
                 BarMark(x: .value("Day", item.date, unit: .day), y: .value("Ad minutes", item.point.adMinutes))
                     .foregroundStyle(selectedPoint?.id == item.point.id ? Color.accentColor : Color.accentColor.opacity(0.55))
             }
-            .chartXSelection(value: $selected)
+            // A tap pins the day (chartXSelection only tracks a drag and clears on release).
+            .chartOverlay { proxy in
+                GeometryReader { geo in
+                    Rectangle().fill(.clear).contentShape(.rect)
+                        .gesture(SpatialTapGesture().onEnded { tap in
+                            guard let plot = proxy.plotFrame else { return }
+                            let x = tap.location.x - geo[plot].origin.x
+                            guard let tapped: Date = proxy.value(atX: x),
+                                  let date = recent.min(by: { abs($0.date.timeIntervalSince(tapped)) < abs($1.date.timeIntervalSince(tapped)) })?.date
+                            else { return }
+                            // Snap to the nearest day, so taps on thin bars or the edges still land.
+                            let same = selected.map { Calendar.current.isDate($0, inSameDayAs: date) } ?? false
+                            selected = same ? nil : date
+                        })
+                }
+            }
+            .accessibilityIdentifier("dailyChart")
             .chartXAxis { AxisMarks(values: .stride(by: .day, count: 7)) { _ in
                 AxisGridLine(); AxisValueLabel(format: .dateTime.month(.abbreviated).day())
             } }

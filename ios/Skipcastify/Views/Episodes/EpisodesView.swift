@@ -28,7 +28,7 @@ struct EpisodesView: View {
                 }
             }
             .navigationTitle("Episodes")
-            .searchable(text: $query, prompt: "Search episodes")
+            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search episodes")
             .toolbar { showFilter }
             .navigationDestination(for: EpisodeRef.self) { EpisodeDetailView(ref: $0) }
             .refreshable {
