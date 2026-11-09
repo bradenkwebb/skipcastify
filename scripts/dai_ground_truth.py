@@ -20,6 +20,12 @@ the episode master, so it appears in both renderings and in neither the diff
 nor the labels; they are written with source "dai_diff" so an evaluation can
 report them apart from hand labels.
 
+They are written unreviewed, because the diff knows where an ad is and not
+what it is. A network inserts its own promos the same way an advertiser's spot
+arrives, and those are self_promo under the per-feed cut policy, so each span
+is proposed as "ad" for confirmation in /label. An episode that already has
+hand labels is left alone.
+
 Nothing is written unless every check passes: the reference has to be the same
 encode, run to the length the feed declares, and differ by a plausible amount.
 A feed whose renderings are identical has no insertion, so it gets no labels
@@ -32,6 +38,7 @@ their feeds out altogether.
 """
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -135,6 +142,21 @@ def check(spans: list[dict], reference_ms: float, episode_ms: float,
     return None
 
 
+def has_hand_labels(data_dir: Path, name: str) -> bool:
+    """Whether a label file exists that this script must not replace.
+
+    An unreadable file counts, so a damaged hand label is never overwritten.
+    """
+    path = labeling.label_path(data_dir, name)
+    if not path.is_file():
+        return False
+    try:
+        doc = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return True
+    return labeling.label_source(doc) == labeling.MANUAL
+
+
 def episodes_for(data_dir: Path, slug: str, filters: list[str], limit: int) -> list[Path]:
     """Raw episodes of one feed that have a cached transcript, newest first."""
     raw = data_dir / "podcasts" / "raw" / slug
@@ -162,6 +184,10 @@ def run_feed(data_dir: Path, slug: str, url: str, args) -> list[dict]:
     rows = []
     for mp3 in chosen:
         row = {"feed": slug, "episode": mp3.stem}
+        if has_hand_labels(data_dir, mp3.stem):
+            row["skipped"] = "has hand labels, left alone"
+            rows.append(row)
+            continue
         entry = entries.get(mp3.name)
         if entry is None:
             row["skipped"] = "no feed entry matches this file"
@@ -206,7 +232,7 @@ def run_feed(data_dir: Path, slug: str, url: str, args) -> list[dict]:
         elif args.dry_run:
             row["written"] = False
         else:
-            labeling.save_labels(data_dir, mp3.stem, spans, reviewed=True,
+            labeling.save_labels(data_dir, mp3.stem, spans, reviewed=False,
                                  source=labeling.DAI_DIFF)
             row["written"] = True
         rows.append(row)
@@ -265,9 +291,13 @@ def main(argv=None) -> int:
         print(f"{head}  {outcome}")
 
     written = sum(1 for r in rows if r.get("written"))
-    print(f"\n{written} label file(s) written, {len(rows) - written} episode(s) skipped")
+    skipped = sum(1 for r in rows if "skipped" in r)
+    print(f"\n{written} label file(s) written, {skipped} episode(s) skipped")
     if written:
-        print("Labels cover inserted ads only; host-read sponsors are not in them.")
+        print("Spans are exact; their labels are proposals. Confirm ad against "
+              "self_promo in /label, where they appear as unreviewed.")
+        print("Inserted ads only: a host-read sponsor is in neither rendering's "
+              "difference, so it is not labelled.")
     return 0
 
 

@@ -4,6 +4,7 @@ import json
 import os
 
 from scripts import dai_ground_truth as gt
+from skipcastify.services import labeling
 
 PLAUSIBLE = [{"start_ms": 0, "end_ms": 60_000, "label": "ad"},
              {"start_ms": 1_000_000, "end_ms": 1_120_000, "label": "ad"}]
@@ -120,3 +121,34 @@ class TestEpisodesFor:
 
     def test_an_unknown_feed_has_no_episodes(self, tmp_path):
         assert gt.episodes_for(tmp_path, "absent", [], 10) == []
+
+
+class TestHandLabelsAreLeftAlone:
+    SPAN = [{"start_ms": 0, "end_ms": 9000, "label": "ad"}]
+
+    def test_an_episode_with_hand_labels_is_protected(self, tmp_path):
+        labeling.save_labels(tmp_path, "show-ep", self.SPAN, reviewed=True)
+        assert gt.has_hand_labels(tmp_path, "show-ep") is True
+
+    def test_an_episode_with_no_labels_is_open(self, tmp_path):
+        assert gt.has_hand_labels(tmp_path, "show-ep") is False
+
+    def test_a_label_this_script_wrote_can_be_replaced(self, tmp_path):
+        labeling.save_labels(tmp_path, "show-ep", self.SPAN, reviewed=False,
+                             source=labeling.DAI_DIFF)
+        assert gt.has_hand_labels(tmp_path, "show-ep") is False
+
+    def test_a_label_without_a_source_counts_as_a_hand_label(self, tmp_path):
+        """Every label file predating the source field was written by hand."""
+        labeling.save_labels(tmp_path, "show-ep", self.SPAN, reviewed=True)
+        path = labeling.label_path(tmp_path, "show-ep")
+        doc = json.loads(path.read_text())
+        doc.pop("source")
+        path.write_text(json.dumps(doc))
+        assert gt.has_hand_labels(tmp_path, "show-ep") is True
+
+    def test_an_unreadable_label_file_is_protected(self, tmp_path):
+        path = labeling.label_path(tmp_path, "show-ep")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{ truncated")
+        assert gt.has_hand_labels(tmp_path, "show-ep") is True
