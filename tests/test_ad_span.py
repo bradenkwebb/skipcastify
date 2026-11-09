@@ -29,9 +29,15 @@ class TestParse:
         assert AdSpan.parse({"end_ms": 2_000}) == AdSpan(0, 2_000)
 
     @pytest.mark.parametrize("item", [{"start_ms": 1, "end_ms": 2},
-                                      {"start_ms": 1, "end_ms": 2, "label": ""}])
+                                      {"start_ms": 1, "end_ms": 2, "label": ""},
+                                      {"start_ms": 1, "end_ms": 2, "label": None}])
     def test_an_absent_label_reads_as_advertisement(self, item):
         assert AdSpan.parse(item).label == "ADVERTISEMENT"
+
+    @pytest.mark.parametrize("item", [{"start_ms": 1, "end_ms": 2},
+                                      {"start_ms": 1, "end_ms": 2, "rationale": None}])
+    def test_an_absent_rationale_reads_as_empty(self, item):
+        assert AdSpan.parse(item).rationale == ""
 
     def test_keeps_a_label_it_does_not_know(self):
         span = AdSpan.parse({"start_ms": 1, "end_ms": 2, "label": "PROMO"})
