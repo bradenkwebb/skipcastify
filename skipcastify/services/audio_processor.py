@@ -3,7 +3,8 @@ import logging
 import os
 import json
 import time
-from faster_whisper import WhisperModel
+import numpy as np
+from faster_whisper import WhisperModel, decode_audio
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -13,7 +14,7 @@ from skipcastify.models.content import ContentType
 from skipcastify.services import llm_utils
 from skipcastify.services import metrics
 from skipcastify.services import section_processor
-from skipcastify.services import span_postprocess
+from skipcastify.services import cut_policy, span_postprocess
 from skipcastify.services.segment_classifier import ClassifiedSegment
 from skipcastify.services.llm_monitor import get_monitor
 from skipcastify.services.transcript_cache import TranscriptCache
@@ -38,6 +39,27 @@ def _source_bitrate(path: str, default: str = "128k") -> str:
         logger.debug("Could not read source bitrate from %s: %s", path, e)
     return default
 
+
+
+SAMPLE_RATE = 16000
+CHUNK_S = 30 * 60
+SNAP_S = 10
+
+
+def chunk_bounds(audio: "np.ndarray", chunk_s: int = CHUNK_S, snap_s: int = SNAP_S) -> list[tuple[int, int]]:
+    """Sample ranges of about chunk_s each, split at the quietest 100 ms within
+    snap_s of each nominal boundary so a split rarely lands mid-word."""
+    n, size, win = len(audio), chunk_s * SAMPLE_RATE, SAMPLE_RATE // 10
+    bounds, start = [], 0
+    while n - start > size + snap_s * SAMPLE_RATE:
+        lo = start + size - snap_s * SAMPLE_RATE
+        frames = audio[lo:lo + 2 * snap_s * SAMPLE_RATE]
+        frames = frames[: len(frames) // win * win].reshape(-1, win)
+        cut = lo + int(np.argmin((frames ** 2).mean(axis=1))) * win + win // 2
+        bounds.append((start, cut))
+        start = cut
+    bounds.append((start, n))
+    return bounds
 
 @dataclass
 class Segment:
@@ -152,23 +174,25 @@ class AudioProcessor:
         #
         # transcribe() returns a lazy generator, so the work happens as the
         # segments below are consumed.
+        # Transcribed in chunks: faster-whisper builds the whole file's mel
+        # spectrogram up front (~2.6 GB per hour), which OOM-killed 3h episodes.
         logger.info("Transcribing audio...")
-        segment_iter, _info = model.transcribe(
-            audio_path,
-            language="en",
-            beam_size=1,
-            word_timestamps=True,
-        )
-
-        # Convert Whisper segments to our Segment format
+        audio = decode_audio(audio_path, sampling_rate=SAMPLE_RATE)
         segments = []
-        for seg in segment_iter:
-            segment = Segment(
-                start=int(seg.start * 1000),  # Convert seconds to ms
-                end=int(seg.end * 1000),      # Convert seconds to ms
-                text=seg.text.strip()
+        for start, end in chunk_bounds(audio):
+            offset_ms = start * 1000 // SAMPLE_RATE
+            segment_iter, _info = model.transcribe(
+                audio[start:end],
+                language="en",
+                beam_size=1,
+                word_timestamps=True,
             )
-            segments.append(segment)
+            for seg in segment_iter:
+                segments.append(Segment(
+                    start=offset_ms + int(seg.start * 1000),
+                    end=offset_ms + int(seg.end * 1000),
+                    text=seg.text.strip(),
+                ))
 
         logger.info(f"Transcription complete: {len(segments)} segments")
         return segments
@@ -304,6 +328,9 @@ class AudioProcessor:
                 stage1_spans = []
                 llm_answered = False
 
+            # Per-feed policy decides which labels go, before merging so a kept spot isn't swallowed.
+            stage1_spans, kept_spans = cut_policy.split(stage1_spans, feed_slug)
+
             # Stage 1b: code-level post-processing
             if stage1_spans:
                 stage1_spans = span_postprocess.postprocess_spans(stage1_spans, segments)
@@ -388,6 +415,8 @@ class AudioProcessor:
                 span_count=len(llm_ad_spans),
                 spans=[{"start_ms": s["start_ms"], "end_ms": s["end_ms"], "label": s["label"]}
                        for s in llm_ad_spans],
+                kept_spans=[{"start_ms": s["start_ms"], "end_ms": s["end_ms"], "label": s["label"]}
+                            for s in kept_spans],
             )
 
             # Save classification results for debugging

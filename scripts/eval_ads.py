@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dotenv import load_dotenv  # noqa: E402
 
-from skipcastify.services import labeling, span_postprocess  # noqa: E402
+from skipcastify.services import cut_policy, labeling, span_postprocess  # noqa: E402
 from skipcastify.services.llm_monitor import get_monitor  # noqa: E402
 from skipcastify.services.ad_eval import score  # noqa: E402
 from skipcastify.services.audio_processor import DEFAULT_PROMPT_PATH, AudioProcessor, Segment  # noqa: E402
@@ -56,9 +56,11 @@ def load(data_dir: Path, name: str):
     return [Segment(start=s["start"], end=s["end"], text=s["text"]) for s in segs], labels
 
 
-def detect(segments, name: str, prompt: str) -> list[dict]:
+def detect(segments, name: str, prompt: str, feed: str | None = None) -> list[dict]:
+    """The spans the pipeline would cut: LLM, then the feed's policy, then post-processing."""
     with tempfile.TemporaryDirectory() as tmp:
         spans = AudioProcessor(tmp)._run_section_llm(segments, tmp, episode_name=f"eval-{name}", prompt_path=prompt)
+    spans, _ = cut_policy.split(spans, feed)
     return span_postprocess.postprocess_spans(spans, segments) if spans else []
 
 
@@ -130,6 +132,7 @@ def main(argv=None) -> int:
     get_monitor().profile_dir = out / "llm_profiles"
     get_monitor().profile_dir.mkdir(exist_ok=True)
     data = {ep: load(data_dir, ep) for ep in episodes}
+    feeds = {ep: labeling._feed_for(data_dir, ep, {}) for ep in episodes}
 
     rows = []
     with open(out / "results.jsonl", "w") as f:
@@ -140,8 +143,8 @@ def main(argv=None) -> int:
                     segments, labels = data[ep]
                     row = {"round": n, "arm": arm, "episode": ep, "ts": datetime.now().isoformat(timespec="seconds")}
                     try:
-                        spans = detect(segments, ep, arm)
-                        row.update(score(segments, labels, spans), spans=spans)
+                        spans = detect(segments, ep, arm, feeds[ep])
+                        row.update(score(segments, labels, spans, cut_policy.cut_labels(feeds[ep])), spans=spans)
                     except Exception as e:  # one failed call shouldn't sink the run
                         row["error"] = repr(e)
                     rows.append(row)

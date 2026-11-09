@@ -11,7 +11,8 @@ from skipcastify.services.audio_processor import AudioProcessor
 from skipcastify.services.download_episode import EpisodeDownloader
 from skipcastify.services.labeling import label_path
 from skipcastify.services.generate_feeds import FeedManager
-from skipcastify.services.run_log import RunRecord, append_run
+from skipcastify.services.run_log import (RunRecord, append_run, clear_inflight,
+                                          take_inflight, write_inflight)
 from skipcastify.services.state_manager import StateManager
 from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.lock import LockHeld, pipeline_lock
@@ -24,6 +25,9 @@ logger = logging.getLogger(__name__)
 # diagnosis from a phone. The others are set inline in run(); this one is the
 # value before run() is even reached.
 STAGE_STARTUP = "startup"
+# An episode that started this many runs without finishing is skipped, so one
+# bad file (e.g. an OOM kill) cannot block every later episode and publish.
+MAX_ATTEMPTS = 2
 
 
 class Pipeline:
@@ -33,6 +37,7 @@ class Pipeline:
         self.alerter = alerter if alerter is not None else Alerter(data_dir)
         # The stage currently executing, and whether run() has already alerted
         # about a failure. main() reads both so one crash is one push.
+        self.episode = None
         self.stage = STAGE_STARTUP
         self.alerted = False
 
@@ -51,6 +56,21 @@ class Pipeline:
         self.downloader = EpisodeDownloader(config_path, data_dir, exclude_host,
                                            episode_limit, alerter=self.alerter)
         self.processor = AudioProcessor(data_dir)
+
+    @property
+    def stage(self) -> str:
+        return self._stage
+
+    @stage.setter
+    def stage(self, value: str) -> None:
+        self._stage, self.episode = value, None
+        self._checkpoint()
+
+    def _checkpoint(self) -> None:
+        try:
+            write_inflight(self.data_dir, self.run_record, self._stage, self.episode)
+        except OSError as e:
+            logger.warning(f"Could not write run marker: {e}")
 
     def _audio_size(self) -> int:
         """Total bytes used by raw and processed audio files (.mp3 only)."""
@@ -184,7 +204,19 @@ class Pipeline:
                         logger.info(f"Cooling down {cooldown_s}s before next episode")
                         time.sleep(cooldown_s)
                     first = False
+                    if state_manager.attempts(episode_fpath) >= MAX_ATTEMPTS:
+                        logger.warning(f"Skipping {Path(episode_fpath).name}: failed {MAX_ATTEMPTS} runs")
+                        continue
+                    self.episode = f"{slug}/{Path(episode_fpath).name}"
+                    self._checkpoint()
+                    if state_manager.start_attempt(episode_fpath) == MAX_ATTEMPTS:
+                        # Last try: alert now, since a SIGKILL leaves no chance to later.
+                        self.alerter.send(f"episode-stuck:{Path(episode_fpath).name}",
+                                          "Episode keeps failing",
+                                          f"{slug}/{Path(episode_fpath).name} is on attempt "
+                                          f"{MAX_ATTEMPTS}; it will be skipped if this run fails too.")
                     self.processor.process(episode_fpath, state_manager)
+                    state_manager.finish_attempt(episode_fpath)
                     self.run_record.processed.append(
                         {"feed": slug, "episode": Path(episode_fpath).stem})
             else:
@@ -235,8 +267,12 @@ def main():
 
         try:
             with pipeline_lock(data_dir):
-                pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir, alerter=alerter, run=run)
-                pipeline.run()
+                report_killed_run(data_dir, alerter)
+                try:
+                    pipeline = Pipeline(os.environ["SUBSCRIPTIONS"], data_dir, alerter=alerter, run=run)
+                    pipeline.run()
+                finally:
+                    clear_inflight(data_dir)
             outcome = "ok"
         except LockHeld:
             # Nothing ran, so this must not clear a failing flag.
@@ -257,6 +293,26 @@ def main():
                          f"Pipeline failed: {stage}",
                          f"{type(e).__name__}: {e}", priority="high")
         return 1
+
+
+def report_killed_run(data_dir, alerter) -> None:
+    """A marker left by the previous run means it died without running any
+    except/finally (SIGKILL, usually the OOM killer), so it never alerted."""
+    dead = take_inflight(data_dir)
+    if dead is None:
+        return
+    stage = dead.get("stage") or "unknown"
+    where = f"{stage}, on {dead['episode']}" if dead.get("episode") else stage
+    try:
+        append_run(data_dir, {"started": dead.get("started"), "duration_s": dead.get("duration_s"),
+                              "outcome": "killed", "feeds": [], "processed": [], "published": None,
+                              "stage": stage, "error": "killed", "episode": dead.get("episode")})
+    except Exception as e:
+        logging.warning(f"Could not record killed run: {e}")
+    detail = (f"The run started {dead.get('started')} died during {where} without logging an "
+              "error. Usually the kernel OOM killer; check journalctl -k.")
+    alerter.mark_failing(f"killed:{stage}", detail)
+    alerter.send(f"killed:{stage}", "Pipeline run was killed", detail, priority="high")
 
 
 def _record_run(data_dir, run, outcome, stage=None, error=None) -> None:

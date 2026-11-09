@@ -376,7 +376,7 @@ function renderRuns() {
       .map(f => `${esc(f.feed || '?')}: ${esc(feedText(f))}`);
     if (r.processed.length) parts.push(`processed ${r.processed.length}`);
     if (r.outcome === 'skipped') parts.push('another run was in progress');
-    if (r.stage) parts.push(`failed in ${esc(r.stage)} (${esc(r.error)})`);
+    if (r.stage) parts.push(`failed in ${esc(r.stage)} (${esc(r.error)})${r.episode ? ' on ' + esc(r.episode) : ''}`);
     return `<tr><td title="${esc(r.started)}">${ago(r.started)}</td><td class="${cls}">${esc(r.outcome)}</td>` +
       `<td>${r.duration_s}s</td><td>${parts.join('<br>') || '<span class="muted">nothing new</span>'}</td></tr>`;
   }).join('');
