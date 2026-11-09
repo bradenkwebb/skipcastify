@@ -587,6 +587,8 @@ class AudioProcessor:
                 completion_tokens=llm_resp.completion_tokens if llm_resp else 0,
                 cached_tokens=llm_resp.cached_tokens if llm_resp else 0,
                 cost_usd=round(llm_resp.cost_usd, 6) if llm_resp else 0.0,
+                model=llm_resp.model if llm_resp else "",
+                system_fingerprint=llm_resp.system_fingerprint if llm_resp else "",
                 spans_found=len(parsed) if success else 0,
             )
 
@@ -692,6 +694,8 @@ class AudioProcessor:
                     prompt_tokens=resp.prompt_tokens,
                     completion_tokens=resp.completion_tokens,
                     cost_usd=round(resp.cost_usd, 6),
+                    model=resp.model,
+                    system_fingerprint=resp.system_fingerprint,
                 )
 
                 debug_path = os.path.join(transcripts_dir, f"{episode_name}_refine_{sec.start_ms}.txt")
