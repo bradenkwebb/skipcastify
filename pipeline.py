@@ -19,7 +19,7 @@ from skipcastify.services.run_log import (
     take_inflight,
     write_inflight,
 )
-from skipcastify.services.state_manager import StateManager
+from skipcastify.services.state_manager import StateManager, uncut_marker
 from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.lock import LockHeld, pipeline_lock
 from skipcastify.utils.logger import setup_logging
@@ -145,6 +145,7 @@ class Pipeline:
                     break
                 size = f.stat().st_size
                 f.unlink()
+                uncut_marker(f).unlink(missing_ok=True)
                 total -= size
                 logger.info(f"Deleted processed {f.name} ({size / 1024**2:.1f}MB)")
 

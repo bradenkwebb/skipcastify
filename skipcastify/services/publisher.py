@@ -53,6 +53,7 @@ from skipcastify.services.r2_client import (
     error_code,
     redact_key,
 )
+from skipcastify.services.state_manager import uncut_marker
 from skipcastify.utils.alerts import Alerter
 from skipcastify.utils.notify import notify as ntfy_notify
 
@@ -156,6 +157,12 @@ class R2FeedManager(FeedManager):
             if time.time() - os.path.getmtime(processed) >= pub.retention_s:
                 url, length = self._original_audio_url(entry)
                 return url, length, None
+            # Nothing was cut, so the original is identical: link it rather than
+            # spend R2 on a copy. Already-uploaded episodes keep their URL.
+            if uncut_marker(processed).exists() and pub.manifest.get(key) is None:
+                url, length = self._original_audio_url(entry)
+                if url:
+                    return url, length, None
             url = pub.ensure_audio(key, processed, slug, ep_filename)
             if url:
                 return url, str(os.path.getsize(processed)), processed
