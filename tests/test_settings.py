@@ -20,6 +20,8 @@ WRITE = {**AUTH, 'X-Skipcastify': '1', 'Sec-Fetch-Site': 'same-origin'}
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("CUT_POLICY", str(tmp_path / "policy.yaml"))
+    monkeypatch.setenv("SUBSCRIPTIONS", str(tmp_path / "subs.opml"))
+    monkeypatch.setenv("UPSTREAM_OPML", str(tmp_path / "upstream.opml"))
     server_module.data_dir = str(tmp_path)
     server_module._feed_username, server_module._feed_password = 'testuser', 'testpass'
     server_module.app.config['TESTING'] = True
@@ -75,7 +77,7 @@ def test_undo_restores_the_previous_policy_as_a_new_change(client):
     put(c, {'default': ['ad'], 'feeds': {}}, state(c)['version'])
     s = state(c)
     r = c.post(f"/api/settings/undo/{s['changes'][0]['id']}.json", headers=WRITE,
-               data=json.dumps({'version': s['version']}), content_type='application/json')
+               data=json.dumps({'versions': {'policy': s['version']}}), content_type='application/json')
     assert r.status_code == 200
     assert cut_policy.cut_labels(None, tmp / 'policy.yaml') == {'ad', 'self_promo'}
     assert len(state(c)['changes']) == 2
