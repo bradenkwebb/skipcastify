@@ -137,87 +137,53 @@ class SegmentClassifier:
         return count
     
     def aggregate_segments(
-        self, 
+        self,
         classified_segments: List[ClassifiedSegment],
         gap_threshold_ms: int = 1500,
-        merge_window_ms: int = 2000
     ) -> List[AggregatedSegment]:
         """
         Aggregate consecutive segments of the same type to reduce fragmentation.
-        
-        Uses a time-window based approach:
-        1. Merge consecutive segments of same type if gap is <= gap_threshold_ms
-        2. Merge very close segments (within merge_window_ms) to avoid short silences
-        
+
         Args:
             classified_segments: List of ClassifiedSegment objects
-            gap_threshold_ms: Max gap between segments to merge (default: 1.5s)
-            merge_window_ms: If two adjacent different-type segments are < this distance, 
-                           keep smaller one for continuity (default: 2.0s)
-            
+            gap_threshold_ms: Max gap between same-type segments to merge (default: 1.5s)
+
         Returns:
             List of AggregatedSegment objects
         """
         if not classified_segments:
             return []
-        
+
         aggregated = []
         current_group = None
-        
-        for i, seg in enumerate(classified_segments):
-            if current_group is None:
-                # Start new group
-                current_group = {
-                    'start': seg.start,
-                    'end': seg.end,
-                    'text': [seg.text],
-                    'type': seg.content_type,
-                    'count': 1,
-                }
-            else:
-                # Check if we should continue current group or start new one
-                gap = seg.start - current_group['end']
-                
-                if seg.content_type == current_group['type']:
-                    # Same type: merge if gap is small enough
-                    if gap <= gap_threshold_ms:
-                        current_group['end'] = seg.end
-                        current_group['text'].append(seg.text)
-                        current_group['count'] += 1
-                    else:
-                        # Gap too large, finalize group and start new one
-                        aggregated.append(self._create_aggregated_segment(current_group))
-                        current_group = {
-                            'start': seg.start,
-                            'end': seg.end,
-                            'text': [seg.text],
-                            'type': seg.content_type,
-                            'count': 1,
-                        }
-                else:
-                    # Different type
-                    # Check if we should keep this small segment or skip it for continuity
-                    segment_duration = seg.end - seg.start
-                    
-                    # If this segment is very short and different from group, consider skipping
-                    # For now, always finalize current group and start new one
-                    # (User requested to keep intros/outros, so preserve them)
-                    aggregated.append(self._create_aggregated_segment(current_group))
-                    current_group = {
-                        'start': seg.start,
-                        'end': seg.end,
-                        'text': [seg.text],
-                        'type': seg.content_type,
-                        'count': 1,
-                    }
-        
-        # Don't forget the last group
+
+        for seg in classified_segments:
+            if (current_group is not None
+                    and seg.content_type == current_group['type']
+                    and seg.start - current_group['end'] <= gap_threshold_ms):
+                current_group['end'] = seg.end
+                current_group['text'].append(seg.text)
+                current_group['count'] += 1
+                continue
+
+            # A different type, or too long a gap: close the group and open one
+            # here. Intros and outros are preserved, never absorbed.
+            if current_group is not None:
+                aggregated.append(self._create_aggregated_segment(current_group))
+            current_group = {
+                'start': seg.start,
+                'end': seg.end,
+                'text': [seg.text],
+                'type': seg.content_type,
+                'count': 1,
+            }
+
         if current_group is not None:
             aggregated.append(self._create_aggregated_segment(current_group))
-        
+
         logger.info(f"Aggregated {len(classified_segments)} segments into {len(aggregated)} groups")
         return aggregated
-    
+
     def _create_aggregated_segment(self, group: dict) -> AggregatedSegment:
         """Create an AggregatedSegment from a group dictionary."""
         return AggregatedSegment(
