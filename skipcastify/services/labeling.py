@@ -8,7 +8,6 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Optional
 
 from skipcastify.services import cut_policy
 from skipcastify.services.analytics import load_events
@@ -85,7 +84,7 @@ def _feed_items(data_dir) -> dict:
     return _release_cache
 
 
-def feed_for(data_dir, name: str, completes: Optional[dict] = None) -> Optional[str]:
+def feed_for(data_dir, name: str, completes: dict | None = None) -> str | None:
     """Which show an episode belongs to: the event log, then the directory the
     raw audio sits in, then a name-prefix guess. completes={} skips the log.
     """
@@ -105,7 +104,7 @@ def feed_for(data_dir, name: str, completes: Optional[dict] = None) -> Optional[
     return max(matches, key=len) if matches else None
 
 
-def raw_audio_path(data_dir, name: str, completes: Optional[dict] = None) -> Optional[Path]:
+def raw_audio_path(data_dir, name: str, completes: dict | None = None) -> Path | None:
     """The untouched download; the processed file's timeline has ads cut out."""
     feed = feed_for(data_dir, name, completes)
     if not feed:
@@ -114,7 +113,7 @@ def raw_audio_path(data_dir, name: str, completes: Optional[dict] = None) -> Opt
     return path if path.is_file() else None
 
 
-def _read_labels(data_dir, name: str) -> Optional[dict]:
+def _read_labels(data_dir, name: str) -> dict | None:
     path = label_path(data_dir, name)
     if not path.is_file():
         return None

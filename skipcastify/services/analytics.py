@@ -17,7 +17,6 @@ import json
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 from skipcastify.services.run_log import recent_runs
 
@@ -115,7 +114,7 @@ def feed_summary(events: list[dict]) -> list[dict]:
     return sorted(rows, key=lambda r: r["total_ad_minutes"], reverse=True)
 
 
-def daily_series(events: list[dict], start: Optional[date] = None) -> list[dict]:
+def daily_series(events: list[dict], start: date | None = None) -> list[dict]:
     """Per-day throughput: episodes processed, distinct feeds, ad minutes."""
     by_day_eps: dict[str, int] = defaultdict(int)
     by_day_feeds: dict[str, set] = defaultdict(set)
@@ -245,12 +244,15 @@ def feed_status(runs: list[dict]) -> list[dict]:
 
 def _with_titles(data_dir: str, rows: list[dict]) -> list[dict]:
     """Add each row's feed title and release date (keyed by its "episode" name)."""
-    from skipcastify.services.labeling import episode_titles, release_dates  # labeling imports this module
+    from skipcastify.services.labeling import (  # labeling imports this module
+        episode_titles,
+        release_dates,
+    )
     titles, released = episode_titles(data_dir), release_dates(data_dir)
     return [{**r, "title": titles.get(r["episode"]), "released": released.get(r["episode"])} for r in rows]
 
 
-def build_payload(data_dir: str, days: Optional[int] = None) -> dict:
+def build_payload(data_dir: str, days: int | None = None) -> dict:
     """One JSON blob with everything the dashboard needs.
 
     days limits the episode stats to the last N days; runs are unaffected.

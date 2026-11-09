@@ -5,9 +5,9 @@ import pytest
 from pydub import AudioSegment
 from pydub.generators import Sine
 
+from skipcastify.models.content import ContentType
 from skipcastify.services.audio_processor import AudioProcessor
 from skipcastify.services.segment_classifier import AggregatedSegment
-from skipcastify.models.content import ContentType
 
 
 def _seg(start, end, content_type):

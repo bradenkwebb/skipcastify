@@ -8,9 +8,8 @@ significantly speeding up iteration during development.
 import hashlib
 import json
 import logging
-from pathlib import Path
-from typing import List, Optional
 from dataclasses import dataclass
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ class TranscriptCache:
         return self.cache_dir / f"{episode_name}_transcript.sha256"
 
     @staticmethod
-    def _hash_file(path) -> Optional[str]:
+    def _hash_file(path) -> str | None:
         """SHA-256 of a file's bytes, or None if it can't be read."""
         try:
             h = hashlib.sha256()
@@ -51,7 +50,7 @@ class TranscriptCache:
             logger.warning(f"Failed to hash {path}: {e}")
             return None
 
-    def _load_source_hash(self, episode_name: str) -> Optional[str]:
+    def _load_source_hash(self, episode_name: str) -> str | None:
         path = self._source_hash_path(episode_name)
         if not path.exists():
             return None
@@ -65,7 +64,7 @@ class TranscriptCache:
         if digest is not None:
             self._source_hash_path(episode_name).write_text(digest)
     
-    def load_cached_transcript(self, episode_name: str, source_path=None) -> Optional[List[CachedSegment]]:
+    def load_cached_transcript(self, episode_name: str, source_path=None) -> list[CachedSegment] | None:
         """Load a cached transcript if it exists.
 
         Args:
@@ -92,7 +91,7 @@ class TranscriptCache:
                 return None
         
         try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
+            with open(cache_path, encoding='utf-8') as f:
                 data = json.load(f)
             segments = [CachedSegment(**item) for item in data]
             logger.info(f"Loaded cached transcript for {episode_name}: {len(segments)} segments")
@@ -101,7 +100,7 @@ class TranscriptCache:
             logger.warning(f"Failed to load cached transcript: {e}")
             return None
     
-    def save_transcript(self, episode_name: str, segments: List, source_path=None) -> None:
+    def save_transcript(self, episode_name: str, segments: list, source_path=None) -> None:
         """Save a transcript to cache.
 
         Args:
@@ -132,7 +131,7 @@ class TranscriptCache:
         except Exception as e:
             logger.warning(f"Failed to save cached transcript: {e}")
     
-    def list_cached(self) -> List[str]:
+    def list_cached(self) -> list[str]:
         """List all cached episode names."""
         cached = []
         for f in self.cache_dir.glob("*_transcript.json"):

@@ -20,9 +20,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from skipcastify.models.content import ContentType
 from skipcastify.services.audio_processor import AudioProcessor, Segment
 from skipcastify.services.segment_classifier import SegmentClassifier
-from skipcastify.models.content import ContentType
 
 AD_TYPES = {ContentType.ADVERTISEMENT, ContentType.SPONSOR}
 

@@ -1,4 +1,5 @@
 from pathlib import Path
+
 p=Path('data/podcasts/raw')
 if not p.exists():
     print('no raw dir')

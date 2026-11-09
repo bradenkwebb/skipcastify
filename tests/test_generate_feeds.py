@@ -3,9 +3,10 @@ Tests for feed generation robustness across different podcast feed structures.
 All tests use mocked feedparser data — no network calls.
 """
 
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from skipcastify.services.generate_feeds import FeedManager, _itunes_safe_image
 

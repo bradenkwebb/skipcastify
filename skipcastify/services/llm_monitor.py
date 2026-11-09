@@ -9,14 +9,14 @@ Tracks:
 - Performance statistics and trends
 """
 
-import logging
 import json
+import logging
 import os
-import psutil
-from pathlib import Path
-from dataclasses import dataclass, asdict
-from typing import Optional, List
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class LLMCallMetrics:
     section_end_ms: int
     duration_sec: float
     success: bool
-    error_msg: Optional[str] = None
+    error_msg: str | None = None
     spans_returned: int = 0
     
     # Resource metrics (sampled during call)
@@ -81,10 +81,10 @@ class LLMMonitor:
     def __init__(self, profile_dir: str = "data/llm_profiles"):
         self.profile_dir = Path(profile_dir)
         self.profile_dir.mkdir(parents=True, exist_ok=True)
-        self.current_episode: Optional[str] = None
-        self.call_metrics: List[LLMCallMetrics] = []
+        self.current_episode: str | None = None
+        self.call_metrics: list[LLMCallMetrics] = []
         self.monitoring = False
-        self.ollama_process: Optional[psutil.Process] = None
+        self.ollama_process: psutil.Process | None = None
     
     def start_episode(self, episode_name: str):
         """Start monitoring a new episode."""
@@ -92,7 +92,7 @@ class LLMMonitor:
         self.call_metrics = []
         logger.info(f"Started LLM monitoring for: {episode_name}")
     
-    def find_ollama_process(self) -> Optional[psutil.Process]:
+    def find_ollama_process(self) -> psutil.Process | None:
         """Find the Ollama process if running."""
         try:
             for proc in psutil.process_iter(['pid', 'name']):
@@ -110,7 +110,7 @@ class LLMMonitor:
                    duration_sec: float,
                    success: bool,
                    spans_returned: int = 0,
-                   error_msg: Optional[str] = None):
+                   error_msg: str | None = None):
         """Record metrics for a single LLM call.
         
         Args:
@@ -193,7 +193,7 @@ class LLMMonitor:
             memory_percent=memory_percent,
         )
     
-    def save_episode_profile(self) -> Optional[str]:
+    def save_episode_profile(self) -> str | None:
         """Save metrics for the current episode to disk.
         
         Returns:

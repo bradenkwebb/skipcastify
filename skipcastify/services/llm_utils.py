@@ -4,10 +4,10 @@ import json
 import logging
 import os
 import re
-import requests
 from dataclasses import dataclass
 from typing import Any
 
+import requests
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)

@@ -33,9 +33,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from dotenv import load_dotenv  # noqa: E402
 
 from skipcastify.services import cut_policy, labeling, span_postprocess  # noqa: E402
-from skipcastify.services.llm_monitor import get_monitor  # noqa: E402
 from skipcastify.services.ad_eval import score  # noqa: E402
-from skipcastify.services.audio_processor import DEFAULT_PROMPT_PATH, AudioProcessor, Segment  # noqa: E402
+from skipcastify.services.audio_processor import (  # noqa: E402
+    DEFAULT_PROMPT_PATH,
+    AudioProcessor,
+    Segment,
+)
+from skipcastify.services.llm_monitor import get_monitor  # noqa: E402
 
 
 def reviewed_episodes(data_dir: Path, filters: list[str]) -> list[str]:

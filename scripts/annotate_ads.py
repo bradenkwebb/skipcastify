@@ -20,9 +20,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from skipcastify.services.transcript_cache import TranscriptCache
-from skipcastify.services.ground_truth import GroundTruthStore, GroundTruthLabel
 import logging
+
+from skipcastify.services.ground_truth import GroundTruthLabel, GroundTruthStore
+from skipcastify.services.transcript_cache import TranscriptCache
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
