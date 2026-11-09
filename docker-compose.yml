@@ -1,7 +1,6 @@
 # docker compose up -d, then open http://localhost:5000/settings.
 # Settings come from .env (copy .env.example); state lives in the skipcastify-data volume.
 x-common: &common
-  build: .
   image: skipcastify
   env_file: .env
   # Fixed paths inside the container; these override whatever .env says.
@@ -17,12 +16,14 @@ x-common: &common
 services:
   server:
     <<: *common
+    build: .  # builds the image both services run
     # Loopback only; put a reverse proxy or `tailscale serve` in front for other devices.
     ports:
       - "127.0.0.1:5000:5000"
 
   pipeline:
     <<: *common
+    pull_policy: never  # uses the image server builds
     # Same cadence as the systemd timer; the pipeline's own lock prevents overlap.
     command: ["sh", "-c", "while :; do python pipeline.py; sleep \"$${PIPELINE_INTERVAL_S:-900}\"; done"]
 
