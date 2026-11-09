@@ -13,9 +13,9 @@ compare prompts; the arms are interleaved round-robin so drift hits all equally.
 
 Episodes listed in tests/llm/tuned_episodes.txt (the prompt was tuned on them)
 are reported apart from the rest, which are held-out. Labels derived from a
-rendering diff by scripts/dai_ground_truth.py form a third group: they are
-exact about inserted ads and say nothing about host-read sponsors, so a recall
-figure mixing them with hand labels would mean neither thing.
+rendering diff by scripts/dai_ground_truth.py form a third group: they cover
+only the ads that differ between two renderings of an episode, so a figure
+mixing them with hand labels would mean neither thing.
 
 Results go to data/evals/<timestamp>/: results.jsonl (one row per call, with
 spans), summary.md, metrics/events.jsonl (LLM cost) and llm_profiles/, all kept
@@ -95,7 +95,7 @@ def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: floa
     derived = [e for e in episodes if sources.get(e) == labeling.DAI_DIFF]
     groups = [("Held-out", "the honest number: the prompt never saw these", [e for e in hand if e not in tuned]),
               ("Tuned", "regression check: the prompt was tuned on these", [e for e in hand if e in tuned]),
-              ("Inserted-ad truth", "from a rendering diff: recall is exact, precision is a floor because a host-read sponsor is unlabelled", derived)]
+              ("Inserted-ad truth", "from a rendering diff: an ad both renderings carry is unlabelled, so recall reads high and precision low", derived)]
     for name, note, eps in groups:
         if eps:
             out += [f"## {name}: {len(eps)} episode{'s' * (len(eps) != 1)} ({note})", ""]
