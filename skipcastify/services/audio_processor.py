@@ -710,9 +710,7 @@ class AudioProcessor:
                     pass
 
                 new_spans = llm_utils.parse_json_array_from_text(resp.text)
-                # Bounded like stage 1. The prompt asks for a later end_ms, so
-                # an unbounded answer here was accepted verbatim and
-                # cut_and_stitch_audio excised the rest of the episode.
+                # Bounded like stage 1; this prompt asks for a later end_ms.
                 valid = [span.to_dict() for span in AdSpan.parse_many(
                     new_spans, bounds=(sec.start_ms, sec.end_ms),
                     context=f"refinement of section {sec.start_ms}-{sec.end_ms}")]
