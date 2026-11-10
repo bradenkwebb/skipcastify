@@ -7,7 +7,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 SIM="${SIM:-$(xcrun simctl list devices booted | grep -oE '[0-9A-F-]{36}' | head -1)}"
 APP=build/DerivedData/Build/Products/Debug-iphonesimulator/Skipcastify.app
-BUNDLE=com.example.skipcastify
+# The bundle ID comes from Config/Local.xcconfig, so read it from the build.
+BUNDLE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Info.plist")
 args=()
 [ -n "${SERVER_URL:-}" ] && args+=(-server.url "$SERVER_URL")
 if [ -n "${SERVER_USER:-}" ]; then
