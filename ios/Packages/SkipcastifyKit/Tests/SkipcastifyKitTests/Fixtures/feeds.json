@@ -1,0 +1,28 @@
+{
+ "feeds": [
+  {
+   "add_links": [
+    {"app": "overcast", "hint": "iPhone and iPad; opens the Subscribe prompt", "href": "overcast://x-callback-url/add?url=https%3A%2F%2Fexample.com%2Ffeeds%2Fsecret%2Fodd-lots.xml", "name": "Overcast"},
+    {"app": "antennapod", "hint": "Android; goes via antennapod.org, which sees the URL", "href": "https://antennapod.org/deeplink/subscribe?url=https%3A%2F%2Fexample.com%2Ffeeds%2Fsecret%2Fodd-lots.xml", "name": "AntennaPod"}
+   ],
+   "audio_bytes": 188743680,
+   "episodes": 3,
+   "feed_uploaded": 1793360000.5,
+   "last_audio_upload": 1793350000.25,
+   "slug": "odd-lots",
+   "title": "Odd Lots",
+   "url": "https://example.com/feeds/secret/odd-lots.xml"
+  },
+  {
+   "add_links": [],
+   "audio_bytes": 0,
+   "episodes": 0,
+   "feed_uploaded": null,
+   "last_audio_upload": null,
+   "slug": "philosophize-this",
+   "title": "Philosophize This!",
+   "url": "https://example.com/feeds/secret/philosophize-this.xml"
+  }
+ ],
+ "publishing_enabled": true
+}
