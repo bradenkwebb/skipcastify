@@ -11,7 +11,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.example.skipcastify</string>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>skipcastify</string>
