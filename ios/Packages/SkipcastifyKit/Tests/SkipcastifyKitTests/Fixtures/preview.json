@@ -1,0 +1,13 @@
+{
+ "already": false,
+ "author": "Dwarkesh Patel",
+ "avg_bytes": 75380757,
+ "episodes": 145,
+ "est_bytes": 117258955,
+ "image": "https://example.com/artwork.jpg",
+ "latest": 1793379362.0,
+ "per_window": 1.6,
+ "slug": "dwarkesh-podcast",
+ "title": "Dwarkesh Podcast",
+ "url": "https://example.com/feed.xml"
+}

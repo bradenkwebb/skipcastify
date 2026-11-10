@@ -1,0 +1,6 @@
+// Signing and bundle ID. Your real values go in Local.xcconfig (gitignored):
+// copy Local.xcconfig.example to Local.xcconfig and fill it in.
+DEVELOPMENT_TEAM =
+SKIPCASTIFY_BUNDLE_ID = com.example.skipcastify
+
+#include? "Local.xcconfig"
