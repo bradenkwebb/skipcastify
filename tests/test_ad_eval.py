@@ -70,3 +70,23 @@ def test_summary_splits_tuned_from_held_out(tmp_path):
 def test_tuned_list_names_are_episode_ids():
     for name in eval_ads.read_tuned(eval_ads.TUNED_FILE):
         assert labeling.valid_name(name) and " " not in name, name
+
+
+def test_the_hash_split_is_fixed_and_about_a_third_tuned():
+    names = [f"show-episode_{i}" for i in range(3000)]
+    share = sum(eval_ads.hashed_tuned(n) for n in names) / len(names)
+    assert 0.30 < share < 0.37
+    assert [eval_ads.hashed_tuned(n) for n in names[:50]] == [eval_ads.hashed_tuned(n) for n in names[:50]]
+
+
+def test_listed_episodes_are_always_tuned():
+    held = next(n for n in (f"ep{i}" for i in range(100)) if not eval_ads.hashed_tuned(n))
+    assert eval_ads.tuned_set([held], {held}) == {held}
+    assert eval_ads.tuned_set([held], set()) == set()
+
+
+def test_a_comparison_never_scores_held_out_unless_asked():
+    eps, tuned = ["a", "b", "c"], {"b"}
+    assert eval_ads.to_score(eps, tuned, n_arms=1, held_out=False) == eps       # plain measurement
+    assert eval_ads.to_score(eps, tuned, n_arms=2, held_out=False) == ["b"]     # tuning: tuned only
+    assert eval_ads.to_score(eps, tuned, n_arms=2, held_out=True) == eps        # the final check
