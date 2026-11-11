@@ -64,8 +64,8 @@ def detect(segments, name: str, prompt: str, feed: str | None = None) -> list[di
     """The spans the pipeline would cut: LLM, then the feed's policy, then post-processing."""
     with tempfile.TemporaryDirectory() as tmp:
         spans = AudioProcessor(tmp)._run_section_llm(segments, tmp, episode_name=f"eval-{name}", prompt_path=prompt)
-    spans, _ = cut_policy.split(spans, feed)
-    return span_postprocess.postprocess_spans(spans, segments) if spans else []
+    spans, kept = cut_policy.split(spans, feed)
+    return span_postprocess.postprocess_spans(spans, segments, kept=kept) if spans else []
 
 
 TUNED_FILE = Path(__file__).resolve().parents[1] / "tests" / "llm" / "tuned_episodes.txt"
