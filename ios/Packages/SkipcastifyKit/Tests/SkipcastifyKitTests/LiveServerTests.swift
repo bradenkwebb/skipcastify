@@ -24,6 +24,12 @@ struct LiveServerTests {
         for summary in stats.recentEpisodes {
             _ = try await client.episode(summary.episode)
         }
+        // Labels (transcript, cuts, spans) for every transcribed recent episode.
+        let transcribed = Set(all.map(\.name))
+        for summary in stats.recentEpisodes where transcribed.contains(summary.episode) {
+            _ = try await client.labels(summary.episode)
+        }
+
         let first = try #require(stats.recentEpisodes.first)
         _ = try await client.episodeMeta(first.episode)
         for sub in settings.subscriptions.prefix(3) {
