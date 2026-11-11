@@ -17,6 +17,12 @@ import Testing
         #expect(r.value(forHTTPHeaderField: "X-Skipcastify") == nil)
     }
 
+    @Test func statsCanBeLimitedToRecentDays() async throws {
+        StubProtocol.reset(body: String(decoding: try Fixture.data("stats"), as: UTF8.self))
+        _ = try await StubProtocol.client().stats(days: 7)
+        #expect(StubProtocol.requests.first?.url?.absoluteString == "https://dash.example.com/api/stats.json?days=7")
+    }
+
     @Test func noAuthSendsNoAuthorizationHeader() async throws {
         StubProtocol.reset(body: String(decoding: try Fixture.data("settings"), as: UTF8.self))
         _ = try await StubProtocol.client().settings()
