@@ -30,6 +30,8 @@ final class ServerStore {
     private(set) var stats: Stats?
     /// The dashboard's 7- and 30-day views, by number of days.
     private(set) var rangedStats: [Int: Stats] = [:]
+    /// When each range (0 = all time) last loaded, so a stale one reloads when shown.
+    private var statsLoadedAt: [Int: Date] = [:]
     private(set) var statsError: String?
     private(set) var isLoadingStats = false
 
@@ -83,6 +85,7 @@ final class ServerStore {
         do {
             let loaded = try await client.stats(days: days)
             if let days { rangedStats[days] = loaded } else { stats = loaded }
+            statsLoadedAt[days ?? 0] = Date()
             statsError = nil
         } catch {
             statsError = error.localizedDescription
@@ -100,6 +103,15 @@ final class ServerStore {
             settingsError = error.localizedDescription
         }
     }
+
+    /// True when a range was never loaded or was loaded over five minutes ago.
+    func statsAreStale(days: Int?) -> Bool {
+        guard let at = statsLoadedAt[days ?? 0] else { return true }
+        return Date().timeIntervalSince(at) > 300
+    }
+
+    /// After a pull-to-refresh, every other range should reload when next shown.
+    func markStatsStale() { statsLoadedAt.removeAll() }
 
     func loadAllEpisodes() async {
         guard let client else { allEpisodesError = Self.notConfigured; return }

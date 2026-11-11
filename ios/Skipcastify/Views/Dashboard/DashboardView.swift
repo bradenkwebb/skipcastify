@@ -11,33 +11,48 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let stats {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
-                            Picker("Range", selection: $range) {
-                                ForEach(DashboardRange.allCases, id: \.self) { Text($0.label) }
-                            }
-                            .pickerStyle(.segmented)
-                            if let error = server.statsError {
-                                StaleBanner(message: error)
-                            }
-                            OverviewGrid(overview: stats.overview, range: range)
-                            PipelineCard(runs: stats.runs)
-                            DailyChart(days: stats.daily, range: range)
-                            Leaderboard(feeds: stats.feeds, range: range)
-                        }
-                        .padding()
-                    }
-                } else {
-                    ServerStateView(error: server.statsError, isLoading: true) { await load() }
+            VStack(spacing: 0) {
+                // Outside the data branch, so a failed range can still be switched away from.
+                Picker("Range", selection: $range) {
+                    ForEach(DashboardRange.allCases, id: \.self) { Text($0.label) }
                 }
+                .pickerStyle(.segmented)
+                .padding([.horizontal, .top])
+                content
             }
             .navigationTitle("Dashboard")
             .navigationDestination(for: EpisodeRef.self) { EpisodeDetailView(ref: $0) }
             .navigationDestination(for: ShowRef.self) { ShowDetailView(slug: $0.slug) }
-            .refreshable { await load() }
-            .task(id: range) { if stats == nil { await load() } }
+            .task(id: range) {
+                // Shows what's cached at once, then reloads it if it's older than five minutes.
+                if stats == nil || server.statsAreStale(days: range.days) { await load() }
+            }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
+        Group {
+            if let stats {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if let error = server.statsError {
+                            StaleBanner(message: error)
+                        }
+                        OverviewGrid(overview: stats.overview, range: range)
+                        PipelineCard(runs: stats.runs)
+                        DailyChart(days: stats.daily, range: range)
+                        Leaderboard(feeds: stats.feeds, range: range)
+                    }
+                    .padding()
+                }
+            } else {
+                ServerStateView(error: server.statsError, isLoading: true) { await load() }
+                    .frame(maxHeight: .infinity)
+            }
+        }
+        .refreshable {
+            server.markStatsStale()
+            await load()
         }
     }
 
