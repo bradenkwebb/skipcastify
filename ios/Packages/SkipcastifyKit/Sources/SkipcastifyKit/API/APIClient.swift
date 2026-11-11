@@ -46,7 +46,10 @@ public struct APIClient: Sendable {
 
     // MARK: Reads
 
-    public func stats() async throws -> Stats { try await get("api/stats.json") }
+    /// `days` limits episode stats to the last N days (runs are unaffected); nil is all time.
+    public func stats(days: Int? = nil) async throws -> Stats {
+        try await get("api/stats.json" + (days.map { "?days=\($0)" } ?? ""))
+    }
     public func settings() async throws -> SettingsState { try await get("api/settings.json") }
     public func labelEpisodes() async throws -> [LabelEpisode] { try await get("api/label/episodes.json") }
     /// Needs a server with /api/feeds.json; older ones return 404.
