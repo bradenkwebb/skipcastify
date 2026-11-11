@@ -214,8 +214,7 @@ class TestPostprocessSpans:
         out = postprocess_spans([_span(0, 5_000), _span(90_000, 95_000)], [])
         assert [(s["start_ms"], s["end_ms"]) for s in out] == [(0, 95_000)]
 
-    def test_a_kept_span_is_never_merged_over(self):
-        """With cut: [ad], a kept self-promo between two ads must survive the merge."""
-        kept = [{"start_ms": 30_000, "end_ms": 60_000, "label": "SELF_PROMO"}]
-        out = postprocess_spans([_span(0, 20_000), _span(70_000, 90_000)], [], kept=kept)
-        assert [(s["start_ms"], s["end_ms"]) for s in out] == [(0, 20_000), (70_000, 90_000)]
+    def test_a_kept_span_between_two_ads_goes_with_the_break(self):
+        """Self-promo nested in an ad break is cut with it, even on a cut: [ad] feed."""
+        out = postprocess_spans([_span(0, 20_000), _span(70_000, 90_000)], [])
+        assert [(s["start_ms"], s["end_ms"]) for s in out] == [(0, 90_000)]

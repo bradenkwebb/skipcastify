@@ -356,7 +356,7 @@ class AudioProcessor:
 
             # Stage 1b: code-level post-processing
             if stage1_spans:
-                stage1_spans = span_postprocess.postprocess_spans(stage1_spans, segments, kept=kept_spans)
+                stage1_spans = span_postprocess.postprocess_spans(stage1_spans, segments)
 
             # Stage 2 (optional): LLM boundary refinement
             if os.environ.get("TWO_STAGE_LLM", "false").lower() == "true" and stage1_spans:

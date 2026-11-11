@@ -33,13 +33,12 @@ def _has_url_cta(text: str) -> bool:
 DEFAULT_GAP_MS = 90_000
 
 
-def merge_nearby_spans(spans: list[dict], gap_ms: int = DEFAULT_GAP_MS,
-                       barriers: list[dict] = ()) -> list[dict]:
+def merge_nearby_spans(spans: list[dict], gap_ms: int = DEFAULT_GAP_MS) -> list[dict]:
     """Merge ad spans that are within gap_ms of each other.
 
     An 8-second gap between a Snapdragon mid-roll and an Old Gays promo, for
-    example, is almost never substantive editorial content — merge them.
-    Never merges across a barrier: a span the feed's policy keeps.
+    example, is almost never substantive editorial content — merge them. A kept
+    span (say self-promo on a cut: [ad] feed) between two ads goes with the break.
     """
     if not spans:
         return spans
@@ -47,8 +46,7 @@ def merge_nearby_spans(spans: list[dict], gap_ms: int = DEFAULT_GAP_MS,
     merged = [sorted_spans[0].copy()]
     for span in sorted_spans[1:]:
         gap = span["start_ms"] - merged[-1]["end_ms"]
-        blocked = any(b["start_ms"] < span["start_ms"] and b["end_ms"] > merged[-1]["end_ms"] for b in barriers)
-        if gap <= gap_ms and not blocked:
+        if gap <= gap_ms:
             merged[-1]["end_ms"] = max(merged[-1]["end_ms"], span["end_ms"])
         else:
             merged.append(span.copy())
@@ -80,12 +78,8 @@ def extend_for_cta(spans: list[dict], segments: list[Any], lookahead_ms: int = 5
     return result
 
 
-def postprocess_spans(spans: list[dict], segments: list[Any], gap_ms: int = DEFAULT_GAP_MS,
-                      kept: list[dict] = ()) -> list[dict]:
-    """Apply all code-level post-processing in order: merge, then extend for CTA.
-
-    kept: spans the feed's policy keeps; merges never cross them.
-    """
-    spans = merge_nearby_spans(spans, gap_ms=gap_ms, barriers=kept)
+def postprocess_spans(spans: list[dict], segments: list[Any], gap_ms: int = DEFAULT_GAP_MS) -> list[dict]:
+    """Apply all code-level post-processing in order: merge, then extend for CTA."""
+    spans = merge_nearby_spans(spans, gap_ms=gap_ms)
     spans = extend_for_cta(spans, segments)
     return spans
