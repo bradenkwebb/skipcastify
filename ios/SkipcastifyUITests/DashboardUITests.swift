@@ -32,6 +32,14 @@ final class DashboardUITests: XCTestCase {
         header.waitToAppear(10)
     }
 
+    func testRangePickerLimitsTheTotals() {
+        let app = AppHarness.launch()
+        app.segmentedControls.buttons["7 days"].waitToAppear().tap()
+        app.staticTexts.matching(NSPredicate(format: "label == 'in the last 7 days'")).firstMatch.waitToAppear()
+        app.segmentedControls.buttons["All time"].tap()
+        app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'since '")).firstMatch.waitToAppear()
+    }
+
     func testSettingsTestConnection() {
         let app = AppHarness.launch(tab: "settings")
         app.buttons["Test Connection"].waitToAppear().tap()
