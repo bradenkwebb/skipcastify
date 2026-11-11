@@ -35,6 +35,7 @@ struct DashboardView: View {
             }
             .navigationTitle("Dashboard")
             .navigationDestination(for: EpisodeRef.self) { EpisodeDetailView(ref: $0) }
+            .navigationDestination(for: ShowRef.self) { ShowDetailView(slug: $0.slug) }
             .refreshable { await load() }
             .task(id: range) { if stats == nil { await load() } }
         }
@@ -315,14 +316,16 @@ private struct Leaderboard: View {
     @Environment(ServerStore.self) private var server
 
     private struct Row: Identifiable {
+        let slug: String
         let name: String
         let value: Double
-        var id: String { name }
+        var id: String { slug }
     }
 
     private var rows: [Row] {
         let all = feeds.map { f in
-            Row(name: server.showTitle(f.feedSlug), value: metric == .pct ? f.avgAdPct : f.totalAdMinutes)
+            Row(slug: f.feedSlug, name: server.showTitle(f.feedSlug),
+                value: metric == .pct ? f.avgAdPct : f.totalAdMinutes)
         }
         return Array(all.sorted { $0.value > $1.value }.prefix(10))
     }
@@ -337,18 +340,45 @@ private struct Leaderboard: View {
                 ForEach(Metric.allCases, id: \.self) { Text($0.rawValue) }
             }
             .pickerStyle(.segmented)
-            Chart(rows) { row in
-                BarMark(x: .value(metric.rawValue, row.value), y: .value("Show", row.name))
-                    .annotation(position: .trailing) {
-                        Text(metric == .pct ? Format.percent(row.value) : Format.count(Int(row.value)))
-                            .font(.caption2).foregroundStyle(.secondary)
-                    }
-                    .foregroundStyle(.red.opacity(0.7))
+            let top = rows.first?.value ?? 1
+            ForEach(rows) { row in
+                NavigationLink(value: ShowRef(slug: row.slug)) {
+                    LeaderboardRow(name: row.name, fraction: top > 0 ? row.value / top : 0,
+                                   value: metric == .pct ? Format.percent(row.value) : Format.count(Int(row.value)))
+                }
+                .buttonStyle(.plain)
             }
-            .chartXAxis(.hidden)
-            .frame(height: CGFloat(rows.count) * 30 + 10)
+            if rows.isEmpty {
+                Text("No episodes in this range.").font(.caption).foregroundStyle(.secondary)
+            }
         }
         .padding(12)
         .background(.background.secondary, in: .rect(cornerRadius: 14))
+    }
+}
+
+/// A show's name over a bar sized against the top show, with the value and a chevron.
+private struct LeaderboardRow: View {
+    let name: String
+    let fraction: Double
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name).font(.caption).lineLimit(1)
+                GeometryReader { geo in
+                    Capsule().fill(.red.opacity(0.7))
+                        .frame(width: max(geo.size.width * fraction, 4))
+                }
+                .frame(height: 8)
+            }
+            Text(value).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                .frame(minWidth: 44, alignment: .trailing)
+            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+        }
+        .contentShape(.rect)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens the show")
     }
 }

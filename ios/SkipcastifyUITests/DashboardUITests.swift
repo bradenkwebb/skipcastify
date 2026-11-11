@@ -40,6 +40,17 @@ final class DashboardUITests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'since '")).firstMatch.waitToAppear()
     }
 
+    func testLeaderboardRowOpensTheShow() {
+        let app = AppHarness.launch()
+        app.segmentedControls.buttons["All time"].waitToAppear().tap()
+        app.segmentedControls.buttons["Avg ad %"].waitToAppear().tap()
+        // Rows read "<show>, <percent>"; the leaderboard is below the fold.
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS '%' AND label CONTAINS ','")).firstMatch
+        for _ in 0..<5 where !row.isHittable { app.swipeUp() }
+        row.waitToAppear().tap()
+        app.staticTexts.matching(NSPredicate(format: "label ==[c] 'cut policy'")).firstMatch.waitToAppear()
+    }
+
     func testSettingsTestConnection() {
         let app = AppHarness.launch(tab: "settings")
         app.buttons["Test Connection"].waitToAppear().tap()
