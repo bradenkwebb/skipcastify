@@ -24,6 +24,10 @@ struct LiveServerTests {
         for summary in stats.recentEpisodes {
             _ = try await client.episode(summary.episode)
         }
+        // The 7-day view and the published feeds.
+        _ = try await client.stats(days: 7)
+        _ = try await client.publishedFeeds()
+
         let first = try #require(stats.recentEpisodes.first)
         _ = try await client.episodeMeta(first.episode)
         for sub in settings.subscriptions.prefix(3) {

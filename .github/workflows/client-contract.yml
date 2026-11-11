@@ -1,0 +1,49 @@
+name: client-contract
+# Runs the iOS app's own decoders (SkipcastifyKit's live test) against the real server
+# code, on made-up data, whenever either side of the API changes. A server change that
+# breaks what a client reads fails here, not on someone's phone. Not a required check.
+on:
+  pull_request:
+    paths:
+      - server.py
+      - skipcastify/**
+      - scripts/client_contract_data.py
+      - ios/Packages/**
+      - .github/workflows/client-contract.yml
+  push:
+    branches: [dev, main]
+    paths:
+      - server.py
+      - skipcastify/**
+      - scripts/client_contract_data.py
+      - ios/Packages/**
+  workflow_dispatch:
+jobs:
+  contract:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+      - run: uv python install
+      - run: uv sync --locked
+      - name: Serve made-up data
+        run: |
+          D="$RUNNER_TEMP/contract"
+          uv run python scripts/client_contract_data.py "$D"
+          DATA_DIR="$D/data" SUBSCRIPTIONS="$D/subscriptions.opml" UPSTREAM_OPML="$D/upstream.opml" \
+          CUT_POLICY="$D/policy.yaml" PUBLIC_BASE_URL=https://pods.example.invalid PUBLISH_TO_R2=true \
+          FEED_USERNAME=ci FEED_PASSWORD=ci EPISODE_TOKEN=ci \
+            nohup uv run gunicorn --workers 1 --threads 4 --bind 127.0.0.1:5055 server:app > "$D/server.log" 2>&1 &
+          for i in $(seq 30); do curl -s -o /dev/null http://127.0.0.1:5055/ && exit 0; sleep 1; done
+          cat "$D/server.log"; exit 1
+      - name: Decode every endpoint with the app's models
+        env:
+          SKIPCASTIFY_LIVE_URL: http://127.0.0.1:5055
+          SKIPCASTIFY_LIVE_USER: ci
+          SKIPCASTIFY_LIVE_PASSWORD: ci
+        run: swift test --package-path ios/Packages/SkipcastifyKit --filter LiveServerTests
+      - name: Server log
+        if: failure()
+        run: cat "$RUNNER_TEMP/contract/server.log"
