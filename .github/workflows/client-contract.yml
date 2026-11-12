@@ -4,7 +4,7 @@ name: client-contract
 # breaks what a client reads fails here, not on someone's phone. Not a required check.
 on:
   pull_request:
-    paths:
+    paths: &paths
       - server.py
       - skipcastify/**
       - scripts/client_contract_data.py
@@ -12,11 +12,7 @@ on:
       - .github/workflows/client-contract.yml
   push:
     branches: [dev, main]
-    paths:
-      - server.py
-      - skipcastify/**
-      - scripts/client_contract_data.py
-      - ios/Packages/**
+    paths: *paths
   workflow_dispatch:
 jobs:
   contract:

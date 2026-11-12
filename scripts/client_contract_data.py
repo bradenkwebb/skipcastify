@@ -39,6 +39,7 @@ def main(out: Path) -> None:
         {"start": 15500, "end": 21000, "text": "Support us on our membership page."},
     ]
 
+    # The LLM response files and metrics events are hand-written: keep them in their real formats.
     events = []
     for i, (title, has_ads) in enumerate(EPISODES):
         name = ep_name(title)
