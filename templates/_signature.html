@@ -14,6 +14,7 @@
   .siglegend { font-size: 12px; color: var(--muted); margin: 0 0 4px; display: flex; gap: 14px; flex-wrap: wrap; }
   .siglegend i { display: inline-block; width: 12px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
   .sigaxis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
+  .sigorder { color: var(--muted); font-size: 10px; opacity: .7; margin: 2px 0; }
   /* The ⓘ next to section headings; its tooltip replaces a subtitle. */
   .info { font-size: 13px; color: var(--muted); cursor: help; text-transform: none; letter-spacing: 0; }
 </style>
@@ -51,7 +52,8 @@ const Signatures = (() => {
     const block = (s, cls, what, durS, about) =>
       `<div class="sp${cls ? ' ' + cls : ''}" title="${esc(`${what} ${clock(s.start * durS)}–${clock(s.end * durS)} (${clock((s.end - s.start) * durS)})\n\n${about}`)}"
             style="left:${s.start * 100}%;width:${Math.max((s.end - s.start) * 100, 0.4)}%"></div>`;
-    el.innerHTML = legend + '<div class="siglist">' + episodes.map(ep => {
+    const order = w => episodes.length > 1 ? `<div class="sigorder">${w}</div>` : '';
+    el.innerHTML = legend + order('newest') + '<div class="siglist">' + episodes.map(ep => {
       const durS = ep.duration_min * 60, about = tooltip(ep);
       const spans = ep.reviewed
         ? ep.review.hit.map(s => block(s, '', 'Ad, cut', durS, about)).join('') +
@@ -59,7 +61,7 @@ const Signatures = (() => {
           ep.review.extra.map(s => block(s, 'extra', 'Cut, but not an ad', durS, about)).join('')
         : ep.spans.map(s => block(s, '', 'Ad', durS, about)).join('');
       return `<a class="track${ep.reviewed ? ' reviewed' : ''}" href="${epUrl(ep.episode)}" title="${esc(about)}">${spans}</a>`;
-    }).join('') + '</div>' +
+    }).join('') + '</div>' + order('oldest') +
       '<div class="sigaxis"><span>start</span><span>25%</span><span>50%</span><span>75%</span><span>end</span></div>';
   }
 
