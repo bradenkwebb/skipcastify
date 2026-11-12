@@ -50,3 +50,17 @@ def test_the_page_embeds_its_slug(client):  # noqa: F811
     c, tmp = client
     r = c.get('/dashboard/show/mypodcast', headers=AUTH)
     assert r.status_code == 200 and b'"mypodcast"' in r.data
+
+
+def test_history_and_reviewed_signatures(client):  # noqa: F811
+    from skipcastify.services import labeling
+    c, tmp = client
+    (tmp / "podcasts" / "raw" / "mypodcast").mkdir(parents=True)
+    setup(tmp)
+    subscribe(tmp)
+    labeling.save_labels(tmp, EP, [{"start_ms": 0, "end_ms": 9000, "label": "ad"}], reviewed=True)
+    d = c.get('/api/show/mypodcast.json', headers=AUTH).get_json()
+    (h,) = d["history"]
+    assert h["episode"] == EP and h["processing_s"] == 9.0 and h["completed"]
+    sig = d["signature"][0]
+    assert sig["reviewed"] and set(sig["review"]) >= {"hit", "missed", "extra"}
