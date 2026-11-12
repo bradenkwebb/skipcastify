@@ -36,9 +36,11 @@ Use `uv`; never install into a global Python.
   `ios/Config/Local.xcconfig` (gitignored; copy the `.example`). The project reads
   them through `Signing.xcconfig`, so targets must not set `DEVELOPMENT_TEAM`.
 - A server API change and the app change that uses it belong in the same PR.
-- The web app and the iOS app are maintained together and shouldn't drift. A
-  user-facing change to one client either lands in the other too, or goes in
-  `docs/PARITY.md` as a gap. Keep logic on the server where possible.
+- The web app and the iOS app are maintained together and shouldn't drift: a
+  user-facing change to one lands in the other too. Keep logic on the server
+  where possible. Label span-editing rules live in both `templates/label.html`
+  and `SkipcastifyKit/Models/Labeling.swift` and change together; playback
+  captions in both come from the same `playback` fields.
 
 ## Working on ad detection
 
