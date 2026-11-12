@@ -36,6 +36,9 @@ Use `uv`; never install into a global Python.
   `ios/Config/Local.xcconfig` (gitignored; copy the `.example`). The project reads
   them through `Signing.xcconfig`, so targets must not set `DEVELOPMENT_TEAM`.
 - A server API change and the app change that uses it belong in the same PR.
+- The web app and the iOS app are maintained together and shouldn't drift. A
+  user-facing change to one client either lands in the other too, or goes in
+  `docs/PARITY.md` as a gap. Keep logic on the server where possible.
 
 ## Working on ad detection
 
