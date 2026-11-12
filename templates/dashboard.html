@@ -53,6 +53,11 @@
   .tbl td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   .tbl tr:last-child td { border-bottom: 0; }
   .tbl td.notes { overflow-wrap: anywhere; }  /* long episode slugs in run notes */
+  /* Rows that open a page: plain until hovered. */
+  .tbl tr.link { cursor: pointer; }
+  .tbl tr.link:hover td { background: var(--sel); }
+  .tbl tr.link a { color: inherit; text-decoration: none; }
+  .tbl tr.link:hover a { color: var(--accent); text-decoration: underline; }
   #sigList { margin-top: 12px; }
   @media (max-width: 520px) { .tbl .wide-only { display: none; } }
   .scroll { overflow-x: auto; }
@@ -362,9 +367,14 @@ function renderPipeline() {
   }
   const rows = DATA.feed_status.map(f => {
     const [, cls] = STATUS[f.status] || ['', ''];
-    return `<tr><td>${esc(f.feed_slug)}</td><td class="${cls}">${esc(feedText(f))}</td>` +
+    return `<tr class="link" data-href="${showUrl(f.feed_slug)}"><td><a href="${showUrl(f.feed_slug)}">${esc(f.feed_slug)}</a></td><td class="${cls}">${esc(feedText(f))}</td>` +
       `<td class="wide-only">${ago(f.checked)}</td><td>${ago(f.last_download)}</td></tr>`;
   }).join('');
+  // The whole row is the target; the slug stays a real link for keyboards and middle-clicks.
+  document.getElementById('feedStatus').onclick = e => {
+    const tr = e.target.closest('tr.link');
+    if (tr && !e.target.closest('a')) location.href = tr.dataset.href;
+  };
   document.getElementById('feedStatus').innerHTML = rows ?
     `<table class="tbl"><tr><th>Feed</th><th>Last check</th><th class="wide-only">Checked</th><th>Last download</th></tr>${rows}</table>` : '';
 }
