@@ -16,8 +16,8 @@ from skipcastify.utils.utils import safe_filename
 LABELS = ("ad", "self_promo", "intro_outro")
 FORMAT_VERSION = 2
 
-# Where a label file's spans came from. DAI_DIFF labels cover only ads the host
-# inserted into the episode, so a host-read sponsor is absent from them.
+# Where a label file's spans started, kept as provenance. Nothing branches on
+# it: a reviewed file is a complete label set whatever produced its spans.
 MANUAL = "manual"
 DAI_DIFF = "dai_diff"
 SOURCES = (MANUAL, DAI_DIFF)

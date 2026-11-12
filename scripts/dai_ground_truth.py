@@ -71,10 +71,8 @@ TIMEOUT_S = 60
 # Tracking prefixes chain several hops before the CDN: six is routine.
 MAX_REDIRECTS = 12
 
-# A truncated reference aligns as a perfect prefix and reads the missing tail
-# as one ad, so it has to run about as long as the feed declares. Running over
-# is normal: a declared duration describes the master, and a reference may
-# carry house spots of its own.
+# A truncated reference aligns as a prefix and reads the missing tail as one ad.
+# Running over is normal: house spots lengthen a reference past the master.
 DECLARED_SHORTFALL_S = 120.0
 # One break longer than this, or this share of the episode, means the alignment
 # found something other than ad insertion.
