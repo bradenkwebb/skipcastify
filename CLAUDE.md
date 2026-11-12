@@ -12,6 +12,7 @@ uv run pytest                 # standard suite, no LLM calls
 uv run pytest --run-llm       # LLM regression tests: real API calls, costs money
 uv run python pipeline.py      # one pipeline run
 uv run python scripts/eval_ads.py --runs 3   # score detection against hand labels
+uv run python scripts/dai_ground_truth.py --feed <slug>  # derive labels from a rendering diff
 ```
 
 Use `uv`; never install into a global Python.

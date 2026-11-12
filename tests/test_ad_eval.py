@@ -70,3 +70,25 @@ def test_summary_splits_tuned_from_held_out(tmp_path):
 def test_tuned_list_names_are_episode_ids():
     for name in eval_ads.read_tuned(eval_ads.TUNED_FILE):
         assert labeling.valid_name(name) and " " not in name, name
+
+
+def test_a_reviewed_derived_episode_is_scored_like_any_other(tmp_path):
+    """Reviewing derived spans completes the episode, so nothing in the eval
+    may branch on where its labels came from."""
+    (tmp_path / "transcripts").mkdir()
+    for ep in ("show-diff", "show-hand"):
+        (tmp_path / "transcripts" / f"{ep}_transcript.json").write_text(json.dumps(SEGS))
+    span = [{"start_ms": 0, "end_ms": 9000, "label": "ad"}]
+    labeling.save_labels(tmp_path, "show-hand", span, reviewed=True)
+    labeling.save_labels(tmp_path, "show-diff", span, reviewed=True, source=labeling.DAI_DIFF)
+    assert eval_ads.reviewed_episodes(tmp_path, []) == ["show-diff", "show-hand"]
+
+
+def test_an_unreviewed_derived_episode_is_not_scored(tmp_path):
+    """Its spans are proposals: the labels are unconfirmed and any host-read
+    ad is still missing from them."""
+    (tmp_path / "transcripts").mkdir()
+    (tmp_path / "transcripts" / "show-diff_transcript.json").write_text(json.dumps(SEGS))
+    labeling.save_labels(tmp_path, "show-diff", [{"start_ms": 0, "end_ms": 9000, "label": "ad"}],
+                         reviewed=False, source=labeling.DAI_DIFF)
+    assert eval_ads.reviewed_episodes(tmp_path, []) == []
