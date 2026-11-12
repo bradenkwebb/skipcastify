@@ -1,0 +1,87 @@
+{
+ "cut_labels": [
+  "ad",
+  "self_promo"
+ ],
+ "feed": "the-ezra-klein-show",
+ "has_audio": false,
+ "name": "the-ezra-klein-show-how_the_democrats_did_it",
+ "predicted_at": "2026-11-07T12:15:33.581746",
+ "predictions": [
+  {
+   "end_ms": 33960,
+   "label": "ADVERTISEMENT",
+   "start_ms": 0
+  }
+ ],
+ "reviewed": true,
+ "segments": [
+  {
+   "end": 2080,
+   "start": 0,
+   "text": "This podcast is supported by Philip Morris International."
+  },
+  {
+   "end": 7020,
+   "start": 2720,
+   "text": "Philip Morris International's ambition is to replace cigarettes with smoke-free alternatives"
+  },
+  {
+   "end": 11480,
+   "start": 7020,
+   "text": "for legal age consumers, and the company is leading the smoke-free transition around the"
+  },
+  {
+   "end": 11820,
+   "start": 11480,
+   "text": "world."
+  },
+  {
+   "end": 16360,
+   "start": 12100,
+   "text": "Since 2022, it has made U.S. related investments of over $20 billion."
+  },
+  {
+   "end": 21400,
+   "start": 17020,
+   "text": "The majority directed to both acquiring and further investing in U.S. manufacturing,"
+  },
+  {
+   "end": 26360,
+   "start": 21780,
+   "text": "commercial rights and infrastructure, and U.S. jobs, including the acquisition of Swedish"
+  },
+  {
+   "end": 30060,
+   "start": 26360,
+   "text": "mismatch, which generates the large majority of its revenues in the U.S."
+  },
+  {
+   "end": 33960,
+   "start": 30680,
+   "text": "Discover more at PMI.com-forward slash progress."
+  },
+  {
+   "end": 65720,
+   "start": 61660,
+   "text": "This election was full of so many extraordinary democratic campaigns."
+  },
+  {
+   "end": 73960,
+   "start": 66240,
+   "text": "Lifted, yes, by a wave that kind of trumped set into motion, but to get over the finish"
+  },
+  {
+   "end": 77560,
+   "start": 73960,
+   "text": "line in so many places, Democrats had to run the right candidates, and they had to run"
+  }
+ ],
+ "spans": [
+  {
+   "end_ms": 61660,
+   "label": "ad",
+   "start_ms": 0
+  }
+ ]
+}

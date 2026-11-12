@@ -52,6 +52,15 @@ public struct APIClient: Sendable {
     }
     public func settings() async throws -> SettingsState { try await get("api/settings.json") }
     public func labelEpisodes() async throws -> [LabelEpisode] { try await get("api/label/episodes.json") }
+
+    public func labels(_ name: String) async throws -> LabelDocument {
+        try await get("api/label/\(Self.segment(name)).json")
+    }
+
+    @discardableResult
+    public func saveLabels(_ name: String, spans: [LabelSpan], reviewed: Bool) async throws -> SavedLabels {
+        try await send("PUT", "api/label/\(Self.segment(name)).json", body: LabelBody(spans: spans, reviewed: reviewed))
+    }
     /// Needs a server with /api/feeds.json; older ones return 404.
     public func publishedFeeds() async throws -> PublishedFeeds { try await get("api/feeds.json") }
 
@@ -205,6 +214,7 @@ struct UndoBody: Encodable {
     struct Versions: Encodable { let policy: String; let subscriptions: String }
 }
 struct EpisodeBody: Encodable { let episode: String }
+struct LabelBody: Encodable { let spans: [LabelSpan]; let reviewed: Bool }
 struct TermBody: Encodable { let term: String }
 struct URLBody: Encodable { let url: String }
 struct SubscriptionBody: Encodable { let url: String; let title: String?; let version: String }

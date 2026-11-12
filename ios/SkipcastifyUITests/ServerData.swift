@@ -24,6 +24,14 @@ enum ServerData {
     }
     static func settings() async throws -> Settings { try await get("api/settings.json") }
 
+    struct LabelEpisode: Decodable { let name: String; let feed: String?; let reviewed: Bool; let has_predictions: Bool }
+
+    /// An episode that's transcribed, has cuts, and isn't reviewed (so it can be edited).
+    static func unreviewedEpisode() async throws -> LabelEpisode? {
+        let all: [LabelEpisode] = try await get("api/label/episodes.json")
+        return all.first { !$0.reviewed && $0.has_predictions && $0.feed != nil }
+    }
+
     private static func get<T: Decodable>(_ path: String) async throws -> T {
         let env = AppHarness.env
         let base = try XCTUnwrap(env["SKIPCASTIFY_URL"])

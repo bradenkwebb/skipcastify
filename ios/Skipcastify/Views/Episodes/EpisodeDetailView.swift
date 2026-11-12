@@ -70,6 +70,17 @@ struct EpisodeDetailView: View {
                 Section("Summary") { SummaryRows(detail: d, run: run) }
             }
 
+            if d.hasTranscript {
+                Section("Labels") {
+                    NavigationLink {
+                        LabelView(name: d.name) { await load() }
+                    } label: {
+                        Label(labelStatus(d), systemImage: d.labels?.reviewed == true ? "checkmark.seal.fill" : "tag")
+                    }
+                    if let score = d.score, d.labels?.reviewed == true { ScoreRows(score: score) }
+                }
+            }
+
             Section {
                 if d.cuts.isEmpty {
                     Text("Nothing was cut from this episode.").foregroundStyle(.secondary)
@@ -91,10 +102,6 @@ struct EpisodeDetailView: View {
                 }
             }
 
-            if let score = d.score, d.labels?.reviewed == true {
-                Section("Against your labels") { ScoreRows(score: score) }
-            }
-
             if let notes = meta?.episode?.notes, !notes.isEmpty {
                 Section("About this episode") {
                     NotesView(paragraphs: notes, lineLimit: 3)
@@ -110,6 +117,12 @@ struct EpisodeDetailView: View {
                 }
             }
         }
+    }
+
+    private func labelStatus(_ d: EpisodeDetail) -> String {
+        guard let labels = d.labels else { return "Label this episode" }
+        let n = labels.spans.count
+        return labels.reviewed ? "Reviewed · \(n) span\(n == 1 ? "" : "s")" : "Labels in progress · \(n) span\(n == 1 ? "" : "s")"
     }
 
     private func header(_ d: EpisodeDetail) -> some View {
