@@ -36,6 +36,7 @@ struct DecodingTests {
         #expect((e.latest?.originalDurationS ?? 0) > 0)
         #expect(e.durationMs ?? 0 > 0)
         #expect(e.released != nil)
+        #expect(e.playback?.adFree == true && e.playback?.description == "Ad-free")
     }
 
     @Test func episodeMeta() throws {

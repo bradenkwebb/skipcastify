@@ -5,33 +5,67 @@ import SwiftUI
 /// What the web dashboard shows: totals, pipeline health, daily throughput, worst shows.
 struct DashboardView: View {
     @Environment(ServerStore.self) private var server
+    @AppStorage("dashboard.range") private var range: DashboardRange = .month
+
+    private var stats: Stats? { range.days.map { server.rangedStats[$0] } ?? server.stats }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let stats = server.stats {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
-                            if let error = server.statsError {
-                                StaleBanner(message: error)
-                            }
-                            OverviewGrid(overview: stats.overview)
-                            PipelineCard(runs: stats.runs)
-                            DailyChart(days: stats.daily)
-                            Leaderboard(feeds: stats.feeds)
-                        }
-                        .padding()
-                    }
-                } else {
-                    ServerStateView(error: server.statsError, isLoading: true) { await server.loadStats() }
+            VStack(spacing: 0) {
+                // Outside the data branch, so a failed range can still be switched away from.
+                Picker("Range", selection: $range) {
+                    ForEach(DashboardRange.allCases, id: \.self) { Text($0.label) }
                 }
+                .pickerStyle(.segmented)
+                .padding([.horizontal, .top])
+                content
             }
             .navigationTitle("Dashboard")
             .navigationDestination(for: EpisodeRef.self) { EpisodeDetailView(ref: $0) }
-            .refreshable { await server.loadStats() }
-            .task { if server.stats == nil { await server.loadStats() } }
+            .navigationDestination(for: ShowRef.self) { ShowDetailView(slug: $0.slug) }
+            .task(id: range) {
+                // Shows what's cached at once, then reloads it if it's older than five minutes.
+                if stats == nil || server.statsAreStale(days: range.days) { await load() }
+            }
         }
     }
+
+    @ViewBuilder private var content: some View {
+        Group {
+            if let stats {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        if let error = server.statsError {
+                            StaleBanner(message: error)
+                        }
+                        OverviewGrid(overview: stats.overview, range: range)
+                        PipelineCard(runs: stats.runs)
+                        DailyChart(days: stats.daily, range: range)
+                        Leaderboard(feeds: stats.feeds, range: range)
+                    }
+                    .padding()
+                }
+            } else {
+                ServerStateView(error: server.statsError, isLoading: true) { await load() }
+                    .frame(maxHeight: .infinity)
+            }
+        }
+        .refreshable {
+            server.markStatsStale()
+            await load()
+        }
+    }
+
+    private func load() async { await server.loadStats(days: range.days) }
+}
+
+/// The dashboard's time window. Runs and pipeline status always show the latest runs.
+enum DashboardRange: String, CaseIterable {
+    case week, month, all
+    var days: Int? { self == .week ? 7 : self == .month ? 30 : nil }
+    var label: String { self == .week ? "7 days" : self == .month ? "30 days" : "All time" }
+    /// "in the last 7 days", or nil for all time.
+    var phrase: String? { days.map { "in the last \($0) days" } }
 }
 
 /// Where a navigation link to an episode page points.
@@ -57,6 +91,7 @@ struct StaleBanner: View {
 
 private struct OverviewGrid: View {
     let overview: Overview
+    let range: DashboardRange
 
     var body: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
@@ -64,8 +99,9 @@ private struct OverviewGrid: View {
                      value: Format.count(Int(overview.totalAdMinutes.rounded())),
                      detail: Format.dhm(minutes: overview.totalAdMinutes))
             StatCard(title: "Episodes processed", value: Format.count(overview.episodesProcessed),
-                     detail: overview.firstEvent.map { "since \($0.formatted(.dateTime.month().day().year()))" })
-            StatCard(title: "Shows", value: Format.count(overview.feeds), detail: nil)
+                     detail: range.phrase ?? overview.firstEvent.map { "since \($0.formatted(.dateTime.month().day().year()))" })
+            StatCard(title: range == .all ? "Shows" : "Shows with episodes", value: Format.count(overview.feeds),
+                     detail: range.phrase)
             StatCard(title: "LLM spend", value: overview.totalLlmCostUsd.map(Format.usd) ?? "–",
                      detail: avgCost.map { "\($0) per episode" })
         }
@@ -210,11 +246,13 @@ struct RunsView: View {
 
 private struct DailyChart: View {
     let days: [DailyPoint]
+    let range: DashboardRange
     @State private var selected: Date?
 
-    /// The last 30 days; the server sends every day since the first event.
+    /// The server sends one row per day of the range (all time: since the first event).
     private var recent: [(date: Date, point: DailyPoint)] {
-        days.suffix(30).compactMap { p in p.day.map { ($0, p) } }
+        let window = range.days.map { Array(days.suffix($0)) } ?? days
+        return window.compactMap { p in p.day.map { ($0, p) } }
     }
 
     private var selectedPoint: DailyPoint? {
@@ -226,7 +264,7 @@ private struct DailyChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Daily throughput").font(.headline)
-            Text("Ad minutes removed per day, last 30 days. Tap a day for its episodes.")
+            Text("Ad minutes removed per day\(range.phrase.map { ", \($0)" } ?? ", all time"). Tap a day for its episodes.")
                 .font(.caption).foregroundStyle(.secondary)
             Chart(recent, id: \.point.id) { item in
                 BarMark(x: .value("Day", item.date, unit: .day), y: .value("Ad minutes", item.point.adMinutes))
@@ -249,7 +287,7 @@ private struct DailyChart: View {
                 }
             }
             .accessibilityIdentifier("dailyChart")
-            .chartXAxis { AxisMarks(values: .stride(by: .day, count: 7)) { _ in
+            .chartXAxis { AxisMarks(values: .stride(by: .day, count: range == .week ? 1 : range == .month ? 7 : 30)) { _ in
                 AxisGridLine(); AxisValueLabel(format: .dateTime.month(.abbreviated).day())
             } }
             .frame(height: 180)
@@ -288,18 +326,21 @@ private struct DayEpisodes: View {
 private struct Leaderboard: View {
     enum Metric: String, CaseIterable { case pct = "Avg ad %", minutes = "Total minutes" }
     let feeds: [FeedSummary]
+    let range: DashboardRange
     @AppStorage("dashboard.leaderboard") private var metric: Metric = .pct
     @Environment(ServerStore.self) private var server
 
     private struct Row: Identifiable {
+        let slug: String
         let name: String
         let value: Double
-        var id: String { name }
+        var id: String { slug }
     }
 
     private var rows: [Row] {
         let all = feeds.map { f in
-            Row(name: server.showTitle(f.feedSlug), value: metric == .pct ? f.avgAdPct : f.totalAdMinutes)
+            Row(slug: f.feedSlug, name: server.showTitle(f.feedSlug),
+                value: metric == .pct ? f.avgAdPct : f.totalAdMinutes)
         }
         return Array(all.sorted { $0.value > $1.value }.prefix(10))
     }
@@ -307,22 +348,52 @@ private struct Leaderboard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Ad-heaviness").font(.headline)
+            if let phrase = range.phrase {
+                Text("Shows with episodes processed \(phrase).").font(.caption).foregroundStyle(.secondary)
+            }
             Picker("Metric", selection: $metric) {
                 ForEach(Metric.allCases, id: \.self) { Text($0.rawValue) }
             }
             .pickerStyle(.segmented)
-            Chart(rows) { row in
-                BarMark(x: .value(metric.rawValue, row.value), y: .value("Show", row.name))
-                    .annotation(position: .trailing) {
-                        Text(metric == .pct ? Format.percent(row.value) : Format.count(Int(row.value)))
-                            .font(.caption2).foregroundStyle(.secondary)
-                    }
-                    .foregroundStyle(.red.opacity(0.7))
+            let top = rows.first?.value ?? 1
+            ForEach(rows) { row in
+                NavigationLink(value: ShowRef(slug: row.slug)) {
+                    LeaderboardRow(name: row.name, fraction: top > 0 ? row.value / top : 0,
+                                   value: metric == .pct ? Format.percent(row.value) : Format.count(Int(row.value)))
+                }
+                .buttonStyle(.plain)
             }
-            .chartXAxis(.hidden)
-            .frame(height: CGFloat(rows.count) * 30 + 10)
+            if rows.isEmpty {
+                Text("No episodes in this range.").font(.caption).foregroundStyle(.secondary)
+            }
         }
         .padding(12)
         .background(.background.secondary, in: .rect(cornerRadius: 14))
+    }
+}
+
+/// A show's name over a bar sized against the top show, with the value and a chevron.
+private struct LeaderboardRow: View {
+    let name: String
+    let fraction: Double
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name).font(.caption).lineLimit(1)
+                GeometryReader { geo in
+                    Capsule().fill(.red.opacity(0.7))
+                        .frame(width: max(geo.size.width * fraction, 4))
+                }
+                .frame(height: 8)
+            }
+            Text(value).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                .frame(minWidth: 44, alignment: .trailing)
+            Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+        }
+        .contentShape(.rect)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens the show")
     }
 }

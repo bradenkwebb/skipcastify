@@ -99,6 +99,12 @@
   "whisper_model": "base"
  },
  "name": "the-ezra-klein-show-how_the_democrats_did_it",
+ "playback": {
+  "ad_free": true,
+  "feed_url": "https://example.com/feeds/secret/the-ezra-klein-show.xml",
+  "uncut": false,
+  "url": "https://example.com/audio/secret/the-ezra-klein-show/the-ezra-klein-show-how_the_democrats_did_it.mp3"
+ },
  "released": "2026-11-07T12:00:00+00:00",
  "runs": [
   {
