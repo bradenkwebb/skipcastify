@@ -33,6 +33,7 @@ from skipcastify.services.artwork_thumbs import thumbnail
 from skipcastify.services.episode_detail import episode_detail
 from skipcastify.services.playback import playback
 from skipcastify.services.published_feeds import published_feeds
+from skipcastify.services.shows import show_detail
 from skipcastify.services.state_manager import StateManager
 from skipcastify.utils.alerts import scrub_secrets
 
@@ -255,6 +256,21 @@ def episode_page(episode):
     if not labeling.valid_name(episode):
         return abort(404)
     return render_template('episode.html', episode=episode)
+
+
+@app.route('/dashboard/show/<slug>')
+@require_auth
+def show_page(slug):
+    if not labeling.valid_name(slug):
+        return abort(404)
+    return render_template('show.html', slug=slug)
+
+
+@app.route('/api/show/<slug>.json')
+@require_auth
+def show_json(slug):
+    detail = show_detail(data_dir, slug, _public_base_url) if labeling.valid_name(slug) else None
+    return jsonify(detail) if detail else abort(404)
 
 
 @app.route('/api/feed/<slug>/meta.json')
