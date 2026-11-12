@@ -12,10 +12,7 @@ compare prompts; the arms are interleaved round-robin so drift hits all equally.
     uv run python scripts/eval_ads.py --episode odd-lots --runs 1
 
 Episodes listed in tests/llm/tuned_episodes.txt (the prompt was tuned on them)
-are reported apart from the rest, which are held-out. Labels derived from a
-rendering diff by scripts/dai_ground_truth.py form a third group: they cover
-only the ads that differ between two renderings of an episode, so a figure
-mixing them with hand labels would mean neither thing.
+are reported apart from the rest, which are held-out.
 
 Results go to data/evals/<timestamp>/: results.jsonl (one row per call, with
 spans), summary.md, metrics/events.jsonl (LLM cost) and llm_profiles/, all kept
@@ -45,17 +42,16 @@ from skipcastify.services.audio_processor import (  # noqa: E402
 from skipcastify.services.llm_monitor import get_monitor  # noqa: E402
 
 
-def reviewed_episodes(data_dir: Path, filters: list[str]) -> dict[str, str]:
-    """Episode name -> where its labels came from, in name order."""
-    found = {}
+def reviewed_episodes(data_dir: Path, filters: list[str]) -> list[str]:
+    names = []
     for path in sorted((data_dir / "labels" / "ground_truth").glob("*_labels.json")):
         name = path.name[: -len("_labels.json")]
         doc = json.loads(path.read_text())
         if doc.get("version") == labeling.FORMAT_VERSION and doc.get("reviewed") \
                 and labeling.valid_episode(data_dir, name) \
                 and (not filters or any(f in name for f in filters)):
-            found[name] = labeling.label_source(doc)
-    return found
+            names.append(name)
+    return names
 
 
 def load(data_dir: Path, name: str):
@@ -81,21 +77,10 @@ def read_tuned(path: Path) -> set[str]:
     return {line.strip() for line in path.read_text().splitlines() if line.strip() and not line.startswith("#")}
 
 
-def _set_of(ep: str, tuned: set[str], sources: dict[str, str]) -> str:
-    if sources.get(ep) == labeling.DAI_DIFF:
-        return "inserted-ad"
-    return "tuned" if ep in tuned else "held-out"
-
-
-def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: float,
-              tuned: set[str] = frozenset(), sources: dict[str, str] | None = None) -> str:
-    sources = sources or {}
+def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: float, tuned: set[str] = frozenset()) -> str:
     out = [f"# Ad-detection eval, {len(episodes)} reviewed episodes, LLM cost ${cost:.3f}", ""]
-    hand = [e for e in episodes if sources.get(e, labeling.MANUAL) == labeling.MANUAL]
-    derived = [e for e in episodes if sources.get(e) == labeling.DAI_DIFF]
-    groups = [("Held-out", "the honest number: the prompt never saw these", [e for e in hand if e not in tuned]),
-              ("Tuned", "regression check: the prompt was tuned on these", [e for e in hand if e in tuned]),
-              ("Inserted-ad truth", "from a rendering diff: an ad both renderings carry is unlabelled, so recall reads high and precision low", derived)]
+    groups = [("Held-out", "the honest number: the prompt never saw these", [e for e in episodes if e not in tuned]),
+              ("Tuned", "regression check: the prompt was tuned on these", [e for e in episodes if e in tuned])]
     for name, note, eps in groups:
         if eps:
             out += [f"## {name}: {len(eps)} episode{'s' * (len(eps) != 1)} ({note})", ""]
@@ -109,7 +94,7 @@ def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: floa
             if not ok:
                 continue
             col = lambda k: f"{sec(statistics.mean(r[k] for r in ok))} ({sec(min(r[k] for r in ok))}–{sec(max(r[k] for r in ok))})"  # noqa: E731
-            out.append(f"| {ep} | {_set_of(ep, tuned, sources)} | {Path(arm).name} | {sec(ok[0]['truth_ms'])} | {col('missed_ms')} | {col('wrong_ms')} |")
+            out.append(f"| {ep} | {'tuned' if ep in tuned else 'held-out'} | {Path(arm).name} | {sec(ok[0]['truth_ms'])} | {col('missed_ms')} | {col('wrong_ms')} |")
     return "\n".join(out) + "\n"
 
 
@@ -141,11 +126,10 @@ def main(argv=None) -> int:
 
     data_dir = Path(args.data_dir).resolve()
     arms = [str(Path(p).resolve()) for p in (args.prompt or [os.path.normpath(DEFAULT_PROMPT_PATH)])]
-    sources = reviewed_episodes(data_dir, args.episode)
-    if not sources:
+    episodes = reviewed_episodes(data_dir, args.episode)
+    if not episodes:
         print("No reviewed episodes match.", file=sys.stderr)
         return 1
-    episodes = list(sources)
     out = Path(args.out) if args.out else data_dir / "evals" / datetime.now().strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)
     os.environ["DATA_DIR"] = str(out)  # LLM cost events land here, not on the dashboard
@@ -176,7 +160,7 @@ def main(argv=None) -> int:
 
     events = out / "metrics" / "events.jsonl"
     cost = sum(json.loads(line).get("cost_usd", 0) for line in events.open()) if events.exists() else 0.0
-    summary = summarize(rows, arms, episodes, cost, read_tuned(Path(args.tuned)), sources)
+    summary = summarize(rows, arms, episodes, cost, read_tuned(Path(args.tuned)))
     (out / "summary.md").write_text(summary)
     print("\n" + summary + f"\nWrote {out}")
     return 0

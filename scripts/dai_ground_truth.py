@@ -15,15 +15,16 @@ reference does not.
     uv run python scripts/dai_ground_truth.py --feed odd-lots
     uv run python scripts/dai_ground_truth.py --feed odd-lots --limit 3 --dry-run
 
-The labels cover inserted ads only. A sponsor the host reads aloud is part of
-the episode master, so it appears in both renderings and in neither the diff
-nor the labels; they are written with source "dai_diff" so an evaluation can
-report them apart from hand labels.
+What it writes are proposals, not finished labels, so they are written
+unreviewed and the eval ignores them until reviewed. A diff sees only the spots
+the host inserted, and locates them without identifying them, so reviewing a
+file in /label means two things: confirm "ad" against self_promo on each
+proposed span, and add any ad the host reads aloud, which belongs to the
+episode master and so appears in both renderings and in neither the diff.
 
-They are written unreviewed, because the diff knows where an ad is and not
-what it is. A network inserts its own promos the same way an advertiser's spot
-arrives, and those are self_promo under the per-feed cut policy, so each span
-is proposed as "ad" for confirmation in /label.
+Reviewing therefore completes the episode. The file becomes an ordinary label
+set that happens to have started with exact boundaries, scored like any other.
+The source stays on it as provenance; nothing branches on it.
 
 Only an unreviewed file this script wrote is ever replaced. Hand labels and
 confirmed labels alike are left alone, so re-running a feed cannot undo a
@@ -305,10 +306,12 @@ def main(argv=None) -> int:
     skipped = sum(1 for r in rows if "skipped" in r)
     print(f"\n{written} label file(s) written, {skipped} episode(s) skipped")
     if written:
-        print("Spans are exact; their labels are proposals. Confirm ad against "
-              "self_promo in /label, where they appear as unreviewed.")
-        print("Inserted ads only: a host-read sponsor is in neither rendering's "
-              "difference, so it is not labelled.")
+        print("These are proposals and the eval ignores them until reviewed. "
+              "In /label, for each episode:")
+        print("  - confirm ad against self_promo on each span; the boundaries "
+              "are already exact")
+        print("  - add any ad the host reads aloud, which no rendering diff "
+              "can see")
     return 0
 
 

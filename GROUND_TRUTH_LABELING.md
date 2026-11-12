@@ -90,29 +90,30 @@ not re-encode the episode, so the renderings share their content frames exactly
 and the ads are recoverable to about 26ms. It makes no LLM calls and no
 transcription, so a labelled episode costs one download.
 
-**The labels cover only ads that differ between the two renderings.** A sponsor
-the host reads aloud is part of the master and appears in both, so it is in
-neither the diff nor the labels. They are written with `"source": "dai_diff"`,
-and `eval_ads.py` reports them in their own group for that reason: averaged in
-with hand labels, a recall figure would describe neither set.
+**What the script writes are proposals, not finished labels.** A diff sees only
+the spots the host inserted, and it locates them without identifying them. So
+two things are missing from a fresh file, and reviewing it in `/label` supplies
+both:
 
-**They are written unreviewed.** The diff knows where an ad is, not what it is:
-a network inserts its own promos exactly as an advertiser's spot arrives, and
-those are `self_promo` under the per-feed cut policy. Every span is proposed as
-`ad` for you to confirm in `/label`, where the boundaries are already exact, and
-confirming them keeps `source` as `dai_diff` because what they cover depends on
-how they were derived, not on who checked them.
+1. **Confirm `ad` against `self_promo`.** A network inserts its own promos
+   exactly as an advertiser's spot arrives, and those are `self_promo` under the
+   per-feed cut policy. Every span is proposed as `ad`; the boundaries are
+   already exact, so only the label is in question.
+2. **Add any host-read ads.** A sponsor the host reads aloud is part of the
+   episode master, so it appears in both renderings and in neither the diff.
+   Nothing but your ear will find it.
+
+Once reviewed, the file is an ordinary complete label set that happens to have
+started with exact boundaries, and `eval_ads.py` scores it like any other —
+tuned or held-out by the same rules. `"source": "dai_diff"` stays on the file as
+provenance; nothing branches on it.
+
+An unreviewed file is never scored, because the eval only reads reviewed ones.
 
 **Only an unreviewed file the script wrote is ever replaced.** Hand labels and
 confirmed labels alike are left alone, so re-running a feed cannot undo a review
 or a relabelling. To re-derive an episode you have already confirmed, delete its
 label file first.
-
-Neither metric is clean on a derived set, and they err in opposite directions.
-An ad that both renderings carry is unlabelled — a host-read sponsor, or the
-same house promo filling a slot in each. Missing such an ad costs no recall,
-so recall reads high; cutting it counts as content wrongly cut, so precision
-reads low. Treat them as a bound each, not a measurement.
 
 Three outcomes other than success, all of them useful:
 
@@ -128,8 +129,16 @@ Three outcomes other than success, all of them useful:
 
 Feeds vary in how they insert. Some leave the slot empty and add to it; others
 leave a fixed-length house spot and swap a paid ad in, so the reference is not
-necessarily ad-free. Either way the labels mark what the episode on disk carries
+necessarily ad-free. Either way the spans mark what the episode on disk carries
 and the reference does not.
+
+On a replacement-style feed the reference drifts, so how much a run proposes
+depends on when you run it. The same Global News episode gave 141.0s across 3
+spans one evening and 197.5s across 4 two hours later, the later set a superset
+of the earlier; three consecutive fetches at either time were byte-identical, so
+it is drift rather than per-request noise. Every proposed span is a real ad, but
+a thinner reference proposes more of them — one more reason the review has to
+look for what the diff left out.
 
 ## File Locations
 
