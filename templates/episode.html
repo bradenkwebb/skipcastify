@@ -67,6 +67,10 @@
     <div><div id="show" class="muted"></div><div id="title"></div><div id="sub"></div></div>
   </div>
   <div class="cards" id="cards"></div>
+  <div id="listen" class="panel" hidden style="margin-top:12px">
+    <audio id="listenAudio" controls preload="none" style="width:100%"></audio>
+    <div id="listenNote" class="muted" style="font-size:12px;margin-top:4px"></div>
+  </div>
 
   <div id="aboutWrap" hidden>
     <h2>About this episode</h2>
@@ -119,7 +123,7 @@ function render() {
   const L = D.latest || {};
   document.title = 'Skipcastify · ' + (D.title || D.name);
   $('title').textContent = D.title || D.name;
-  $('sub').innerHTML = [esc(D.feed || 'unknown feed'), D.released ? 'released ' + when(D.released) : null,
+  $('sub').innerHTML = [D.feed ? `<a href="/dashboard/show/${encodeURIComponent(D.feed)}">${esc(D.feed)}</a>` : 'unknown feed', D.released ? 'released ' + when(D.released) : null,
     D.title ? `<span title="episode id">${esc(D.name)}</span>` : null].filter(Boolean).join(' · ');
   if (D.has_transcript) { $('labelLink').href = '/label/' + encodeURIComponent(D.name); $('labelLink').hidden = false;
     $('labelLink').textContent = D.labels ? (D.labels.reviewed ? 'labels (reviewed) →' : 'labels (in progress) →') : 'label this episode →'; }
@@ -133,7 +137,18 @@ function render() {
     card('Transcription', last.transcribe_s != null ? `${secs(last.transcribe_s)} <span class="muted" style="font-size:15px">${esc(last.whisper_model || '')}</span>` : 'cached'),
   ].join('');
 
-  renderTimeline(); renderScore(); renderCuts(); renderRuns();
+  renderListen(); renderTimeline(); renderScore(); renderCuts(); renderRuns();
+}
+
+// The version a podcast app subscribed to the published feed gets (same captions as the iOS app).
+function renderListen() {
+  const p = D.playback;
+  $('listen').hidden = !p;
+  if (!p) return;
+  if ($('listenAudio').getAttribute('src') !== p.url) $('listenAudio').src = p.url;
+  const note = p.ad_free ? 'Ad-free' : p.uncut ? 'Original audio · nothing to cut' : 'Original audio · ads not removed';
+  $('listenNote').textContent = note;
+  $('listenNote').style.color = p.ad_free || p.uncut ? '' : 'var(--warn)';
 }
 
 function lane(name, spans, total, color, onclick) {
@@ -251,7 +266,10 @@ async function loadMeta(pageLoaded) {
   const art = E.image || S.image;
   if (art && /^https?:\/\//.test(art)) { $('art').src = art; $('art').hidden = false; }
   if (S.title) {
-    setLinked($('show'), S.title, S.website);
+    // The show name opens its page here; the show's website is linked from that page.
+    const feed = D && D.feed;
+    if (feed && S.title) $('show').innerHTML = `<a href="/dashboard/show/${encodeURIComponent(feed)}">${esc(S.title)}</a>`;
+    else setLinked($('show'), S.title, S.website);
     if (S.author && S.author !== S.title) $('show').append(' · ' + S.author);
   }
   if (E.title) {

@@ -28,6 +28,15 @@ final class EpisodesUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Episodes"].isSelected)
     }
 
+    /// Needs the server's published feeds to be reachable from the simulator.
+    func testPlayStartsTheEpisodeInTheLibraryPlayer() async throws {
+        let found = try await ServerData.playableEpisode()
+        let recent = try XCTUnwrap(found, "no recent episode is in a published feed on the test server")
+        let app = AppHarness.launch(extra: ["-open", "skipcastify://episode/\(recent.episode)?feed=\(recent.feed_slug)"])
+        app.buttons["Play"].waitToAppear().tap()
+        app.buttons["Pause"].waitToAppear()
+    }
+
     func testAllEpisodesCanBeSearched() {
         let app = AppHarness.launch(tab: "episodes")
         app.segmentedControls.buttons["All"].waitToAppear().tap()

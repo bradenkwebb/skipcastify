@@ -1,0 +1,68 @@
+{# Ad signatures: one bar per episode, start to end, with what was cut. Shared by the
+   dashboard and show pages so both draw the same thing. Include once per page; call
+   Signatures.render(element, episodes). #}
+<style>
+  .siglist { display: flex; flex-direction: column; gap: 6px; }
+  .siglist a.track { display: block; }
+  .siglist a.track:hover { outline: 1px solid var(--accent); }
+  .siglist .track { position: relative; height: 20px; background: var(--panel2); border-radius: 4px; overflow: hidden;
+                    border-left: 3px solid transparent; }  /* every row has the border, so rows stay aligned */
+  .siglist .track.reviewed { border-left-color: var(--ok); }
+  .siglist .sp { position: absolute; top: 0; bottom: 0; background: var(--ad); opacity: .85; }
+  .siglist .sp.missed { background: transparent; border: 1.5px dashed var(--ad); opacity: 1; }
+  .siglist .sp.extra { background: var(--warn); }
+  .siglegend { font-size: 12px; color: var(--muted); margin: 0 0 4px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .siglegend i { display: inline-block; width: 12px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
+  .sigaxis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
+  /* The ⓘ next to section headings; its tooltip replaces a subtitle. */
+  .info { font-size: 13px; color: var(--muted); cursor: help; text-transform: none; letter-spacing: 0; }
+</style>
+<script>
+const Signatures = (() => {
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const clock = sec => {
+    const t = Math.round(sec), h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
+  };
+  const epUrl = name => '/dashboard/episode/' + encodeURIComponent(name);
+
+  // Multi-line native tooltip for one episode's bar.
+  function tooltip(ep) {
+    const day = iso => new Date(iso).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
+    const len = ep.duration_min >= 60 ? `${Math.floor(ep.duration_min / 60)}h ${Math.round(ep.duration_min % 60)}m` : `${Math.round(ep.duration_min)}m`;
+    const pct = ep.duration_min ? (ep.ad_s / (ep.duration_min * 60) * 100).toFixed(1) : '0';
+    const n = ep.spans.length;
+    return [ep.title || ep.episode,
+      [ep.released ? 'Released ' + day(ep.released) : null, len].filter(Boolean).join(' · '),
+      n ? `${clock(ep.ad_s)} cut (${pct}%) in ${n} break${n === 1 ? '' : 's'}` : 'Nothing cut',
+      ep.processed ? 'Processed ' + day(ep.processed) : null,
+      ep.reviewed ? 'Hand-reviewed' : null,
+      'Click for details'].filter(Boolean).join('\n');
+  }
+
+  function render(el, episodes) {
+    if (!episodes || !episodes.length) { el.innerHTML = ''; return; }
+    // Reviewed episodes show the cuts against the labels: hit, missed, and cut-but-not-an-ad.
+    const legend = episodes.some(ep => ep.reviewed) ? `<div class="siglegend">` +
+      `<span><i style="background:var(--ad)"></i>ad, cut</span>` +
+      `<span><i style="border:1.5px dashed var(--ad)"></i>ad, missed</span>` +
+      `<span><i style="background:var(--warn)"></i>cut, not an ad</span>` +
+      `<span><i style="border-left:3px solid var(--ok);background:var(--panel2)"></i>hand-reviewed</span></div>` : '';
+    const block = (s, cls, what, durS, about) =>
+      `<div class="sp${cls ? ' ' + cls : ''}" title="${esc(`${what} ${clock(s.start * durS)}–${clock(s.end * durS)} (${clock((s.end - s.start) * durS)})\n\n${about}`)}"
+            style="left:${s.start * 100}%;width:${Math.max((s.end - s.start) * 100, 0.4)}%"></div>`;
+    el.innerHTML = legend + '<div class="siglist">' + episodes.map(ep => {
+      const durS = ep.duration_min * 60, about = tooltip(ep);
+      const spans = ep.reviewed
+        ? ep.review.hit.map(s => block(s, '', 'Ad, cut', durS, about)).join('') +
+          ep.review.missed.map(s => block(s, 'missed', 'Ad, missed (not cut)', durS, about)).join('') +
+          ep.review.extra.map(s => block(s, 'extra', 'Cut, but not an ad', durS, about)).join('')
+        : ep.spans.map(s => block(s, '', 'Ad', durS, about)).join('');
+      return `<a class="track${ep.reviewed ? ' reviewed' : ''}" href="${epUrl(ep.episode)}" title="${esc(about)}">${spans}</a>`;
+    }).join('') + '</div>' +
+      '<div class="sigaxis"><span>start</span><span>25%</span><span>50%</span><span>75%</span><span>end</span></div>';
+  }
+
+  return { render, tooltip };
+})();
+</script>

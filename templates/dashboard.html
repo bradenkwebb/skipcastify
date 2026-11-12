@@ -36,36 +36,29 @@
     border: 1px solid var(--ok-line); border-radius: 999px; padding: 4px 12px; margin: 0 8px 8px 0; font-size: 13px; }
   .muted { color: var(--muted); }
   /* ad-signature strips */
-  #sigList { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
   #sigShow { display: flex; gap: 12px; align-items: center; min-height: 0; }
   #sigShow img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--panel2); flex: none; }
   #sigShow .t { font-weight: 600; }
   #sigShow .t a { color: inherit; text-decoration: none; }
   #sigShow .t a:hover { color: var(--accent); }
   #sigShow .m { color: var(--muted); font-size: 13px; }
-  a.track { display: block; }
-  a.track:hover { outline: 1px solid var(--accent); }
   .tbl a { color: inherit; }
   .tbl a:hover { color: var(--accent); }
   .dayeps { margin-top: 10px; font-size: 13px; }
   .dayeps ul { margin: 6px 0 0; padding-left: 18px; }
   .dayeps a { color: var(--fg); } .dayeps a:hover { color: var(--accent); }
-  .track { position: relative; height: 20px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
-  .track .sp { position: absolute; top: 0; bottom: 0; background: var(--ad); opacity: .85; }
-  /* Hand-reviewed episodes: cuts compared with the labels. */
-  .track { border-left: 3px solid transparent; }  /* every row, so they stay aligned */
-  .track.reviewed { border-left-color: var(--ok); }
-  .track .sp.missed { background: transparent; border: 1.5px dashed var(--ad); opacity: 1; }
-  .track .sp.extra { background: var(--warn); }
-  .siglegend { font-size: 12px; color: var(--muted); margin: 6px 0 2px; display: flex; gap: 14px; flex-wrap: wrap; }
-  .siglegend i { display: inline-block; width: 12px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
-  .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
   .err { color: var(--ad); }
   .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .tbl th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--line); }
   .tbl td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   .tbl tr:last-child td { border-bottom: 0; }
   .tbl td.notes { overflow-wrap: anywhere; }  /* long episode slugs in run notes */
+  /* Rows that open a page: plain until hovered. */
+  .tbl tr.link { cursor: pointer; }
+  .tbl tr.link:hover td { background: var(--sel); }
+  .tbl tr.link a { color: inherit; text-decoration: none; }
+  .tbl tr.link:hover a { color: var(--accent); text-decoration: underline; }
+  #sigList { margin-top: 12px; }
   @media (max-width: 520px) { .tbl .wide-only { display: none; } }
   .scroll { overflow-x: auto; }
   /* One line per episode: titles truncate instead of wrapping. */
@@ -131,7 +124,7 @@
   <h2>Drop candidates <span class="muted" style="text-transform:none;letter-spacing:0"></span></h2>
   <div class="panel" id="drops"></div>
 
-  <h2>Ad signatures <span class="muted" style="text-transform:none;letter-spacing:0"></span></h2>
+  <h2>Ad signatures <span class="info" tabindex="0" title="Each bar is an episode, start to end. Click one for its page." aria-label="Each bar is an episode, start to end">ⓘ</span></h2>
   <div class="panel">
     <div class="toolbar">
       <label class="muted" for="sigFeed">Feed:</label>
@@ -139,10 +132,10 @@
     </div>
     <div id="sigShow"></div>
     <div id="sigList"></div>
-    <div class="axis"><span>start</span><span>25%</span><span>50%</span><span>75%</span><span>end</span></div>
   </div>
 </main>
 
+{% include '_signature.html' %}
 <script>
 let DATA = null;
 let feedChart = null;
@@ -254,6 +247,8 @@ function setLeaderboard(mode) {
     options: {
       indexAxis: 'y',
       plugins: { legend: { display: false } },
+      onClick: (_e, els) => { if (els.length) location.href = showUrl(rows[els[0].index].feed_slug); },
+      onHover: (e, els) => { e.native.target.style.cursor = els.length ? 'pointer' : ''; },
       scales: {
         x: { beginAtZero: true, ticks: { color: css('muted') }, grid: { color: css('line') } },
         y: { ticks: { color: css('fg'), font: { size: 11 } }, grid: { display: false } },
@@ -297,25 +292,7 @@ function renderSignature() {
   const list = document.getElementById('sigList');
   if (!feed) { list.innerHTML = ''; return; }
   renderSigShow(slug, feed);
-  const anyReviewed = feed.episodes.some(ep => ep.reviewed);
-  const legend = anyReviewed ? `<div class="siglegend">` +
-    `<span><i style="background:var(--ad)"></i>ad, cut</span>` +
-    `<span><i style="border:1.5px dashed var(--ad)"></i>ad, missed</span>` +
-    `<span><i style="background:var(--warn)"></i>cut, not an ad</span>` +
-    `<span><i style="border-left:3px solid var(--ok);background:var(--panel2)"></i>hand-reviewed</span></div>` : '';
-  const block = (s, cls, what, durS, about) =>
-    `<div class="sp${cls ? ' ' + cls : ''}" title="${esc(`${what} ${clock(s.start * durS)}–${clock(s.end * durS)} (${clock((s.end - s.start) * durS)})\n\n${about}`)}"
-          style="left:${s.start*100}%;width:${Math.max((s.end-s.start)*100,0.4)}%"></div>`;
-  list.innerHTML = legend + feed.episodes.map(ep => {
-    const durS = ep.duration_min * 60;
-    const about = epTooltip(ep) + (ep.reviewed ? '\nHand-reviewed' : '');
-    const spans = ep.reviewed
-      ? ep.review.hit.map(s => block(s, '', 'Ad, cut', durS, about)).join('') +
-        ep.review.missed.map(s => block(s, 'missed', 'Ad, missed (not cut)', durS, about)).join('') +
-        ep.review.extra.map(s => block(s, 'extra', 'Cut, but not an ad', durS, about)).join('')
-      : ep.spans.map(s => block(s, '', 'Ad', durS, about)).join('');
-    return `<a class="track${ep.reviewed ? ' reviewed' : ''}" href="${epUrl(ep.episode)}" title="${esc(about)}">${spans}</a>`;
-  }).join('');
+  Signatures.render(list, feed.episodes);
 }
 
 function clock(sec) {
@@ -323,18 +300,6 @@ function clock(sec) {
   return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
 }
 
-// Multi-line native tooltip for one episode's strip.
-function epTooltip(ep) {
-  const day = iso => new Date(iso).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
-  const len = ep.duration_min >= 60 ? `${Math.floor(ep.duration_min / 60)}h ${Math.round(ep.duration_min % 60)}m` : `${Math.round(ep.duration_min)}m`;
-  const pct = ep.duration_min ? (ep.ad_s / (ep.duration_min * 60) * 100).toFixed(1) : '0';
-  const n = ep.spans.length;
-  return [ep.title || ep.episode,
-    [ep.released ? 'Released ' + day(ep.released) : null, len].filter(Boolean).join(' · '),
-    n ? `${clock(ep.ad_s)} cut (${pct}%) in ${n} break${n === 1 ? '' : 's'}` : 'Nothing cut',
-    ep.processed ? 'Processed ' + day(ep.processed) : null,
-    'Click for details'].filter(Boolean).join('\n');
-}
 
 // Show artwork, title and website above the strips; fetched once per feed.
 const showMeta = {};
@@ -348,7 +313,7 @@ async function renderSigShow(slug, feed) {
     const img = http(S && S.image), site = http(S && S.website), title = (S && S.title) || slug;
     box.style.marginTop = '12px';
     box.innerHTML = (img ? `<img src="${esc(img)}" alt="" referrerpolicy="no-referrer">` : '')
-      + `<div><div class="t">${site ? `<a href="${esc(site)}" target="_blank" rel="noopener noreferrer">${esc(title)}</a>` : esc(title)}</div>`
+      + `<div><div class="t"><a href="${showUrl(slug)}">${esc(title)}</a>${site ? ` <a href="${esc(site)}" target="_blank" rel="noopener noreferrer" class="muted" style="font-size:12px">website ↗</a>` : ''}</div>`
       + `<div class="m">${S && S.author && S.author !== title ? esc(S.author) + ' · ' : ''}${stats}</div></div>`;
   };
   paint(showMeta[slug]);
@@ -402,9 +367,14 @@ function renderPipeline() {
   }
   const rows = DATA.feed_status.map(f => {
     const [, cls] = STATUS[f.status] || ['', ''];
-    return `<tr><td>${esc(f.feed_slug)}</td><td class="${cls}">${esc(feedText(f))}</td>` +
+    return `<tr class="link" data-href="${showUrl(f.feed_slug)}"><td><a href="${showUrl(f.feed_slug)}">${esc(f.feed_slug)}</a></td><td class="${cls}">${esc(feedText(f))}</td>` +
       `<td class="wide-only">${ago(f.checked)}</td><td>${ago(f.last_download)}</td></tr>`;
   }).join('');
+  // The whole row is the target; the slug stays a real link for keyboards and middle-clicks.
+  document.getElementById('feedStatus').onclick = e => {
+    const tr = e.target.closest('tr.link');
+    if (tr && !e.target.closest('a')) location.href = tr.dataset.href;
+  };
   document.getElementById('feedStatus').innerHTML = rows ?
     `<table class="tbl"><tr><th>Feed</th><th>Last check</th><th class="wide-only">Checked</th><th>Last download</th></tr>${rows}</table>` : '';
 }
@@ -441,6 +411,7 @@ function renderEpisodes() {
     '<span class="muted">No episodes processed yet.</span>';
 }
 
+function showUrl(slug) { return '/dashboard/show/' + encodeURIComponent(slug); }
 function epUrl(name) { return '/dashboard/episode/' + encodeURIComponent(name); }
 
 function shorten(slug) { return slug.length > 26 ? slug.slice(0, 24) + '…' : slug; }
