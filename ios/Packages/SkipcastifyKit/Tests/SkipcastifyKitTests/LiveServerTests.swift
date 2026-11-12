@@ -37,6 +37,7 @@ struct LiveServerTests {
         _ = try await client.episodeMeta(first.episode)
         for sub in settings.subscriptions.prefix(3) {
             _ = try await client.showMeta(sub.slug)
+            _ = try await client.show(sub.slug)
         }
     }
 }

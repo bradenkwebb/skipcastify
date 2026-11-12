@@ -72,6 +72,10 @@ public struct APIClient: Sendable {
         try await get("api/episode/\(Self.segment(name))/meta.json")
     }
 
+    public func show(_ slug: String) async throws -> ShowDetail {
+        try await get("api/show/\(Self.segment(slug)).json")
+    }
+
     public func showMeta(_ slug: String) async throws -> ShowMeta {
         try await get("api/feed/\(Self.segment(slug))/meta.json")
     }
