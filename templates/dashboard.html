@@ -36,36 +36,24 @@
     border: 1px solid var(--ok-line); border-radius: 999px; padding: 4px 12px; margin: 0 8px 8px 0; font-size: 13px; }
   .muted { color: var(--muted); }
   /* ad-signature strips */
-  #sigList { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
   #sigShow { display: flex; gap: 12px; align-items: center; min-height: 0; }
   #sigShow img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; background: var(--panel2); flex: none; }
   #sigShow .t { font-weight: 600; }
   #sigShow .t a { color: inherit; text-decoration: none; }
   #sigShow .t a:hover { color: var(--accent); }
   #sigShow .m { color: var(--muted); font-size: 13px; }
-  a.track { display: block; }
-  a.track:hover { outline: 1px solid var(--accent); }
   .tbl a { color: inherit; }
   .tbl a:hover { color: var(--accent); }
   .dayeps { margin-top: 10px; font-size: 13px; }
   .dayeps ul { margin: 6px 0 0; padding-left: 18px; }
   .dayeps a { color: var(--fg); } .dayeps a:hover { color: var(--accent); }
-  .track { position: relative; height: 20px; background: var(--panel2); border-radius: 4px; overflow: hidden; }
-  .track .sp { position: absolute; top: 0; bottom: 0; background: var(--ad); opacity: .85; }
-  /* Hand-reviewed episodes: cuts compared with the labels. */
-  .track { border-left: 3px solid transparent; }  /* every row, so they stay aligned */
-  .track.reviewed { border-left-color: var(--ok); }
-  .track .sp.missed { background: transparent; border: 1.5px dashed var(--ad); opacity: 1; }
-  .track .sp.extra { background: var(--warn); }
-  .siglegend { font-size: 12px; color: var(--muted); margin: 6px 0 2px; display: flex; gap: 14px; flex-wrap: wrap; }
-  .siglegend i { display: inline-block; width: 12px; height: 10px; margin-right: 5px; vertical-align: -1px; border-radius: 2px; }
-  .axis { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; margin-top: 4px; }
   .err { color: var(--ad); }
   .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
   .tbl th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--line); }
   .tbl td { padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
   .tbl tr:last-child td { border-bottom: 0; }
   .tbl td.notes { overflow-wrap: anywhere; }  /* long episode slugs in run notes */
+  #sigList { margin-top: 12px; }
   @media (max-width: 520px) { .tbl .wide-only { display: none; } }
   .scroll { overflow-x: auto; }
   /* One line per episode: titles truncate instead of wrapping. */
@@ -131,7 +119,7 @@
   <h2>Drop candidates <span class="muted" style="text-transform:none;letter-spacing:0"></span></h2>
   <div class="panel" id="drops"></div>
 
-  <h2>Ad signatures <span class="muted" style="text-transform:none;letter-spacing:0"></span></h2>
+  <h2>Ad signatures <span class="info" tabindex="0" title="Each bar is an episode, start to end. Click one for its page." aria-label="Each bar is an episode, start to end">ⓘ</span></h2>
   <div class="panel">
     <div class="toolbar">
       <label class="muted" for="sigFeed">Feed:</label>
@@ -139,10 +127,10 @@
     </div>
     <div id="sigShow"></div>
     <div id="sigList"></div>
-    <div class="axis"><span>start</span><span>25%</span><span>50%</span><span>75%</span><span>end</span></div>
   </div>
 </main>
 
+{% include '_signature.html' %}
 <script>
 let DATA = null;
 let feedChart = null;
@@ -299,25 +287,7 @@ function renderSignature() {
   const list = document.getElementById('sigList');
   if (!feed) { list.innerHTML = ''; return; }
   renderSigShow(slug, feed);
-  const anyReviewed = feed.episodes.some(ep => ep.reviewed);
-  const legend = anyReviewed ? `<div class="siglegend">` +
-    `<span><i style="background:var(--ad)"></i>ad, cut</span>` +
-    `<span><i style="border:1.5px dashed var(--ad)"></i>ad, missed</span>` +
-    `<span><i style="background:var(--warn)"></i>cut, not an ad</span>` +
-    `<span><i style="border-left:3px solid var(--ok);background:var(--panel2)"></i>hand-reviewed</span></div>` : '';
-  const block = (s, cls, what, durS, about) =>
-    `<div class="sp${cls ? ' ' + cls : ''}" title="${esc(`${what} ${clock(s.start * durS)}–${clock(s.end * durS)} (${clock((s.end - s.start) * durS)})\n\n${about}`)}"
-          style="left:${s.start*100}%;width:${Math.max((s.end-s.start)*100,0.4)}%"></div>`;
-  list.innerHTML = legend + feed.episodes.map(ep => {
-    const durS = ep.duration_min * 60;
-    const about = epTooltip(ep) + (ep.reviewed ? '\nHand-reviewed' : '');
-    const spans = ep.reviewed
-      ? ep.review.hit.map(s => block(s, '', 'Ad, cut', durS, about)).join('') +
-        ep.review.missed.map(s => block(s, 'missed', 'Ad, missed (not cut)', durS, about)).join('') +
-        ep.review.extra.map(s => block(s, 'extra', 'Cut, but not an ad', durS, about)).join('')
-      : ep.spans.map(s => block(s, '', 'Ad', durS, about)).join('');
-    return `<a class="track${ep.reviewed ? ' reviewed' : ''}" href="${epUrl(ep.episode)}" title="${esc(about)}">${spans}</a>`;
-  }).join('');
+  Signatures.render(list, feed.episodes);
 }
 
 function clock(sec) {
@@ -325,18 +295,6 @@ function clock(sec) {
   return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(s).padStart(2, '0');
 }
 
-// Multi-line native tooltip for one episode's strip.
-function epTooltip(ep) {
-  const day = iso => new Date(iso).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
-  const len = ep.duration_min >= 60 ? `${Math.floor(ep.duration_min / 60)}h ${Math.round(ep.duration_min % 60)}m` : `${Math.round(ep.duration_min)}m`;
-  const pct = ep.duration_min ? (ep.ad_s / (ep.duration_min * 60) * 100).toFixed(1) : '0';
-  const n = ep.spans.length;
-  return [ep.title || ep.episode,
-    [ep.released ? 'Released ' + day(ep.released) : null, len].filter(Boolean).join(' · '),
-    n ? `${clock(ep.ad_s)} cut (${pct}%) in ${n} break${n === 1 ? '' : 's'}` : 'Nothing cut',
-    ep.processed ? 'Processed ' + day(ep.processed) : null,
-    'Click for details'].filter(Boolean).join('\n');
-}
 
 // Show artwork, title and website above the strips; fetched once per feed.
 const showMeta = {};
