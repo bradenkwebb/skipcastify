@@ -4,7 +4,16 @@ settings, so the numbers match. Show notes stay at /api/feed/<slug>/meta.json: t
 from the show's own feed, which can be slow, and shouldn't hold this up.
 """
 
-from skipcastify.services import analytics, cut_policy, settings, subscriptions
+from datetime import datetime
+
+from skipcastify.services import (
+    analytics,
+    cut_policy,
+    episode_detail,
+    labeling,
+    settings,
+    subscriptions,
+)
 from skipcastify.services.published_feeds import published_feeds
 from skipcastify.services.run_log import recent_runs
 
@@ -40,6 +49,44 @@ def show_detail(data_dir, slug: str, public_base_url: str) -> dict | None:
         },
         "stats": {k: v for k, v in summary.items() if k != "feed_slug"} if summary else None,
         "policy": policy_view,
-        "signature": analytics._with_titles(data_dir, signature),
+        # The dashboard's signature rows, review overlay included, so both pages match.
+        "signature": analytics._with_review(
+            data_dir, [{"feed_slug": slug, "episodes": analytics._with_titles(data_dir, signature)}], events)[0]["episodes"],
+        "history": _history(data_dir, events, slug),
         "recent_episodes": analytics._with_titles(data_dir, episodes),
     }
+
+
+def _when(ts: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(analytics._aware(ts)) if ts else None
+    except ValueError:
+        return None
+
+
+def _history(data_dir, events: list[dict], slug: str) -> list[dict]:
+    """Per processed episode, oldest first: when it was released, when processing started
+    and finished, and how long it waited and took. Feeds the show page's charts."""
+    by_ep: dict[str, list[dict]] = {}
+    for ev in events:
+        if ev.get("feed_slug") == slug and ev.get("episode_name"):
+            by_ep.setdefault(ev["episode_name"], []).append(ev)
+    released = labeling.release_dates(data_dir)
+    rows = []
+    for name, evs in by_ep.items():
+        run = next((r for r in episode_detail._runs(evs) if r["completed"]), None)
+        if not run:
+            continue
+        start, done, out = _when(run["started"]), _when(run["completed"]), _when(released.get(name))
+        rows.append({
+            "episode": name,
+            "released": released.get(name),
+            "started": analytics._aware(run["started"]) if run["started"] else None,
+            "completed": analytics._aware(run["completed"]),
+            "processing_s": round((done - start).total_seconds(), 1) if start and done else None,
+            # Time from release to the start of processing: how long the pipeline took to notice.
+            "wait_s": round((start - out).total_seconds(), 1) if start and out and start >= out else None,
+            "transcribe_s": run.get("transcribe_s"),
+            "duration_min": round((run.get("original_duration_s") or 0) / 60, 1),
+        })
+    return sorted(rows, key=lambda r: r["completed"] or "")
