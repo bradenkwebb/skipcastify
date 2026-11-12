@@ -123,7 +123,7 @@ function render() {
   const L = D.latest || {};
   document.title = 'Skipcastify · ' + (D.title || D.name);
   $('title').textContent = D.title || D.name;
-  $('sub').innerHTML = [esc(D.feed || 'unknown feed'), D.released ? 'released ' + when(D.released) : null,
+  $('sub').innerHTML = [D.feed ? `<a href="/dashboard/show/${encodeURIComponent(D.feed)}">${esc(D.feed)}</a>` : 'unknown feed', D.released ? 'released ' + when(D.released) : null,
     D.title ? `<span title="episode id">${esc(D.name)}</span>` : null].filter(Boolean).join(' · ');
   if (D.has_transcript) { $('labelLink').href = '/label/' + encodeURIComponent(D.name); $('labelLink').hidden = false;
     $('labelLink').textContent = D.labels ? (D.labels.reviewed ? 'labels (reviewed) →' : 'labels (in progress) →') : 'label this episode →'; }
@@ -266,7 +266,10 @@ async function loadMeta(pageLoaded) {
   const art = E.image || S.image;
   if (art && /^https?:\/\//.test(art)) { $('art').src = art; $('art').hidden = false; }
   if (S.title) {
-    setLinked($('show'), S.title, S.website);
+    // The show name opens its page here; the show's website is linked from that page.
+    const feed = D && D.feed;
+    if (feed && S.title) $('show').innerHTML = `<a href="/dashboard/show/${encodeURIComponent(feed)}">${esc(S.title)}</a>`;
+    else setLinked($('show'), S.title, S.website);
     if (S.author && S.author !== S.title) $('show').append(' · ' + S.author);
   }
   if (E.title) {
