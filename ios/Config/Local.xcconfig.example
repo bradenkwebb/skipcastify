@@ -1,0 +1,3 @@
+// Copy to Local.xcconfig (gitignored) with your Apple team ID and a bundle ID you own.
+DEVELOPMENT_TEAM = ABCDE12345
+SKIPCASTIFY_BUNDLE_ID = com.yourname.skipcastify
