@@ -13,9 +13,10 @@ compare prompts; the arms are interleaved round-robin so drift hits all equally.
 
 Every reviewed episode is either tuned or held-out, and nobody chooses which:
 those listed in tests/llm/tuned_episodes.txt already shaped tuning, and every
-other episode is assigned by a hash of its name (a third tuned). Comparing arms
-(--prompt twice or more) scores only the tuned set, so a decision can't be made
-on held-out episodes by accident; pass --held-out for the final, one-time check.
+other episode is assigned by a hash of its name (a third tuned). Every run
+scores only the tuned set, whether comparing arms in one run or across runs, so
+no decision is made on held-out episodes by accident. Pass --held-out for the
+held-out number: the final, one-time check of a decision.
 
 Results go to data/evals/<timestamp>/: results.jsonl (one row per call, with
 spans), summary.md, metrics/events.jsonl (LLM cost) and llm_profiles/, all kept
@@ -86,9 +87,14 @@ def tuned_set(episodes, listed: set[str]) -> set[str]:
     return {ep for ep in episodes if ep in listed or hashed_tuned(ep)}
 
 
-def to_score(episodes: list[str], tuned: set[str], n_arms: int, held_out: bool) -> list[str]:
-    """A comparison (two or more arms) tunes something, so it sees only the tuned set."""
-    return episodes if n_arms < 2 or held_out else [e for e in episodes if e in tuned]
+def to_score(episodes: list[str], tuned: set[str], held_out: bool) -> list[str]:
+    """Held-out episodes only on request: a re-run after an edit is a comparison too."""
+    return episodes if held_out else [e for e in episodes if e in tuned]
+
+
+def stale_listed(listed: set[str], reviewed: set[str], fixtures: str) -> list[str]:
+    """Listed names that match no reviewed episode and no LLM test fixture (typos, mostly)."""
+    return sorted(n for n in listed if n not in reviewed and n not in fixtures)
 
 
 def read_tuned(path: Path) -> set[str]:
@@ -100,7 +106,7 @@ def read_tuned(path: Path) -> set[str]:
 def summarize(rows: list[dict], arms: list[str], episodes: list[str], cost: float, tuned: set[str] = frozenset()) -> str:
     out = [f"# Ad-detection eval, {len(episodes)} reviewed episodes, LLM cost ${cost:.3f}", ""]
     groups = [("Held-out", "the honest number: the prompt never saw these", [e for e in episodes if e not in tuned]),
-              ("Tuned", "regression check: the prompt was tuned on these", [e for e in episodes if e in tuned])]
+              ("Tuned", "listed as having shaped a decision, or put here by hash", [e for e in episodes if e in tuned])]
     for name, note, eps in groups:
         if eps:
             out += [f"## {name}: {len(eps)} episode{'s' * (len(eps) != 1)} ({note})", ""]
@@ -143,19 +149,28 @@ def main(argv=None) -> int:
     ap.add_argument("--out", help="output dir (default: <data-dir>/evals/<timestamp>)")
     ap.add_argument("--tuned", default=str(TUNED_FILE), help="file listing tuned episodes, one per line")
     ap.add_argument("--held-out", action="store_true",
-                    help="when comparing arms, also score held-out episodes (the final check, once)")
+                    help="also score held-out episodes: the final, one-time check of a decision")
     args = ap.parse_args(argv)
 
     data_dir = Path(args.data_dir).resolve()
     arms = [str(Path(p).resolve()) for p in (args.prompt or [os.path.normpath(DEFAULT_PROMPT_PATH)])]
-    episodes = reviewed_episodes(data_dir, args.episode)
-    tuned = tuned_set(episodes, read_tuned(Path(args.tuned)))
-    episodes = to_score(episodes, tuned, len(arms), args.held_out)
-    if len(arms) > 1 and not args.held_out:
-        print(f"Comparing {len(arms)} arms on the {len(episodes)} tuned episodes only; "
-              "pass --held-out for the final check.", file=sys.stderr)
-    if not episodes:
+    listed = read_tuned(Path(args.tuned))
+    fixtures = "".join(p.read_text() for p in (TUNED_FILE.parent).glob("test_*.py"))
+    for name in stale_listed(listed, set(reviewed_episodes(data_dir, [])), fixtures):
+        print(f"warning: {Path(args.tuned).name} lists {name}, which matches no reviewed episode "
+              "or LLM test fixture (a typo?)", file=sys.stderr)
+    matched = reviewed_episodes(data_dir, args.episode)
+    if not matched:
         print("No reviewed episodes match.", file=sys.stderr)
+        return 1
+    tuned = tuned_set(matched, listed)
+    episodes = to_score(matched, tuned, args.held_out)
+    if not args.held_out:
+        print(f"Scoring the {len(episodes)} tuned of {len(matched)} matching reviewed episodes; "
+              "held-out results need --held-out.", file=sys.stderr)
+    if not episodes:
+        print("Every matching episode is held-out: pass --held-out for the final check, "
+              "or label more episodes.", file=sys.stderr)
         return 1
     out = Path(args.out) if args.out else data_dir / "evals" / datetime.now().strftime("%Y%m%d-%H%M%S")
     out.mkdir(parents=True, exist_ok=True)

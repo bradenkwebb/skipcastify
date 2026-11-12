@@ -85,8 +85,13 @@ def test_listed_episodes_are_always_tuned():
     assert eval_ads.tuned_set([held], set()) == set()
 
 
-def test_a_comparison_never_scores_held_out_unless_asked():
+def test_held_out_is_scored_only_when_asked():
+    """Two single-arm runs either side of an edit are a comparison too."""
     eps, tuned = ["a", "b", "c"], {"b"}
-    assert eval_ads.to_score(eps, tuned, n_arms=1, held_out=False) == eps       # plain measurement
-    assert eval_ads.to_score(eps, tuned, n_arms=2, held_out=False) == ["b"]     # tuning: tuned only
-    assert eval_ads.to_score(eps, tuned, n_arms=2, held_out=True) == eps        # the final check
+    assert eval_ads.to_score(eps, tuned, held_out=False) == ["b"]
+    assert eval_ads.to_score(eps, tuned, held_out=True) == eps
+
+
+def test_a_listed_name_matching_nothing_is_reported():
+    listed = {"show-real", "show-fixture", "show-typo"}
+    assert eval_ads.stale_listed(listed, {"show-real"}, "FIXTURE = 'show-fixture'") == ["show-typo"]
