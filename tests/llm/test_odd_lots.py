@@ -31,13 +31,12 @@ Run with: pytest tests/llm/test_odd_lots.py --run-llm
 """
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
 
-from tests.llm.conftest import any_overlap, covered
+from tests.llm.conftest import any_overlap, covered, detect
 
 load_dotenv()
 pytestmark = pytest.mark.llm
@@ -56,10 +55,7 @@ def _load_segments(path: Path):
 
 
 def _detect(segments):
-    from skipcastify.services.audio_processor import AudioProcessor
-    processor = AudioProcessor("data")
-    with tempfile.TemporaryDirectory() as tmp:
-        return processor._run_section_llm(segments, tmp, episode_name=_EPISODE)
+    return detect(segments, _EPISODE)
 
 
 # --- the sponsored teaser that opens the episode (section 0, offset 0) ---
