@@ -94,6 +94,13 @@
            border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s;
            pointer-events: none; }
   #toast.show { opacity: 1; }
+  /* On-screen playback, for touch: space and e do the same from the keyboard. */
+  #player { position: fixed; right: 68px; bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 6px;
+            align-items: center; padding: 5px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line);
+            box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+  #player button { min-width: 44px; height: 40px; border-radius: 999px; font-size: 16px; padding: 0 12px; }
+  #pTime { font: 12px ui-monospace, Menlo, monospace; padding: 0 8px 0 2px; min-width: 6ch; text-align: right; }
+  body.hasplayer #toast { bottom: calc(72px + env(safe-area-inset-bottom)); }
   #help { position: fixed; inset: 0; background: var(--overlay); display: none; align-items: center; justify-content: center; }
   #help.show { display: flex; }
   #help > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px;
@@ -138,6 +145,11 @@
 </div>
 <div id="wrap" hidden><div id="rows" tabindex="0"></div><canvas id="mini"></canvas></div>
 <div id="toast"></div>
+<div id="player" hidden>
+  <button id="pPlay" title="Play the selection / pause (space)" aria-label="Play">▶</button>
+  <button id="pEdge" title="Play around the nearest span edge (e)" aria-label="Play around the span edge">⇤⇥</button>
+  <span id="pTime" class="muted"></span>
+</div>
 <div id="help"><div>
   <h3>Move & select</h3>
   <table>
@@ -159,7 +171,7 @@
   </table>
   <h3>Listen (raw audio, off until you press play)</h3>
   <table>
-    <tr><td><kbd>space</kbd></td><td>play selection / pause</td><td><kbd>e</kbd></td><td>play around the nearest span edge</td></tr>
+    <tr><td><kbd>space</kbd> or ▶</td><td>play selection / pause</td><td><kbd>e</kbd> or ⇤⇥</td><td>play around the nearest span edge</td></tr>
     <tr><td>click a timestamp</td><td>play from there</td><td><kbd>p</kbd></td><td>toggle the pipeline-cut stripe</td></tr>
   </table>
   <p class="muted" style="margin:12px 0 0">Saves automatically. Stripe right of the label bar = what the pipeline cut
@@ -520,14 +532,23 @@ function play(fromMs, toMs) {
   if (!audio) {
     audio = new Audio(`/api/label/${encodeURIComponent(EP)}/audio`);
     audio.addEventListener('timeupdate', onTime);
+    audio.addEventListener('play', syncPlayer);
+    audio.addEventListener('pause', syncPlayer);
   }
   playEnd = toMs ?? null;
   audio.currentTime = fromMs / 1000;
   audio.play().catch(e => toast('Playback failed: ' + e.message));
 }
 let playingRow = -1;
+function syncPlayer() {
+  const on = audio && !audio.paused;
+  $('pPlay').textContent = on ? '⏸' : '▶';
+  $('pPlay').setAttribute('aria-label', on ? 'Pause' : 'Play');
+  $('pTime').textContent = audio ? fmt(audio.currentTime * 1000) : '';
+}
 function onTime() {
   const ms = audio.currentTime * 1000;
+  syncPlayer();
   if (playEnd != null && ms >= playEnd) { audio.pause(); playEnd = null; }
   let i = S.findIndex(r => r.end > ms);
   if (audio.paused) i = -1;
@@ -641,6 +662,8 @@ async function editor() {
     + (HAS_AUDIO ? '' : '<span class="muted" style="font-size:12px">no raw audio</span>')
     + '<span id="stats"></span>';
   $('bFill').disabled = !PRED_N;
+  $('player').hidden = !HAS_AUDIO;
+  document.body.classList.toggle('hasplayer', HAS_AUDIO);
   render(); setPred(showPred); changed(); padRows(); centerCur();
   loaded = true; $('save').textContent = d.spans.length || d.reviewed ? 'saved' : '';
   if (tidySpans()) { changed(); toast('Cleaned up leftover label slivers between lines'); }
@@ -699,6 +722,9 @@ function bindEditor() {
     $(id).addEventListener('click', e => { e.preventDefault(); go($(id).href); });
   $('bRev').onclick = () => { snapshot(); reviewed = !reviewed; changed(); };
   $('bHelp').onclick = () => $('help').classList.add('show');
+  // blur, or a later space keypress would also "click" the focused button
+  $('pPlay').onclick = e => { e.currentTarget.blur(); togglePlay(); };
+  $('pEdge').onclick = e => { e.currentTarget.blur(); playEdge(); };
   $('help').onclick = () => $('help').classList.remove('show');
   $('find').addEventListener('input', runFind);
   $('find').addEventListener('keydown', e => {
