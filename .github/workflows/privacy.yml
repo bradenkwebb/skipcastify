@@ -20,3 +20,12 @@ jobs:
                 && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha)
                 || format('{0}..{1}', github.event.before, github.sha) }}
         run: python3 scripts/privacy_guard.py "$RANGE"
+      # An episode that shaped a decision must never return to the held-out pool.
+      - name: tuned_episodes.txt is append-only
+        if: github.event_name == 'pull_request'
+        run: |
+          removed=$(git diff "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}" \
+            -- tests/llm/tuned_episodes.txt | grep -E '^-[^-#]' || true)
+          if [ -n "$removed" ]; then
+            echo "::error::tests/llm/tuned_episodes.txt is append-only; this removes:"; echo "$removed"; exit 1
+          fi
