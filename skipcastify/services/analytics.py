@@ -152,7 +152,7 @@ def ad_signatures(events: list[dict]) -> list[dict]:
 
     Each episode becomes a track of normalized [start, end] ad spans — the raw
     material for the "where do ads live / does this feed have a recognizable
-    signature" view.
+    signature" view. Newest first.
     """
     by_feed: dict[str, list[dict]] = defaultdict(list)
     for ev in _completes(events):
@@ -171,7 +171,7 @@ def ad_signatures(events: list[dict]) -> list[dict]:
             "spans": spans,
         })
     return [
-        {"feed_slug": slug, "episodes": tracks}
+        {"feed_slug": slug, "episodes": sorted(tracks, key=lambda t: t["processed"], reverse=True)}
         for slug, tracks in sorted(by_feed.items())
     ]
 
