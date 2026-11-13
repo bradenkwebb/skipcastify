@@ -77,3 +77,17 @@ def test_dashboard_titles_and_playback_follow_the_guid(tmp_path, monkeypatch):
     assert labeling.episode_titles(tmp_path)[f"{SLUG}-ep_1"] == "Ep 1 (renamed)"
     feed = tmp_path / "feeds" / f"{SLUG}.xml"
     assert playback._enclosures(tmp_path, feed, SLUG)[f"{SLUG}-ep_1"].endswith(f"/{SLUG}-ep_1.mp3")
+
+
+def test_upstream_permalink_guids_resolve_like_feedparser():
+    xml = ('<rss><channel><item><guid>abc-123</guid></item>'
+           '<item><guid isPermaLink="false">xyz</guid></item></channel></rss>')
+    items = list(ET.fromstring(xml).iter("item"))
+    base = "https://feeds.example.com/show/feed.xml"
+    assert [episode_files.item_guid(i, base) for i in items] == ["https://feeds.example.com/show/abc-123", "xyz"]
+
+
+def test_load_hands_out_a_copy(tmp_path):
+    episode_files.save(tmp_path, {SLUG: {GUID: "a.mp3"}})
+    episode_files.remember(episode_files.load(tmp_path), SLUG, "other", "b.mp3")
+    assert episode_files.load(tmp_path) == {SLUG: {GUID: "a.mp3"}}

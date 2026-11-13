@@ -127,7 +127,7 @@ def _image(el) -> str | None:
     return _http(img.get("href")) if img is not None else _http(el.findtext("image/url"))
 
 
-def _summarize(raw: bytes, slug: str, files: dict | None = None) -> dict:
+def _summarize(raw: bytes, slug: str, files: dict | None = None, url: str | None = None) -> dict:
     """Keep only what an episode page shows, keyed the way episode files are named.
     ElementTree, not feedparser: 0.3s vs 12s on a 2,000-episode feed."""
     ch = ET.fromstring(raw).find("channel")
@@ -146,7 +146,7 @@ def _summarize(raw: bytes, slug: str, files: dict | None = None) -> dict:
         if not title:
             continue
         notes = _text(item, "content:encoded") or _text(item, "description") or _text(item, "itunes:summary") or ""
-        episodes.setdefault(episode_files.name(files or {}, slug, episode_files.item_guid(item), title), {
+        episodes.setdefault(episode_files.name(files or {}, slug, episode_files.item_guid(item, url), title), {
             "title": title,
             "link": _http(item.findtext("link")),
             "episode": _text(item, "itunes:episode"),
@@ -181,7 +181,7 @@ def feed_summary(url: str, slug: str, max_age: float = TTL_S, data_dir=None) -> 
         with _lock:
             if (hit := cached()) is not None:
                 return hit
-        summary = _summarize(_fetch(url), slug, episode_files.load(data_dir) if data_dir else None)
+        summary = _summarize(_fetch(url), slug, episode_files.load(data_dir) if data_dir else None, url)
         with _lock:
             _cache[url] = (time.monotonic(), summary)
     return summary

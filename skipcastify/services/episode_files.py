@@ -12,6 +12,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from urllib.parse import urljoin
 
 from skipcastify.utils.utils import safe_filename
 
@@ -30,14 +31,14 @@ def load(data_dir) -> dict[str, dict[str, str]]:
     except OSError:
         return {}
     hit = _cache.get(str(p))
-    if hit and hit[0] == mtime:
-        return hit[1]
-    try:
-        mapping = json.loads(p.read_text())
-    except (OSError, ValueError):
-        return {}
-    _cache[str(p)] = (mtime, mapping)
-    return mapping
+    if not (hit and hit[0] == mtime):
+        try:
+            hit = (mtime, json.loads(p.read_text()))
+        except (OSError, ValueError):
+            return {}
+        _cache[str(p)] = hit
+    # A copy, so remember() can't change the cache before save() succeeds.
+    return {slug: dict(files) for slug, files in hit[1].items()}
 
 
 def save(data_dir, mapping: dict) -> None:
@@ -59,10 +60,16 @@ def name(mapping: dict, slug: str, guid: str | None, title: str) -> str:
     return filename(mapping, slug, guid, title)[: -len(".mp3")]
 
 
-def item_guid(item) -> str | None:
-    """An RSS <item>'s identity, by the same rule the downloader uses: guid, else enclosure URL."""
-    guid = (item.findtext("guid") or "").strip()
+def item_guid(item, base_url: str | None = None) -> str | None:
+    """An RSS <item>'s identity, by the same rule the downloader uses: guid, else enclosure URL.
+
+    feedparser resolves a permalink guid against the feed URL; pass base_url to match that on upstream XML.
+    """
+    el = item.find("guid")
+    guid = (el.text or "").strip() if el is not None else ""
     if guid:
+        if base_url and el.get("isPermaLink", "true").lower() != "false":
+            guid = urljoin(base_url, guid)
         return guid
     enclosure = item.find("enclosure")
     return enclosure.get("url") if enclosure is not None else None
