@@ -14,11 +14,12 @@ Run with: pytest tests/llm/test_wisdom_of_the_masters.py --run-llm
 """
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
+
+from tests.llm.conftest import detect
 
 load_dotenv()
 pytestmark = pytest.mark.llm
@@ -31,11 +32,9 @@ def _spans_for(fixture_name: str) -> list[dict]:
     if not path.exists():
         pytest.skip(f"Fixture not found: {path}")
     raw = json.loads(path.read_text())
-    from skipcastify.services.audio_processor import AudioProcessor, Segment
+    from skipcastify.services.audio_processor import Segment
     segments = [Segment(start=s["start"], end=s["end"], text=s["text"]) for s in raw]
-    processor = AudioProcessor("data")
-    with tempfile.TemporaryDirectory() as tmp:
-        return processor._run_section_llm(segments, tmp, episode_name=fixture_name)
+    return detect(segments, fixture_name)
 
 
 @pytest.fixture(scope="module")
