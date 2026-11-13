@@ -7,8 +7,9 @@ from pathlib import Path
 import feedparser
 import requests
 
+from skipcastify.services import episode_files
 from skipcastify.utils.alerts import Alerter
-from skipcastify.utils.utils import load_subscriptions, safe_filename, slugify
+from skipcastify.utils.utils import load_subscriptions, slugify
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,10 @@ class EpisodeDownloader:
         except ValueError:
             raise ValueError(f"Cannot derive stable ID for entry: {entry.get('title', '<untitled>')!r}")
     
+    def _remember_file(self, files: dict, slug: str, guid: str | None, filename: str) -> None:
+        if episode_files.remember(files, slug, guid, filename):
+            episode_files.save(self.data_dir, files)
+
     @staticmethod
     def get_audio_url(entry):
         # Try standard RSS enclosure
@@ -141,12 +146,15 @@ class EpisodeDownloader:
         podcast_dir = Path(self.data_dir) / "podcasts" / "raw" / slug
         podcast_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = safe_filename(entry.title, slug)
+        guid = self._safe_entry_id(entry)
+        files = episode_files.load(self.data_dir)
+        filename = episode_files.filename(files, slug, guid, entry.title)
         target_path = podcast_dir / filename
-        
+
         processed_path = Path(self.data_dir) / "podcasts" / "processed" / slug / filename
         if target_path.exists() or processed_path.exists():
             logger.info(f"Skipping already-downloaded episode: {filename}")
+            self._remember_file(files, slug, guid, filename)
             return target_path if target_path.exists() else processed_path
 
         try:
@@ -158,6 +166,7 @@ class EpisodeDownloader:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
             logger.info(f"Saved to: {target_path}")
+            self._remember_file(files, slug, guid, filename)
             return target_path
         except Exception as e:
             logger.error(f"Failed to download episode '{entry.title}': {e}")

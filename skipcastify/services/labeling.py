@@ -9,9 +9,8 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from skipcastify.services import cut_policy
+from skipcastify.services import cut_policy, episode_files
 from skipcastify.services.analytics import load_events
-from skipcastify.utils.utils import safe_filename
 
 LABELS = ("ad", "self_promo", "intro_outro")
 FORMAT_VERSION = 2
@@ -64,6 +63,7 @@ def _feed_items(data_dir) -> dict:
     key = tuple((str(f), f.stat().st_mtime) for f in files)
     if _release_cache.get("key") != key:
         dates, titles = {}, {}
+        ep_files = episode_files.load(data_dir)
         for f in files:
             try:
                 channel = ET.parse(f).getroot().find("channel")
@@ -71,15 +71,17 @@ def _feed_items(data_dir) -> dict:
                 continue
             for item in channel.findall("item") if channel is not None else []:
                 title, pub = item.findtext("title"), item.findtext("pubDate")
-                if title:
-                    titles[safe_filename(title, f.stem)[: -len(".mp3")]] = title
+                if not title:
+                    continue
+                name = episode_files.name(ep_files, f.stem, episode_files.item_guid(item), title)
+                titles[name] = title
                 try:
                     dt = parsedate_to_datetime(pub)
                 except (TypeError, ValueError):
                     continue
                 if dt.tzinfo is None:
                     dt = dt.replace(tzinfo=UTC)
-                dates[safe_filename(title, f.stem)[: -len(".mp3")]] = dt.isoformat()
+                dates[name] = dt.isoformat()
         _release_cache.update(key=key, dates=dates, titles=titles)
     return _release_cache
 
