@@ -287,6 +287,7 @@ final class LineAudio {
     private(set) var line: Int?
     private var player: AVPlayer?
     private var stopper: Any?
+    var isPlaying: Bool { player != nil }
 
     func toggle(line: Int, at ms: Int, episode: String, client: APIClient) {
         if self.line != nil { stop(); return }

@@ -94,8 +94,11 @@ struct EdgeZoomView: View {
         HStack {
             if hasAudio, let client = server.client {
                 Button {
-                    audio.play(fromMs: max(0, at - 2500), untilMs: at + 2500, episode: name, client: client)
-                } label: { Label("Hear", systemImage: "play.fill") }
+                    if audio.isPlaying { audio.stop() }
+                    else { audio.play(fromMs: max(0, at - 2500), untilMs: at + 2500, episode: name, client: client) }
+                } label: {
+                    audio.isPlaying ? Label("Stop", systemImage: "stop.fill") : Label("Hear", systemImage: "play.fill")
+                }
             }
             Button("−0.5s") { editor.moveEdge(edge, ofSpan: span, to: at - 500) }
             Button("+0.5s") { editor.moveEdge(edge, ofSpan: span, to: at + 500) }

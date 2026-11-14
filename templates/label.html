@@ -593,6 +593,7 @@ function syncPlayer() {
   $('pPlay').textContent = on ? '⏸' : '▶';
   $('pPlay').setAttribute('aria-label', on ? 'Pause' : 'Play');
   $('pTime').textContent = audio ? fmt(audio.currentTime * 1000) : '';
+  $('zHear').textContent = on ? '⏸ Stop' : '▶ Hear';
 }
 function onTime() {
   const ms = audio.currentTime * 1000;
@@ -839,7 +840,10 @@ function bindEditor() {
   $('zClose').onclick = closeZoom;
   for (const [id, edge] of [['zStart', 'start'], ['zEnd', 'end']])
     $(id).onclick = e => { e.currentTarget.blur(); if (Z) { Z.edge = edge; Z.k0 = null; renderZoom(); } };
-  $('zHear').onclick = e => { e.currentTarget.blur(); playEdge(); };
+  $('zHear').onclick = e => {
+    e.currentTarget.blur();
+    if (audio && !audio.paused) { audio.pause(); onTime(); } else playEdge();
+  };
   for (const [id, d] of [['zEarlier', -500], ['zLater', 500]])
     $(id).onclick = e => { e.currentTarget.blur(); if (Z) moveEdge(Z.sp, Z.edge, (Z.edge === 'start' ? Z.sp.start_ms : Z.sp.end_ms) + d); };
   $('zWords').addEventListener('click', e => { const w = e.target.closest('.w'); if (w) { w.blur(); zoomWord(+w.dataset.i); } });

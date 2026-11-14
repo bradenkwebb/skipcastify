@@ -54,6 +54,11 @@ final class LabelingUITests: XCTestCase {
         if app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tap the last word'")).firstMatch.exists {
             XCTAssertTrue(app.descendants(matching: .any)["Edge"].waitForExistence(timeout: 5))
         }
+        if app.buttons["Hear"].exists {
+            app.buttons["Hear"].tap()
+            app.buttons["Stop"].waitToAppear().tap()
+            app.buttons["Hear"].waitToAppear()
+        }
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "edge-zoom"
         shot.lifetime = .keepAlways
