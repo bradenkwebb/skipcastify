@@ -99,6 +99,7 @@
             align-items: center; padding: 5px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line);
             box-shadow: 0 2px 10px rgba(0,0,0,.25); }
   #player button { min-width: 44px; height: 40px; border-radius: 999px; font-size: 16px; padding: 0 12px; }
+  #player button.edge { font-size: 13px; }
   #pTime { font: 12px ui-monospace, Menlo, monospace; padding: 0 8px 0 2px; min-width: 6ch; text-align: right; }
   body.hasplayer #toast { bottom: calc(72px + env(safe-area-inset-bottom)); }
   #help { position: fixed; inset: 0; background: var(--overlay); display: none; align-items: center; justify-content: center; }
@@ -147,7 +148,8 @@
 <div id="toast"></div>
 <div id="player" hidden>
   <button id="pPlay" title="Play the selection / pause (space)" aria-label="Play">▶</button>
-  <button id="pEdge" title="Play around the nearest span edge (e)" aria-label="Play around the span edge">⇤⇥</button>
+  <button id="pStart" class="edge" title="Hear this span's start (e plays the nearest edge)" hidden>▶ start</button>
+  <button id="pEnd" class="edge" title="Hear this span's end (e plays the nearest edge)" hidden>▶ end</button>
   <span id="pTime" class="muted"></span>
 </div>
 <div id="help"><div>
@@ -171,7 +173,7 @@
   </table>
   <h3>Listen (raw audio, off until you press play)</h3>
   <table>
-    <tr><td><kbd>space</kbd> or ▶</td><td>play selection / pause</td><td><kbd>e</kbd> or ⇤⇥</td><td>play around the nearest span edge</td></tr>
+    <tr><td><kbd>space</kbd> or ▶</td><td>play selection / pause</td><td><kbd>e</kbd>, ▶ start, ▶ end</td><td>hear 5s around a span edge</td></tr>
     <tr><td>click a timestamp</td><td>play from there</td><td><kbd>p</kbd></td><td>toggle the pipeline-cut stripe</td></tr>
   </table>
   <p class="muted" style="margin:12px 0 0">Saves automatically. Stripe right of the label bar = what the pipeline cut
@@ -481,6 +483,7 @@ function render() {
 function paintSel() {
   const [i, j] = selRange();
   rowEls.forEach((el, k) => { el.classList.toggle('sel', k >= i && k <= j); el.classList.toggle('cur', k === cur); });
+  syncEdges();
   drawMini();
 }
 function changed() {
@@ -563,12 +566,16 @@ function togglePlay() {
   const [i, j] = selRange();
   play(S[i].start, i === j ? null : S[j].end);
 }
-function playEdge() {
-  const sp = (lastNudged && spans.includes(lastNudged)) ? lastNudged : spanAtRow(cur);
+function edgeSpan() { return (lastNudged && spans.includes(lastNudged)) ? lastNudged : spanAtRow(cur); }
+function playAround(t) { play(Math.max(0, t - 2500), t + 2500); }
+function playEdge(which) {
+  const sp = edgeSpan();
   if (!sp) return toast('No labeled span on this line');
-  const t = Math.abs(S[cur].start - sp.start_ms) <= Math.abs(S[cur].end - sp.end_ms) ? sp.start_ms : sp.end_ms;
-  play(Math.max(0, t - 2500), t + 2500);
+  which ??= Math.abs(S[cur].start - sp.start_ms) <= Math.abs(S[cur].end - sp.end_ms) ? 'start' : 'end';
+  playAround(which === 'start' ? sp.start_ms : sp.end_ms);
 }
+// The edge buttons show only when the current line is in a span, so they always mean something.
+function syncEdges() { const on = HAS_AUDIO && !!edgeSpan(); $('pStart').hidden = $('pEnd').hidden = !on; }
 
 // ---------- minimap ----------
 function visibleRange() {
@@ -724,7 +731,8 @@ function bindEditor() {
   $('bHelp').onclick = () => $('help').classList.add('show');
   // blur, or a later space keypress would also "click" the focused button
   $('pPlay').onclick = e => { e.currentTarget.blur(); togglePlay(); };
-  $('pEdge').onclick = e => { e.currentTarget.blur(); playEdge(); };
+  $('pStart').onclick = e => { e.currentTarget.blur(); playEdge('start'); };
+  $('pEnd').onclick = e => { e.currentTarget.blur(); playEdge('end'); };
   $('help').onclick = () => $('help').classList.remove('show');
   $('find').addEventListener('input', runFind);
   $('find').addEventListener('keydown', e => {
