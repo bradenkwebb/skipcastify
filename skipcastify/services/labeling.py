@@ -167,8 +167,23 @@ def load_episode(data_dir, name: str) -> dict:
         "spans": labels.get("spans", []),
         "reviewed": bool(labels.get("reviewed")),
         "has_audio": raw_audio_path(data_dir, name, completes) is not None,
+        "has_words": _words_path(data_dir, name).is_file(),
         "cut_labels": sorted(cut_policy.cut_labels(feed_for(data_dir, name, completes))),
     }
+
+
+def _words_path(data_dir, name: str) -> Path:
+    return _transcripts_dir(data_dir) / f"{name}_words.json"
+
+
+def load_words(data_dir, name: str) -> dict | None:
+    """Whisper's word timings as parallel arrays {start, end, word}, or None if not saved."""
+    try:
+        per_segment = json.loads(_words_path(data_dir, name).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    flat = [w for seg in per_segment for w in seg]
+    return {"start": [w[0] for w in flat], "end": [w[1] for w in flat], "word": [w[2] for w in flat]}
 
 
 def clean_spans(spans) -> list[dict]:

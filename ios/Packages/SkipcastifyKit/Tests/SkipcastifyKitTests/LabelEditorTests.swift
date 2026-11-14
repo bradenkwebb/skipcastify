@@ -55,5 +55,26 @@ struct LabelEditorTests {
         let first = (body?["spans"] as? [[String: Any]])?.first
         #expect(first?["start_ms"] != nil && first?["label"] as? String == "ad")
         #expect(body?["reviewed"] as? Bool == true)
+        #expect(doc.hasWords == true)
+    }
+
+    @Test func movingAnEdgeStaysClearOfNeighboursAndKeeps250ms() {
+        var e = LabelEditor(lines: lines, spans: [LabelSpan(startMs: 0, endMs: 1000, label: "ad"),
+                                                  LabelSpan(startMs: 1500, endMs: 2500, label: "self_promo")])
+        e.moveEdge(.end, ofSpan: 0, to: 1200)
+        #expect(e.spans[0].endMs == 1200)
+        e.moveEdge(.end, ofSpan: 0, to: 9000)      // can't run into the next span
+        #expect(e.spans[0].endMs == 1500)
+        e.moveEdge(.start, ofSpan: 1, to: 2400)    // keeps 250ms
+        #expect(e.spans[1].startMs == 2250)
+        e.moveEdge(.end, ofSpan: 1, to: 9000)      // not past the last line
+        #expect(e.spans[1].endMs == 4000)
+        #expect(e.nearerEdge(ofSpan: 1, toLine: 2) == .end && e.span(atLine: 2) == 1)
+    }
+
+    @Test func wordsFixtureDecodes() throws {
+        let w = try Fixture.decode(LabelWords.self, "label_words")
+        #expect(w.word == ["This", "episode", "Use"] && w.start[1] == 350)
+        #expect(w.firstIndex(atOrAfter: 351) == 2 && w.firstIndex(atOrAfter: 5000) == 3)
     }
 }

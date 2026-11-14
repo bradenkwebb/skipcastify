@@ -101,6 +101,27 @@
   #player button { min-width: 44px; height: 40px; border-radius: 999px; font-size: 16px; padding: 0 12px; }
   #pTime { font: 12px ui-monospace, Menlo, monospace; padding: 0 8px 0 2px; min-width: 6ch; text-align: right; }
   body.hasplayer #toast { bottom: calc(72px + env(safe-area-inset-bottom)); }
+  /* Boundary zoom: a span edge, word by word. */
+  #zoom { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom));
+          width: min(640px, calc(100% - 20px)); background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+          box-shadow: 0 4px 18px rgba(0,0,0,.3); padding: 10px 12px 12px; z-index: 2; }
+  body.zooming #player { display: none; }
+  body.zooming #toast { bottom: calc(var(--zoomh, 220px) + 20px + env(safe-area-inset-bottom)); }
+  #zoom .zh { display: flex; align-items: center; gap: 8px; }
+  #zoom .zh b { font-weight: 600; }
+  #zoom .zh .x { margin-left: auto; }
+  #zoom .seg button { border-radius: 0; }
+  #zoom .seg button:first-child { border-radius: 7px 0 0 7px; }
+  #zoom .seg button:last-child { border-radius: 0 7px 7px 0; margin-left: -1px; }
+  #zHint { font-size: 12px; margin: 6px 0; }
+  #zWords { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; max-height: 40vh; overflow-y: auto; }
+  #zWords .w { padding: 6px 8px; font-size: 15px; min-height: 36px; }
+  #zWords .w.in { background: color-mix(in srgb, var(--zc) 30%, var(--panel2)); border-color: var(--zc); }
+  #zWords .edge { width: 3px; align-self: stretch; min-height: 36px; background: var(--accent); border-radius: 2px; }
+  #zWords .lines { font-size: 14px; }
+  #zoom .zf { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
+  #zoom .zf button { min-height: 36px; }
+  #zAt { margin-left: auto; font: 12px ui-monospace, Menlo, monospace; }
   #help { position: fixed; inset: 0; background: var(--overlay); display: none; align-items: center; justify-content: center; }
   #help.show { display: flex; }
   #help > div { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px;
@@ -148,6 +169,17 @@
 <div id="player" hidden>
   <button id="pPlay" title="Play the selection / pause (space)" aria-label="Play">▶</button>
   <span id="pTime" class="muted"></span>
+  <button id="pZoom" title="Adjust this span's edges word by word (z)" hidden>Adjust edges</button>
+</div>
+<div id="zoom" hidden>
+  <div class="zh"><b id="zLabel"></b>
+    <span class="seg"><button id="zStart">Start</button><button id="zEnd">End</button></span>
+    <button class="x" id="zClose" aria-label="Close" title="Close (Esc)">✕</button></div>
+  <div id="zHint" class="muted"></div>
+  <div id="zWords"></div>
+  <div class="zf"><button id="zHear" title="Hear 5s around this edge (e)">▶ Hear</button>
+    <button id="zEarlier" title="Move the edge 0.5s earlier">−0.5s</button>
+    <button id="zLater" title="Move the edge 0.5s later">+0.5s</button><span id="zAt" class="muted"></span></div>
 </div>
 <div id="help"><div>
   <h3>Move & select</h3>
@@ -165,6 +197,7 @@
     <tr><td><kbd>3</kbd></td><td>intro / outro / credits</td><td></td><td></td></tr>
     <tr><td><kbd>0</kbd> / <kbd>⌫</kbd></td><td>back to content</td><td><kbd>u</kbd> <kbd>^z</kbd> · <kbd>^r</kbd> <kbd>^⇧z</kbd></td><td>undo · redo</td></tr>
     <tr><td><kbd>,</kbd> <kbd>.</kbd> / <kbd>⌥←</kbd> <kbd>⌥→</kbd></td><td>nudge span start ∓0.5s</td><td><kbd>&lt;</kbd> <kbd>&gt;</kbd> / <kbd>⌥⇧←</kbd> <kbd>⌥⇧→</kbd></td><td>nudge span end ∓0.5s</td></tr>
+    <tr><td><kbd>z</kbd> or Adjust edges</td><td>move a span edge word by word</td><td></td><td></td></tr>
     <tr><td><kbd>b</kbd></td><td>back to the episode list</td><td><kbd>Enter</kbd></td><td>next unreviewed episode (once reviewed)</td></tr>
     <tr><td><kbd>R</kbd></td><td>mark the whole episode reviewed (locks edits)</td><td><kbd>P</kbd></td><td>start from the pipeline's cuts</td></tr>
   </table>
@@ -435,12 +468,18 @@ function nudge(edge, delta) {
   let sp = spanAtRow(cur);
   if (lastNudged && spans.includes(lastNudged)) sp = lastNudged;
   if (!sp) return toast('No labeled span on this line');
+  moveEdge(sp, edge, (edge === 'start' ? sp.start_ms : sp.end_ms) + delta);
+}
+// Same rule in LabelEditor.moveEdge (iOS): stay clear of neighbouring spans, keep 250ms.
+function moveEdge(sp, edge, ms) {
+  if (locked()) return;
   snapshot();
   const k = spans.indexOf(sp), prev = spans[k - 1], next = spans[k + 1];
-  if (edge === 'start') sp.start_ms = Math.max(prev ? prev.end_ms : 0, Math.min(sp.end_ms - 250, sp.start_ms + delta));
-  else sp.end_ms = Math.min(next ? next.start_ms : dur, Math.max(sp.start_ms + 250, sp.end_ms + delta));
+  if (edge === 'start') sp.start_ms = Math.max(prev ? prev.end_ms : 0, Math.min(sp.end_ms - 250, ms));
+  else sp.end_ms = Math.min(next ? next.start_ms : dur, Math.max(sp.start_ms + 250, ms));
   lastNudged = sp;
-  toast(`${edge} → ${fmt(edge === 'start' ? sp.start_ms : sp.end_ms)} (${((edge === 'start' ? sp.start_ms : sp.end_ms) / 1000).toFixed(1)}s)`);
+  const at = edge === 'start' ? sp.start_ms : sp.end_ms;
+  if ($('zoom').hidden) toast(`${edge} → ${fmt(at)} (${(at / 1000).toFixed(1)}s)`);
   changed();
 }
 
@@ -480,6 +519,8 @@ function render() {
 function paintSel() {
   const [i, j] = selRange();
   rowEls.forEach((el, k) => { el.classList.toggle('sel', k >= i && k <= j); el.classList.toggle('cur', k === cur); });
+  syncPlayerVis();
+  renderZoom();
   drawMini();
 }
 function changed() {
@@ -539,11 +580,20 @@ function play(fromMs, toMs) {
   audio.play().catch(e => toast('Playback failed: ' + e.message));
 }
 let playingRow = -1;
+// The player holds play/pause (with raw audio) and Adjust edges (on a labeled line).
+function syncPlayerVis() {
+  const z = !!edgeSpan();
+  $('pZoom').hidden = !z;
+  $('pPlay').hidden = $('pTime').hidden = !HAS_AUDIO;
+  $('player').hidden = !HAS_AUDIO && !z;
+  document.body.classList.toggle('hasplayer', !$('player').hidden);
+}
 function syncPlayer() {
   const on = audio && !audio.paused;
   $('pPlay').textContent = on ? '⏸' : '▶';
   $('pPlay').setAttribute('aria-label', on ? 'Pause' : 'Play');
   $('pTime').textContent = audio ? fmt(audio.currentTime * 1000) : '';
+  $('zHear').textContent = on ? '⏸ Stop' : '▶ Hear';
 }
 function onTime() {
   const ms = audio.currentTime * 1000;
@@ -562,10 +612,74 @@ function togglePlay() {
   const [i, j] = selRange();
   play(S[i].start, i === j ? null : S[j].end);
 }
-function playEdge() {
-  const sp = (lastNudged && spans.includes(lastNudged)) ? lastNudged : spanAtRow(cur);
+// ---------- boundary zoom ----------
+let HAS_WORDS = false, WORDS = null, Z = null;  // Z = {sp, edge}
+async function openZoom() {
+  const sp = edgeSpan();
   if (!sp) return toast('No labeled span on this line');
-  const t = Math.abs(S[cur].start - sp.start_ms) <= Math.abs(S[cur].end - sp.end_ms) ? sp.start_ms : sp.end_ms;
+  const near = Math.abs(S[cur].start - sp.start_ms) <= Math.abs(S[cur].end - sp.end_ms) ? 'start' : 'end';
+  Z = {sp, edge: near}; lastNudged = sp;
+  $('zoom').hidden = false; document.body.classList.add('zooming');
+  renderZoom();
+  if (HAS_WORDS && !WORDS) {
+    try {
+      const r = await fetch(`/api/label/${encodeURIComponent(EP)}/words.json`);
+      if (!r.ok) throw new Error(r.status);
+      WORDS = await r.json();
+    } catch (e) { HAS_WORDS = false; toast('Could not load word timings: ' + e.message); }
+    renderZoom();
+  }
+}
+function closeZoom() { Z = null; $('zoom').hidden = true; document.body.classList.remove('zooming'); $('rows').focus(); }
+function renderZoom() {
+  if (!Z) return;
+  if (!spans.includes(Z.sp)) {  // undo replaces span objects: follow the one in the same place
+    const old = Z.sp; Z.sp = spans.find(s => s.start_ms < old.end_ms && s.end_ms > old.start_ms);
+    if (!Z.sp) return closeZoom();
+  }
+  const {sp, edge} = Z, at = edge === 'start' ? sp.start_ms : sp.end_ms;
+  const name = LABELS.find(l => l.key === sp.label)?.name || sp.label;
+  $('zLabel').textContent = name;
+  $('zoom').style.setProperty('--zc', COLOR[sp.label]);
+  $('zStart').classList.toggle('on', edge === 'start');
+  $('zEnd').classList.toggle('on', edge === 'end');
+  $('zAt').textContent = `${edge} ${fmt(at)} (${(at / 1000).toFixed(1)}s)`;
+  $('zHear').hidden = !HAS_AUDIO;
+  const box = $('zWords');
+  if (!HAS_WORDS) {
+    $('zHint').textContent = 'No word timings for this episode (transcribed before they were saved). Use ±0.5s.';
+    box.innerHTML = '';
+    return;
+  }
+  if (!WORDS) { $('zHint').textContent = 'Loading words…'; box.innerHTML = ''; return; }
+  $('zHint').textContent = edge === 'start' ? `Tap the first word of the ${name.toLowerCase()}.` : `Tap the last word of the ${name.toLowerCase()}.`;
+  const {start, end, word} = WORDS, n = word.length;
+  let k = start.findIndex(t => t >= at); if (k < 0) k = n;  // first word after the edge
+  // The window stays put while the edge moves within it, so words don't jump under your finger.
+  if (Z.k0 == null || Math.abs(k - Z.k0) > 9) Z.k0 = k;
+  const a = Math.max(0, Z.k0 - 14), b = Math.min(n, Z.k0 + 14);
+  const parts = [];
+  for (let i = a; i < b; i++) {
+    if (i === k) parts.push('<span class="edge" aria-label="edge"></span>');
+    const mid = (start[i] + end[i]) / 2, inSpan = mid > sp.start_ms && mid < sp.end_ms;
+    parts.push(`<button class="w${inSpan ? ' in' : ''}" data-i="${i}" title="${fmt(start[i])}">${esc(word[i])}</button>`);
+  }
+  if (k === b && b === n) parts.push('<span class="edge" aria-label="edge"></span>');
+  box.innerHTML = parts.join('');
+  box.querySelector('.edge')?.scrollIntoView({block: 'nearest'});
+  document.body.style.setProperty('--zoomh', $('zoom').offsetHeight + 'px');
+}
+function esc(t) { return t.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]); }
+function zoomWord(i) {
+  if (!Z) return;
+  moveEdge(Z.sp, Z.edge, Z.edge === 'start' ? WORDS.start[i] : WORDS.end[i]);
+}
+function edgeSpan() { return (lastNudged && spans.includes(lastNudged)) ? lastNudged : spanAtRow(cur); }
+function playEdge() {
+  const sp = Z ? Z.sp : edgeSpan();
+  if (!sp) return toast('No labeled span on this line');
+  const near = Math.abs(S[cur].start - sp.start_ms) <= Math.abs(S[cur].end - sp.end_ms) ? 'start' : 'end';
+  const t = (Z ? Z.edge : near) === 'start' ? sp.start_ms : sp.end_ms;
   play(Math.max(0, t - 2500), t + 2500);
 }
 
@@ -650,7 +764,8 @@ async function editor() {
   const d = await (await fetch(`/api/label/${encodeURIComponent(EP)}.json`)).json();
   FEED = d.feed;
   if (d.cut_labels) CUT = d.cut_labels;
-  S = d.segments; spans = d.spans; reviewed = d.reviewed; HAS_AUDIO = d.has_audio; PRED_N = d.predictions.length;
+  S = d.segments; spans = d.spans; reviewed = d.reviewed; HAS_AUDIO = d.has_audio; HAS_WORDS = !!d.has_words;
+  PRED_N = d.predictions.length;
   dur = Math.max(1, ...S.map(r => r.end));
   SPOKEN = union(S.map(r => [r.start, r.end]));
   // The pipeline cuts every whole line a predicted span touches.
@@ -661,8 +776,6 @@ async function editor() {
     + (HAS_AUDIO ? '' : '<span class="muted" style="font-size:12px">no raw audio</span>')
     + '<span id="stats"></span>';
   $('bFill').disabled = !PRED_N;
-  $('player').hidden = !HAS_AUDIO;
-  document.body.classList.toggle('hasplayer', HAS_AUDIO);
   render(); setPred(showPred); changed(); padRows(); centerCur();
   loaded = true; $('save').textContent = d.spans.length || d.reviewed ? 'saved' : '';
   if (tidySpans()) { changed(); toast('Cleaned up leftover label slivers between lines'); }
@@ -723,6 +836,17 @@ function bindEditor() {
   $('bHelp').onclick = () => $('help').classList.add('show');
   // blur, or a later space keypress would also "click" the focused button
   $('pPlay').onclick = e => { e.currentTarget.blur(); togglePlay(); };
+  $('pZoom').onclick = e => { e.currentTarget.blur(); openZoom(); };
+  $('zClose').onclick = closeZoom;
+  for (const [id, edge] of [['zStart', 'start'], ['zEnd', 'end']])
+    $(id).onclick = e => { e.currentTarget.blur(); if (Z) { Z.edge = edge; Z.k0 = null; renderZoom(); } };
+  $('zHear').onclick = e => {
+    e.currentTarget.blur();
+    if (audio && !audio.paused) { audio.pause(); onTime(); } else playEdge();
+  };
+  for (const [id, d] of [['zEarlier', -500], ['zLater', 500]])
+    $(id).onclick = e => { e.currentTarget.blur(); if (Z) moveEdge(Z.sp, Z.edge, (Z.edge === 'start' ? Z.sp.start_ms : Z.sp.end_ms) + d); };
+  $('zWords').addEventListener('click', e => { const w = e.target.closest('.w'); if (w) { w.blur(); zoomWord(+w.dataset.i); } });
   $('help').onclick = () => $('help').classList.remove('show');
   $('find').addEventListener('input', runFind);
   $('find').addEventListener('keydown', e => {
@@ -761,6 +885,7 @@ function bindEditor() {
     else if (k === '>') nudge('end', 500);
     else if (k === ' ') togglePlay();
     else if (k === 'e') playEdge();
+    else if (k === 'z') Z ? closeZoom() : openZoom();
     else if (k === 'u') restore(undo, redo);
     else if (k === 'p') setPred(!showPred);
     else if (k === 'P') prefill();
@@ -771,6 +896,7 @@ function bindEditor() {
     else if (k === '?') $('help').classList.add('show');
     else if (k === 'b') go($('back').href);
     else if (k === 'Enter' && reviewed && nextEp) go($('doneNext').href);
+    else if (k === 'Escape' && Z) closeZoom();
     else if (k === 'Escape') { anchor = cur; paintSel(); }
     else handled = false;
     if (handled) e.preventDefault();
