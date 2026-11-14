@@ -69,6 +69,7 @@ class Segment:
     start: int  # milliseconds
     end: int    # milliseconds
     text: str
+    words: list | None = None  # [[start_ms, end_ms, word], ...] when Whisper gave them
 
 DEFAULT_PROMPT_PATH = os.path.join(os.path.dirname(__file__), '..', 'llm_prompts', 'identify_ads_prompt.txt')
 
@@ -212,6 +213,8 @@ class AudioProcessor:
                     start=offset_ms + int(seg.start * 1000),
                     end=offset_ms + int(seg.end * 1000),
                     text=seg.text.strip(),
+                    words=[[offset_ms + int(w.start * 1000), offset_ms + int(w.end * 1000), w.word.strip()]
+                           for w in (seg.words or [])],
                 ))
 
         logger.info(f"Transcription complete: {len(segments)} segments")
