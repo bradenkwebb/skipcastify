@@ -31,6 +31,36 @@ public struct LabelWords: Decodable, Sendable, Equatable {
     public func firstIndex(atOrAfter ms: Int) -> Int {
         start.firstIndex { $0 >= ms } ?? word.count
     }
+
+    // These three mirror label.html's edge panel: keep them in step.
+
+    /// Word ranges to show: context around each edge; a long span's middle is hidden.
+    public func zoomRuns(startAnchor a: Int, endAnchor b: Int, radius r: Int = 12) -> [Range<Int>] {
+        let n = word.count
+        let first = max(0, a - r)..<max(max(0, a - r), min(n, a + r))
+        let second = max(0, b - r)..<max(max(0, b - r), min(n, b + r))
+        if second.lowerBound - first.upperBound < 3 {
+            return [first.lowerBound..<max(first.upperBound, second.upperBound)]
+        }
+        return [first, second]
+    }
+
+    /// The edge time for a boundary just before word `j`.
+    public func boundaryMs(_ edge: LabelEditor.Edge, beforeWord j: Int) -> Int {
+        let n = word.count
+        switch edge {
+        case .start: return j < n ? start[j] : end[n - 1]
+        case .end: return j > 0 ? end[j - 1] : start[0]
+        }
+    }
+
+    /// A tapped word moves whichever edge is fewer words away.
+    /// `startWord`/`endWord` are the first words at or after each edge.
+    public static func tapEdge(word i: Int, startWord ks: Int, endWord ke: Int) -> LabelEditor.Edge {
+        if i < ks { return .start }
+        if i >= ke { return .end }
+        return i - ks < ke - 1 - i ? .start : .end
+    }
 }
 
 /// One transcript line, in ms.

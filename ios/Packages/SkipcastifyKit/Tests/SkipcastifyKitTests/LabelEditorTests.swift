@@ -77,4 +77,18 @@ struct LabelEditorTests {
         #expect(w.word == ["This", "episode", "Use"] && w.start[1] == 350)
         #expect(w.firstIndex(atOrAfter: 351) == 2 && w.firstIndex(atOrAfter: 5000) == 3)
     }
+
+    @Test func edgePanelHidesTheMiddleOfALongSpan() {
+        let n = 200
+        let w = LabelWords(start: (0..<n).map { $0 * 400 }, end: (0..<n).map { $0 * 400 + 300 }, word: (0..<n).map { "w\($0)" })
+        #expect(w.zoomRuns(startAnchor: 20, endAnchor: 151) == [8..<32, 139..<163])
+        #expect(w.zoomRuns(startAnchor: 20, endAnchor: 30) == [8..<42])   // short span: one run
+        #expect(w.zoomRuns(startAnchor: 3, endAnchor: 198) == [0..<15, 186..<200])
+        #expect(w.boundaryMs(.start, beforeWord: 5) == 2000 && w.boundaryMs(.end, beforeWord: 5) == 1900)
+        #expect(w.boundaryMs(.start, beforeWord: n) == w.end[n - 1] && w.boundaryMs(.end, beforeWord: 0) == 0)
+        #expect(LabelWords.tapEdge(word: 10, startWord: 20, endWord: 151) == .start)
+        #expect(LabelWords.tapEdge(word: 25, startWord: 20, endWord: 151) == .start)
+        #expect(LabelWords.tapEdge(word: 145, startWord: 20, endWord: 151) == .end)
+        #expect(LabelWords.tapEdge(word: 160, startWord: 20, endWord: 151) == .end)
+    }
 }
