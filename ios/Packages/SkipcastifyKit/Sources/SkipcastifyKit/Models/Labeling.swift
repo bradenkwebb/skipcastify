@@ -10,7 +10,27 @@ public struct LabelDocument: Decodable, Sendable {
     public let spans: [LabelSpan]
     public let reviewed: Bool
     public let hasAudio: Bool
+    /// Whisper word timings are saved for this episode (`GET .../words.json`). Nil from older servers.
+    public let hasWords: Bool?
     public let cutLabels: [String]?
+}
+
+/// `GET /api/label/<name>/words.json`: Whisper's word timings, as parallel arrays.
+public struct LabelWords: Decodable, Sendable, Equatable {
+    public let start: [Int]
+    public let end: [Int]
+    public let word: [String]
+
+    public init(start: [Int], end: [Int], word: [String]) {
+        self.start = start
+        self.end = end
+        self.word = word
+    }
+
+    /// Index of the first word starting at or after `ms`; `count` if none.
+    public func firstIndex(atOrAfter ms: Int) -> Int {
+        start.firstIndex { $0 >= ms } ?? word.count
+    }
 }
 
 /// One transcript line, in ms.
@@ -70,6 +90,31 @@ public struct LabelEditor: Sendable, Equatable {
         self.lines = lines
         self.spans = []
         self.spans = Self.tidy(spans, lines: lines)
+    }
+
+    public enum Edge: Sendable { case start, end }
+
+    /// Index of the span overlapping a line, if any.
+    public func span(atLine i: Int) -> Int? {
+        let line = lines[i]
+        return spans.firstIndex { $0.startMs < line.end && $0.endMs > line.start }
+    }
+
+    /// The edge nearer to a line: what a tap on that line most likely means to adjust.
+    public func nearerEdge(ofSpan k: Int, toLine i: Int) -> Edge {
+        abs(lines[i].start - spans[k].startMs) <= abs(lines[i].end - spans[k].endMs) ? .start : .end
+    }
+
+    /// Moves one edge of a span to `ms`, staying clear of its neighbours and at least 250ms long.
+    /// The web labeler's moveEdge does the same.
+    public mutating func moveEdge(_ edge: Edge, ofSpan k: Int, to ms: Int) {
+        guard spans.indices.contains(k) else { return }
+        let prevEnd = k > 0 ? spans[k - 1].endMs : 0
+        let nextStart = k + 1 < spans.count ? spans[k + 1].startMs : (lines.map(\.end).max() ?? 0)
+        switch edge {
+        case .start: spans[k].startMs = max(prevEnd, min(spans[k].endMs - 250, ms))
+        case .end: spans[k].endMs = min(nextStart, max(spans[k].startMs + 250, ms))
+        }
     }
 
     /// The label on a line, if any span overlaps it.

@@ -57,6 +57,11 @@ public struct APIClient: Sendable {
         try await get("api/label/\(Self.segment(name)).json")
     }
 
+    /// Only when the label document says `hasWords`; 404 otherwise.
+    public func labelWords(_ name: String) async throws -> LabelWords {
+        try await get("api/label/\(Self.segment(name))/words.json")
+    }
+
     @discardableResult
     public func saveLabels(_ name: String, spans: [LabelSpan], reviewed: Bool) async throws -> SavedLabels {
         try await send("PUT", "api/label/\(Self.segment(name)).json", body: LabelBody(spans: spans, reviewed: reviewed))
