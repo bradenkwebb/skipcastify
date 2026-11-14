@@ -566,6 +566,15 @@ def label_episode(episode):
     return jsonify(doc)
 
 
+@app.route('/api/label/<episode>/words.json')
+@require_auth
+def label_words(episode):
+    if not labeling.valid_episode(data_dir, episode):
+        return abort(404)
+    words = labeling.load_words(data_dir, episode)
+    return jsonify(words) if words is not None else abort(404)
+
+
 @app.route('/api/label/<episode>/audio')
 @require_auth
 def label_audio(episode):
