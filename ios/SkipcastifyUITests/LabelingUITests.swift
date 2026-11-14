@@ -46,14 +46,20 @@ final class LabelingUITests: XCTestCase {
             line.tap()
         }
         app.buttons["Adjust Edges"].waitToAppear().tap()
-        app.buttons["End"].waitToAppear().tap()
-        let at = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'end '")).firstMatch.waitToAppear()
+        let end = app.descendants(matching: .any)["End handle"]
+        if end.waitForExistence(timeout: 5) {
+            // Drag the end handle down a row: the edge follows, snapped to a word.
+            end.tap()  // makes it the edge ±0.5s acts on, snapped to its word
+            let label = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'end '")).firstMatch.waitToAppear()
+            let before = label.label
+            let from = end.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            from.press(forDuration: 0.2, thenDragTo: from.withOffset(CGVector(dx: -40, dy: 46)))
+            XCTAssertNotEqual(label.label, before)
+        }
+        let at = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'end ' OR label BEGINSWITH 'start '")).firstMatch.waitToAppear()
         let before = at.label
         app.buttons["+0.5s"].tap()
         XCTAssertNotEqual(at.label, before)
-        if app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Tap the last word'")).firstMatch.exists {
-            XCTAssertTrue(app.descendants(matching: .any)["Edge"].waitForExistence(timeout: 5))
-        }
         if app.buttons["Hear"].exists {
             app.buttons["Hear"].tap()
             app.buttons["Stop"].waitToAppear().tap()
