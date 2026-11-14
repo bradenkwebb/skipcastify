@@ -110,15 +110,19 @@
   #zoom .zh { display: flex; align-items: center; gap: 8px; }
   #zoom .zh b { font-weight: 600; }
   #zoom .zh .x { margin-left: auto; }
-  #zoom .seg button { border-radius: 0; }
-  #zoom .seg button:first-child { border-radius: 7px 0 0 7px; }
-  #zoom .seg button:last-child { border-radius: 0 7px 7px 0; margin-left: -1px; }
   #zHint { font-size: 12px; margin: 6px 0; }
-  #zWords { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; max-height: 40vh; overflow-y: auto; }
+  #zWords { position: relative; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; max-height: 40vh;
+            overflow-y: auto; padding: 8px 6px; }
   #zWords .w { padding: 6px 8px; font-size: 15px; min-height: 36px; }
   #zWords .w.in { background: color-mix(in srgb, var(--zc) 30%, var(--panel2)); border-color: var(--zc); }
-  #zWords .edge { width: 3px; align-self: stretch; min-height: 36px; background: var(--accent); border-radius: 2px; }
-  #zWords .lines { font-size: 14px; }
+  #zWords .gap { font-size: 13px; padding: 0 4px; }
+  /* Drag handles, like text selection: a bar with a knob above (start) or below (end). */
+  #zWords .hd { position: absolute; width: 28px; margin-left: -14px; touch-action: none; cursor: ew-resize; z-index: 1; }
+  #zWords .hd::before { content: ''; position: absolute; left: 12.5px; top: 0; bottom: 0; width: 3px; background: var(--accent); border-radius: 2px; }
+  #zWords .hd::after { content: ''; position: absolute; left: 7px; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); }
+  #zWords .hd.s::after { top: -8px; }
+  #zWords .hd.e::after { bottom: -8px; }
+  #zWords .hd:not(.on)::before, #zWords .hd:not(.on)::after { opacity: .55; }
   #zoom .zf { display: flex; gap: 6px; align-items: center; margin-top: 10px; }
   #zoom .zf button { min-height: 36px; }
   #zAt { margin-left: auto; font: 12px ui-monospace, Menlo, monospace; }
@@ -173,7 +177,6 @@
 </div>
 <div id="zoom" hidden>
   <div class="zh"><b id="zLabel"></b>
-    <span class="seg"><button id="zStart">Start</button><button id="zEnd">End</button></span>
     <button class="x" id="zClose" aria-label="Close" title="Close (Esc)">✕</button></div>
   <div id="zHint" class="muted"></div>
   <div id="zWords"></div>
@@ -197,7 +200,7 @@
     <tr><td><kbd>3</kbd></td><td>intro / outro / credits</td><td></td><td></td></tr>
     <tr><td><kbd>0</kbd> / <kbd>⌫</kbd></td><td>back to content</td><td><kbd>u</kbd> <kbd>^z</kbd> · <kbd>^r</kbd> <kbd>^⇧z</kbd></td><td>undo · redo</td></tr>
     <tr><td><kbd>,</kbd> <kbd>.</kbd> / <kbd>⌥←</kbd> <kbd>⌥→</kbd></td><td>nudge span start ∓0.5s</td><td><kbd>&lt;</kbd> <kbd>&gt;</kbd> / <kbd>⌥⇧←</kbd> <kbd>⌥⇧→</kbd></td><td>nudge span end ∓0.5s</td></tr>
-    <tr><td><kbd>z</kbd> or Adjust edges</td><td>move a span edge word by word</td><td></td><td></td></tr>
+    <tr><td><kbd>z</kbd> or Adjust edges</td><td>drag a span's edges word by word</td><td></td><td></td></tr>
     <tr><td><kbd>b</kbd></td><td>back to the episode list</td><td><kbd>Enter</kbd></td><td>next unreviewed episode (once reviewed)</td></tr>
     <tr><td><kbd>R</kbd></td><td>mark the whole episode reviewed (locks edits)</td><td><kbd>P</kbd></td><td>start from the pipeline's cuts</td></tr>
   </table>
@@ -471,9 +474,9 @@ function nudge(edge, delta) {
   moveEdge(sp, edge, (edge === 'start' ? sp.start_ms : sp.end_ms) + delta);
 }
 // Same rule in LabelEditor.moveEdge (iOS): stay clear of neighbouring spans, keep 250ms.
-function moveEdge(sp, edge, ms) {
+function moveEdge(sp, edge, ms, snap = true) {
   if (locked()) return;
-  snapshot();
+  if (snap) snapshot();
   const k = spans.indexOf(sp), prev = spans[k - 1], next = spans[k + 1];
   if (edge === 'start') sp.start_ms = Math.max(prev ? prev.end_ms : 0, Math.min(sp.end_ms - 250, ms));
   else sp.end_ms = Math.min(next ? next.start_ms : dur, Math.max(sp.start_ms + 250, ms));
@@ -613,7 +616,7 @@ function togglePlay() {
   play(S[i].start, i === j ? null : S[j].end);
 }
 // ---------- boundary zoom ----------
-let HAS_WORDS = false, WORDS = null, Z = null;  // Z = {sp, edge}
+let HAS_WORDS = false, WORDS = null, Z = null;  // Z = {sp, edge (the one ±0.5s and Hear use), ka, kb, drag}
 async function openZoom() {
   const sp = edgeSpan();
   if (!sp) return toast('No labeled span on this line');
@@ -631,6 +634,20 @@ async function openZoom() {
   }
 }
 function closeZoom() { Z = null; $('zoom').hidden = true; document.body.classList.remove('zooming'); $('rows').focus(); }
+// These three mirror LabelWords (iOS): keep them in step.
+function firstWordAfter(ms) { const k = WORDS.start.findIndex(t => t >= ms); return k < 0 ? WORDS.word.length : k; }
+// Word runs to show: context around each edge; a long span's middle is hidden.
+function zoomRuns(ka, kb, r = 12) {
+  const n = WORDS.word.length, a = [Math.max(0, ka - r), Math.min(n, ka + r)], b = [Math.max(0, kb - r), Math.min(n, kb + r)];
+  return b[0] - a[1] < 3 ? [[a[0], Math.max(a[1], b[1])]] : [a, b];
+}
+// The edge time for a boundary just before word j.
+function boundaryMs(edge, j) {
+  const {start, end} = WORDS, n = start.length;
+  return edge === 'start' ? (j < n ? start[j] : end[n - 1]) : (j > 0 ? end[j - 1] : start[0]);
+}
+// A tapped word moves whichever edge is fewer words away.
+function tapEdge(i, ks, ke) { return i < ks ? 'start' : i >= ke ? 'end' : i - ks < ke - 1 - i ? 'start' : 'end'; }
 function renderZoom() {
   if (!Z) return;
   if (!spans.includes(Z.sp)) {  // undo replaces span objects: follow the one in the same place
@@ -641,8 +658,6 @@ function renderZoom() {
   const name = LABELS.find(l => l.key === sp.label)?.name || sp.label;
   $('zLabel').textContent = name;
   $('zoom').style.setProperty('--zc', COLOR[sp.label]);
-  $('zStart').classList.toggle('on', edge === 'start');
-  $('zEnd').classList.toggle('on', edge === 'end');
   $('zAt').textContent = `${edge} ${fmt(at)} (${(at / 1000).toFixed(1)}s)`;
   $('zHear').hidden = !HAS_AUDIO;
   const box = $('zWords');
@@ -652,26 +667,59 @@ function renderZoom() {
     return;
   }
   if (!WORDS) { $('zHint').textContent = 'Loading words…'; box.innerHTML = ''; return; }
-  $('zHint').textContent = edge === 'start' ? `Tap the first word of the ${name.toLowerCase()}.` : `Tap the last word of the ${name.toLowerCase()}.`;
-  const {start, end, word} = WORDS, n = word.length;
-  let k = start.findIndex(t => t >= at); if (k < 0) k = n;  // first word after the edge
-  // The window stays put while the edge moves within it, so words don't jump under your finger.
-  if (Z.k0 == null || Math.abs(k - Z.k0) > 9) Z.k0 = k;
-  const a = Math.max(0, Z.k0 - 14), b = Math.min(n, Z.k0 + 14);
-  const parts = [];
-  for (let i = a; i < b; i++) {
-    if (i === k) parts.push('<span class="edge" aria-label="edge"></span>');
-    const mid = (start[i] + end[i]) / 2, inSpan = mid > sp.start_ms && mid < sp.end_ms;
-    parts.push(`<button class="w${inSpan ? ' in' : ''}" data-i="${i}" title="${fmt(start[i])}">${esc(word[i])}</button>`);
+  if (!Z.drag) {  // rebuilding mid-drag would pull the handle out from under the finger
+    $('zHint').textContent = `Drag the handles to the first and last words of the ${name.toLowerCase()}, or tap a word.`;
+    const ks = firstWordAfter(sp.start_ms), ke = firstWordAfter(sp.end_ms);
+    // Each window stays put while its edge moves within it, so words don't jump.
+    if (Z.ka == null || Math.abs(ks - Z.ka) > 9) Z.ka = ks;
+    if (Z.kb == null || Math.abs(ke - Z.kb) > 9) Z.kb = ke;
+    const parts = [], runs = zoomRuns(Z.ka, Z.kb);
+    runs.forEach(([a, b], r) => {
+      if (r) parts.push(`<span class="gap muted">… ${a - runs[0][1]} words …</span>`);
+      for (let i = a; i < b; i++)
+        parts.push(`<button class="w" data-i="${i}" title="${fmt(WORDS.start[i])}">${esc(WORDS.word[i])}</button>`);
+    });
+    parts.push('<span class="hd s" data-edge="start" aria-label="start handle"></span><span class="hd e" data-edge="end" aria-label="end handle"></span>');
+    box.innerHTML = parts.join('');
   }
-  if (k === b && b === n) parts.push('<span class="edge" aria-label="edge"></span>');
-  box.innerHTML = parts.join('');
-  box.querySelector('.edge')?.scrollIntoView({block: 'nearest'});
+  paintZoom();
+  if (!Z.drag) box.querySelector('.hd.on')?.scrollIntoView({block: 'nearest'});
   document.body.style.setProperty('--zoomh', $('zoom').offsetHeight + 'px');
+}
+// Tint the span's words and put each handle in the gap at its edge.
+function paintZoom() {
+  const {sp} = Z, box = $('zWords'), {start, end} = WORDS, n = start.length;
+  for (const w of box.querySelectorAll('.w')) {
+    const i = +w.dataset.i, mid = (start[i] + end[i]) / 2;
+    w.classList.toggle('in', mid > sp.start_ms && mid < sp.end_ms);
+  }
+  const ks = firstWordAfter(sp.start_ms), ke = firstWordAfter(sp.end_ms);
+  for (const [cls, k, edge] of [['s', ks, 'start'], ['e', ke, 'end']]) {
+    const h = box.querySelector('.hd.' + cls), before = box.querySelector(`.w[data-i="${k}"]`), after = box.querySelector(`.w[data-i="${k - 1}"]`);
+    h.classList.toggle('on', Z.edge === edge);
+    // Start sits before its first word; end after its last (so they don't share a gap).
+    const ref = (edge === 'start' ? before || after : after || before);
+    h.hidden = !ref;
+    if (!ref) continue;
+    const x = ref === before ? ref.offsetLeft - 3 : ref.offsetLeft + ref.offsetWidth + 3;
+    Object.assign(h.style, {left: x + 'px', top: ref.offsetTop + 'px', height: ref.offsetHeight + 'px'});
+  }
+}
+// The gap nearest the pointer, as the index of the word after it; null off the words.
+function gapAt(x, y) {
+  let best = null, dist = Infinity;
+  for (const w of $('zWords').querySelectorAll('.w')) {
+    const r = w.getBoundingClientRect();
+    if (y < r.top - 3 || y > r.bottom + 3) continue;
+    const d = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+    if (d < dist) { dist = d; best = +w.dataset.i + (x > (r.left + r.right) / 2 ? 1 : 0); }
+  }
+  return best;
 }
 function esc(t) { return t.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]); }
 function zoomWord(i) {
   if (!Z) return;
+  Z.edge = tapEdge(i, firstWordAfter(Z.sp.start_ms), firstWordAfter(Z.sp.end_ms));
   moveEdge(Z.sp, Z.edge, Z.edge === 'start' ? WORDS.start[i] : WORDS.end[i]);
 }
 function edgeSpan() { return (lastNudged && spans.includes(lastNudged)) ? lastNudged : spanAtRow(cur); }
@@ -838,8 +886,6 @@ function bindEditor() {
   $('pPlay').onclick = e => { e.currentTarget.blur(); togglePlay(); };
   $('pZoom').onclick = e => { e.currentTarget.blur(); openZoom(); };
   $('zClose').onclick = closeZoom;
-  for (const [id, edge] of [['zStart', 'start'], ['zEnd', 'end']])
-    $(id).onclick = e => { e.currentTarget.blur(); if (Z) { Z.edge = edge; Z.k0 = null; renderZoom(); } };
   $('zHear').onclick = e => {
     e.currentTarget.blur();
     if (audio && !audio.paused) { audio.pause(); onTime(); } else playEdge();
@@ -847,6 +893,23 @@ function bindEditor() {
   for (const [id, d] of [['zEarlier', -500], ['zLater', 500]])
     $(id).onclick = e => { e.currentTarget.blur(); if (Z) moveEdge(Z.sp, Z.edge, (Z.edge === 'start' ? Z.sp.start_ms : Z.sp.end_ms) + d); };
   $('zWords').addEventListener('click', e => { const w = e.target.closest('.w'); if (w) { w.blur(); zoomWord(+w.dataset.i); } });
+  $('zWords').addEventListener('pointerdown', e => {
+    const h = e.target.closest('.hd');
+    if (!h || !Z || locked()) return;
+    e.preventDefault(); h.setPointerCapture(e.pointerId);
+    Z.edge = h.dataset.edge; Z.drag = {moved: false}; renderZoom();
+  });
+  $('zWords').addEventListener('pointermove', e => {
+    if (!Z?.drag) return;
+    const j = gapAt(e.clientX, e.clientY);
+    if (j == null) return;
+    const ms = boundaryMs(Z.edge, j);
+    if (ms === (Z.edge === 'start' ? Z.sp.start_ms : Z.sp.end_ms)) return;
+    moveEdge(Z.sp, Z.edge, ms, !Z.drag.moved);  // one undo step per drag
+    Z.drag.moved = true;
+  });
+  for (const t of ['pointerup', 'pointercancel'])
+    $('zWords').addEventListener(t, () => { if (Z?.drag) { Z.drag = null; renderZoom(); } });
   $('help').onclick = () => $('help').classList.remove('show');
   $('find').addEventListener('input', runFind);
   $('find').addEventListener('keydown', e => {
