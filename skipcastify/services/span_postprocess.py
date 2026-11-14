@@ -27,11 +27,18 @@ def _has_url_cta(text: str) -> bool:
     return bool(_URL_CTA_RE.search(text))
 
 
-def merge_nearby_spans(spans: list[dict], gap_ms: int = 15_000) -> list[dict]:
+# The LLM marks each ad's CTA but often not the whole spot, leaving the rest of a
+# break uncut. On 2026-11-11, 90s raised held-out recall 78% -> 89% at 99.6%
+# precision, and every 15-90s gap it bridged across the library was ads or silence.
+DEFAULT_GAP_MS = 90_000
+
+
+def merge_nearby_spans(spans: list[dict], gap_ms: int = DEFAULT_GAP_MS) -> list[dict]:
     """Merge ad spans that are within gap_ms of each other.
 
     An 8-second gap between a Snapdragon mid-roll and an Old Gays promo, for
-    example, is almost never substantive editorial content — merge them.
+    example, is almost never substantive editorial content — merge them. A kept
+    span (say self-promo on a cut: [ad] feed) between two ads goes with the break.
     """
     if not spans:
         return spans
@@ -71,7 +78,7 @@ def extend_for_cta(spans: list[dict], segments: list[Any], lookahead_ms: int = 5
     return result
 
 
-def postprocess_spans(spans: list[dict], segments: list[Any], gap_ms: int = 15_000) -> list[dict]:
+def postprocess_spans(spans: list[dict], segments: list[Any], gap_ms: int = DEFAULT_GAP_MS) -> list[dict]:
     """Apply all code-level post-processing in order: merge, then extend for CTA."""
     spans = merge_nearby_spans(spans, gap_ms=gap_ms)
     spans = extend_for_cta(spans, segments)

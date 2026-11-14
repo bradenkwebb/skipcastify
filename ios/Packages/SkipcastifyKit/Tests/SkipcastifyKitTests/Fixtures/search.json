@@ -1,0 +1,6 @@
+{
+ "results": [
+  {"author": "Dwarkesh Patel", "title": "Dwarkesh Podcast", "url": "https://example.com/dwarkesh.xml"},
+  {"author": null, "title": "The Whizkid Show.", "url": "https://example.com/whizkid.xml"}
+ ]
+}

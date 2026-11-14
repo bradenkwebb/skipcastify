@@ -1,0 +1,322 @@
+{
+ "daily": [
+  {
+   "ad_minutes": 13.5,
+   "date": "2026-11-08",
+   "episodes": 4,
+   "feeds": 3,
+   "list": [
+    {
+     "ad_minutes": 3.1,
+     "episode": "global-news-podcast-poland_in_shock_as_six_killed_in_shooting",
+     "feed_slug": "global-news-podcast",
+     "released": "2026-11-08T04:44:00+00:00",
+     "title": "Poland in shock as six killed in shooting"
+    },
+    {
+     "ad_minutes": 3.2,
+     "episode": "global-news-podcast-the_global_story_they_fled_russia_the_us_sent_them_back",
+     "feed_slug": "global-news-podcast",
+     "released": "2026-11-08T20:00:00+00:00",
+     "title": "The Global Story: They fled Russia. The US sent them back"
+    }
+   ]
+  },
+  {
+   "ad_minutes": 44.5,
+   "date": "2026-11-09",
+   "episodes": 8,
+   "feeds": 5,
+   "list": [
+    {
+     "ad_minutes": 3.3,
+     "episode": "mormon-stories-podcast-mormon_wife_tells_husband_she_no_longer_believes_-_sophie_allen_ep_2222",
+     "feed_slug": "mormon-stories-podcast",
+     "released": "2026-11-02T19:33:09+00:00",
+     "title": "Mormon Wife Tells Husband She No Longer Believes - Sophie Allen | Ep. 2222"
+    },
+    {
+     "ad_minutes": 3.8,
+     "episode": "mormon-stories-podcast-he_built_a_thriving_church_then_he_stopped_believing_-_timmy_gibson_ep_22",
+     "feed_slug": "mormon-stories-podcast",
+     "released": "2026-11-08T21:00:00+00:00",
+     "title": "He Built a Thriving Church. Then He Stopped Believing - Timmy Gibson | Ep. 2226"
+    }
+   ]
+  },
+  {
+   "ad_minutes": 0.0,
+   "date": "2026-08-03",
+   "episodes": 0,
+   "feeds": 0,
+   "list": []
+  }
+ ],
+ "days": null,
+ "drop_candidates": [
+  {
+   "episodes": 5,
+   "feed_slug": "wisdom-of-the-masters",
+   "last_processed": "2026-06-29T20:24:22"
+  }
+ ],
+ "feed_status": [
+  {
+   "checked": "2026-11-09T16:56:05+00:00",
+   "feed_slug": "dwarkesh-podcast",
+   "last_download": null,
+   "status": "up_to_date"
+  },
+  {
+   "checked": "2026-11-09T16:56:05+00:00",
+   "feed_slug": "global-news-podcast",
+   "last_download": "2026-11-09T15:47:20+00:00",
+   "status": "up_to_date"
+  }
+ ],
+ "feeds": [
+  {
+   "ad_free_streak": 0,
+   "avg_ad_minutes": 3.1,
+   "avg_ad_pct": 9.55,
+   "episodes": 84,
+   "feed_slug": "global-news-podcast",
+   "last_processed": "2026-11-09T15:51:39",
+   "total_ad_minutes": 260.5
+  },
+  {
+   "ad_free_streak": 0,
+   "avg_ad_minutes": 7.2,
+   "avg_ad_pct": 10.48,
+   "episodes": 15,
+   "feed_slug": "data-over-dogma",
+   "last_processed": "2026-07-27T10:06:29",
+   "total_ad_minutes": 107.9
+  },
+  {
+   "ad_free_streak": 0,
+   "avg_ad_minutes": 9.4,
+   "avg_ad_pct": 11.3,
+   "episodes": 8,
+   "feed_slug": "pod-save-the-world",
+   "last_processed": "2026-11-09T15:15:34",
+   "total_ad_minutes": 75.2
+  }
+ ],
+ "generated_at": "2026-11-09T12:02:22",
+ "overview": {
+  "episodes_processed": 251,
+  "feeds": 27,
+  "first_event": "2026-06-29T16:01:01.665222",
+  "last_event": "2026-11-09T16:23:17.218892",
+  "total_ad_minutes": 779.6,
+  "total_llm_cost_usd": 1.43
+ },
+ "recent_episodes": [
+  {
+   "ad_minutes": 8.2,
+   "ad_pct": 3.2,
+   "duration_min": 255.9,
+   "episode": "sean-carroll-s-mindscape-science-society-philosophy-culture-arts-and-ideas-aak_me_anything_novem",
+   "feed_slug": "sean-carroll-s-mindscape-science-society-philosophy-culture-arts-and-ideas",
+   "released": null,
+   "title": null,
+   "ts": "2026-11-09T16:23:17-05:00"
+  },
+  {
+   "ad_minutes": 2.2,
+   "ad_pct": 6.6,
+   "duration_min": 32.9,
+   "episode": "global-news-podcast-china_denies_spying_on_nvidia_boss",
+   "feed_slug": "global-news-podcast",
+   "released": "2026-11-09T15:29:00+00:00",
+   "title": "China denies spying on Nvidia boss",
+   "ts": "2026-11-09T15:51:39-05:00"
+  },
+  {
+   "ad_minutes": 10.9,
+   "ad_pct": 16.0,
+   "duration_min": 67.9,
+   "episode": "pod-save-the-world-trumps_insane_plan_to_reignite_the_iran_war",
+   "feed_slug": "pod-save-the-world",
+   "released": null,
+   "title": null,
+   "ts": "2026-11-09T15:15:34-05:00"
+  }
+ ],
+ "runs": [
+  {
+   "duration_s": 68.8,
+   "feeds": [
+    {
+     "feed": "odd-lots",
+     "not_modified": true,
+     "status": "up_to_date"
+    },
+    {
+     "feed": "the-ezra-klein-show",
+     "not_modified": true,
+     "status": "up_to_date"
+    },
+    {
+     "feed": "global-news-podcast",
+     "not_modified": true,
+     "status": "up_to_date"
+    }
+   ],
+   "outcome": "ok",
+   "processed": [],
+   "published": 9,
+   "started": "2026-11-09T16:56:05+00:00"
+  },
+  {
+   "duration_s": 65.5,
+   "feeds": [
+    {
+     "feed": "odd-lots",
+     "not_modified": true,
+     "status": "up_to_date"
+    },
+    {
+     "feed": "the-ezra-klein-show",
+     "not_modified": true,
+     "status": "up_to_date"
+    },
+    {
+     "feed": "global-news-podcast",
+     "not_modified": true,
+     "status": "up_to_date"
+    }
+   ],
+   "outcome": "ok",
+   "processed": [],
+   "published": 9,
+   "started": "2026-11-09T16:40:58+00:00"
+  },
+  {
+   "duration_s": 1385.7,
+   "feeds": [
+    {
+     "feed": "odd-lots",
+     "not_modified": true,
+     "status": "up_to_date"
+    },
+    {
+     "feed": "the-ezra-klein-show",
+     "not_modified": true,
+     "status": "up_to_date"
+    },
+    {
+     "feed": "global-news-podcast",
+     "not_modified": true,
+     "status": "up_to_date"
+    },
+    {
+     "downloaded": 1,
+     "failed": 0,
+     "feed": "sean-carroll-s-mindscape-science-society-philosophy-culture-arts-and-ideas",
+     "status": "downloaded"
+    }
+   ],
+   "outcome": "ok",
+   "processed": [
+    {
+     "episode": "sean-carroll-s-mindscape-science-society-philosophy-culture-arts-and-ideas-aak_me_anything_novem",
+     "feed": "sean-carroll-s-mindscape-science-society-philosophy-culture-arts-and-ideas"
+    }
+   ],
+   "published": 9,
+   "started": "2026-11-09T16:02:35+00:00"
+  }
+ ],
+ "signatures": [
+  {
+   "episodes": [
+    {
+     "ad_s": 27.3,
+     "duration_min": 241.3,
+     "episode": "dan-carlin-s-hardcore-history-show_74_-_mania_for_subjugation_iv",
+     "processed": "2026-07-31T19:25:03-04:00",
+     "released": null,
+     "spans": [
+      {
+       "end": 0.9839,
+       "start": 0.982
+      }
+     ],
+     "title": null
+    }
+   ],
+   "feed_slug": "dan-carlin-s-hardcore-history"
+  },
+  {
+   "episodes": [
+    {
+     "ad_s": 560.8,
+     "duration_min": 68.9,
+     "episode": "data-over-dogma-sins_of_the_grand_father",
+     "processed": "2026-06-29T18:11:37-04:00",
+     "released": null,
+     "spans": [
+      {
+       "end": 0.0145,
+       "start": 0.0
+      },
+      {
+       "end": 0.3637,
+       "start": 0.3049
+      },
+      {
+       "end": 0.6966,
+       "start": 0.6722
+      },
+      {
+       "end": 0.7021,
+       "start": 0.6986
+      },
+      {
+       "end": 0.7117,
+       "start": 0.7051
+      },
+      {
+       "end": 0.9723,
+       "start": 0.9643
+      },
+      {
+       "end": 0.9995,
+       "start": 0.9797
+      }
+     ],
+     "title": null
+    },
+    {
+     "ad_s": 581.4,
+     "duration_min": 68.9,
+     "episode": "data-over-dogma-sins_of_the_grand_father",
+     "processed": "2026-06-29T18:11:38-04:00",
+     "released": null,
+     "spans": [
+      {
+       "end": 0.0145,
+       "start": 0.0
+      },
+      {
+       "end": 0.3735,
+       "start": 0.3086
+      },
+      {
+       "end": 0.7139,
+       "start": 0.6726
+      },
+      {
+       "end": 1.0002,
+       "start": 0.9802
+      }
+     ],
+     "title": null
+    }
+   ],
+   "feed_slug": "data-over-dogma"
+  }
+ ]
+}

@@ -1,0 +1,42 @@
+{
+ "episode": {
+  "episode": null,
+  "image": null,
+  "link": "https://example.com/ezra-klein-podcast-michelle-goldberg.htm",
+  "notes": [
+   [
+    {
+     "text": "President Trump is primarily responsible for the Republican shellacking on Tuesday. But to get over the finish line in so many places \u2014 across the Midwest and deep into the South \u2013 Democrats had to run the right candidates, and those candidates ran very different campaigns."
+    }
+   ],
+   [
+    {
+     "text": "So how exactly did those Democrats do it? Michelle Goldberg, my colleague at New York Times Opinion, did amazing work this past year covering the biggest races \u2014 traveling to Texas, Michigan, Maine and other states, meeting with the candidates, and getting a sense of their campaigns on the ground. She joins me for a deep dive into the most exciting \u2014 and shocking \u2014 wins, and what they reveal about the new Democratic Party that will emerge out of this election."
+    }
+   ]
+  ],
+  "season": null,
+  "title": "How the Democrats Did It"
+ },
+ "error": null,
+ "show": {
+  "author": "New York Times Opinion",
+  "description": [
+   [
+    {
+     "text": "Ezra Klein invites you into a conversation on something that matters. How do we address climate change if the political system fails to act? Has the logic of markets infiltrated too many aspects of our lives? What is the future of the Republican Party? What do psychedelics teach us about consciousness? What does sci-fi understand about our present that we miss? Can our food system be just to humans and animals alike? Subscribe today at nytimes.com/podcasts or on Apple Podcasts, Spotify and Amazon Music. You can also subscribe via your favorite podcast app here "
+    },
+    {
+     "href": "https://example.com/audio?source=podcatcher",
+     "text": "https://example.com/audio?source=podcatcher"
+    },
+    {
+     "text": "."
+    }
+   ]
+  ],
+  "image": "https://example.com/teks-album-20art-3000px.jpg?aid=rss_feed",
+  "title": "The Ezra Klein Show",
+  "website": "https://example.com/ezra-klein-podcast"
+ }
+}

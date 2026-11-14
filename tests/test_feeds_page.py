@@ -253,3 +253,25 @@ def test_artwork_does_not_match_a_longer_slug(client, tmp_path):
     c, tmp_path = client
     write_art(tmp_path, "a-show-extra-0123abcd.jpg")
     assert c.get('/feeds/art/a-show.jpg', headers=AUTH).status_code == 404
+
+
+# --- JSON for the app -------------------------------------------------------
+
+def test_feeds_json_needs_auth_and_is_never_cached(client, tmp_path):
+    c, tmp_path = client
+    publish(tmp_path, "odd-lots", title="Odd Lots", episodes=2)
+    assert c.get('/api/feeds.json').status_code == 401
+    r = c.get('/api/feeds.json', headers=AUTH)
+    assert r.status_code == 200
+    assert r.headers['Cache-Control'] == 'no-store'
+
+
+def test_feeds_json_lists_published_feeds_with_their_links(client, tmp_path):
+    c, tmp_path = client
+    publish(tmp_path, "odd-lots", title="Odd Lots", episodes=2)
+    body = c.get('/api/feeds.json', headers=AUTH).get_json()
+    assert body['publishing_enabled'] is True
+    (feed,) = body['feeds']
+    assert feed['slug'] == 'odd-lots' and feed['title'] == 'Odd Lots' and feed['episodes'] == 2
+    assert feed['url'] == f"https://example.com/feeds/{SECRET}/odd-lots.xml"
+    assert {link['app'] for link in feed['add_links']} == {'overcast', 'antennapod', 'metacast'}

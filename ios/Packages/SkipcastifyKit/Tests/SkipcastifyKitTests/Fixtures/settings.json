@@ -1,0 +1,139 @@
+{
+ "changes": [
+  {
+   "after": [
+    {
+     "title": "Odd Lots",
+     "url": "https://example.com/podcast.rss"
+    }
+   ],
+   "before": [
+    {
+     "title": "Odd Lots",
+     "url": "https://example.com/podcast.rss"
+    }
+   ],
+   "id": 1794239482498810,
+   "kind": "subscriptions",
+   "summary": [
+    "subscribed: Sean Carroll's Mindscape: Science, Society, Philosophy, Culture, Arts, and Ideas"
+   ],
+   "ts": "2026-11-09T15:51:22+00:00",
+   "undo_of": null,
+   "user": "skipcastify"
+  },
+  {
+   "after": {
+    "default": [
+     "ad",
+     "self_promo"
+    ],
+    "feeds": {
+     "dwarkesh-podcast": []
+    }
+   },
+   "before": {
+    "default": [
+     "ad",
+     "self_promo"
+    ],
+    "feeds": {}
+   },
+   "id": 1794235977210676,
+   "kind": "policy",
+   "summary": [
+    "dwarkesh-podcast: default \u2192 nothing"
+   ],
+   "ts": "2026-11-09T14:52:57+00:00",
+   "undo_of": null,
+   "user": "skipcastify"
+  }
+ ],
+ "error": null,
+ "feeds": [
+  {
+   "slug": "dwarkesh-podcast",
+   "title": "Dwarkesh Podcast"
+  },
+  {
+   "slug": "global-news-podcast",
+   "title": "Global News Podcast"
+  },
+  {
+   "slug": "mormon-stories-podcast",
+   "title": "Mormon Stories Podcast"
+  }
+ ],
+ "labels": [
+  "ad",
+  "self_promo",
+  "intro_outro"
+ ],
+ "policy": {
+  "default": [
+   "ad",
+   "self_promo"
+  ],
+  "feeds": {
+   "mormon-stories-podcast": [
+    "ad"
+   ]
+  }
+ },
+ "r2": {
+  "cap_bytes": 7516192768,
+  "used_bytes": 1815893924
+ },
+ "skipped": [
+  {
+   "attempts": 2,
+   "episode": "mormon-stories-podcast/example.mp3"
+  }
+ ],
+ "subs_version": "9cf6d643f2e7792b",
+ "subscriptions": [
+  {
+   "checked": "2026-11-09T16:56:05+00:00",
+   "last_download": "2026-11-09T09:10:16+00:00",
+   "published": true,
+   "slug": "odd-lots",
+   "title": "Odd Lots",
+   "url": "https://example.com/podcast.rss"
+  },
+  {
+   "checked": "2026-11-09T16:56:05+00:00",
+   "last_download": "2026-11-07T12:04:29+00:00",
+   "published": true,
+   "slug": "the-ezra-klein-show",
+   "title": "The Ezra Klein Show",
+   "url": "https://example.com/kEKXbjuJ"
+  },
+  {
+   "checked": "2026-11-09T16:56:05+00:00",
+   "last_download": "2026-11-09T15:47:20+00:00",
+   "published": true,
+   "slug": "global-news-podcast",
+   "title": "Global News Podcast",
+   "url": "https://example.com/p02nq0gn.rss"
+  },
+  {
+   "checked": "2026-11-09T16:56:05+00:00",
+   "last_download": null,
+   "published": true,
+   "slug": "philosophize-this",
+   "title": "Philosophize This!",
+   "url": "https://example.com/QCD6036500916"
+  }
+ ],
+ "upstream": [
+  {
+   "title": "Dialogue Journal Podcast",
+   "url": "https://example.com/podcast"
+  },
+  {
+   "title": "Dan Carlin's Hardcore History",
+   "url": "https://example.com/history?format=xml"
+  }
+ ],
+ "version": "none"
+}

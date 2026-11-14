@@ -1,5 +1,8 @@
+import ipaddress
+import json
 import logging
 import os
+import subprocess
 import time
 from functools import wraps
 
@@ -28,7 +31,9 @@ from skipcastify.services import (
 )
 from skipcastify.services.artwork_thumbs import thumbnail
 from skipcastify.services.episode_detail import episode_detail
+from skipcastify.services.playback import playback
 from skipcastify.services.published_feeds import published_feeds
+from skipcastify.services.shows import show_detail
 from skipcastify.services.state_manager import StateManager
 from skipcastify.utils.alerts import scrub_secrets
 
@@ -39,6 +44,24 @@ app = Flask(__name__)
 data_dir = os.environ.get("DATA_DIR")
 _feed_username = os.environ.get("FEED_USERNAME")
 _feed_password = os.environ.get("FEED_PASSWORD")
+
+
+def _parse_tailscale_allow(raw: str) -> dict[str, set[str] | None]:
+    """'login' allows any of that user's devices; 'login/device' only that device."""
+    allow: dict[str, set[str] | None] = {}
+    for entry in raw.split(","):
+        login, _, device = entry.strip().lower().partition("/")
+        if not login:
+            continue
+        if not device:
+            allow[login] = None
+        elif allow.get(login, set()) is not None:
+            allow.setdefault(login, set()).add(device)
+    return allow
+
+
+# Tailnet logins (optionally /device) that skip Basic auth. Empty: Basic auth only.
+_tailscale_users = _parse_tailscale_allow(os.environ.get("TAILSCALE_USERS", ""))
 _episode_token = os.environ.get("EPISODE_TOKEN")
 _public_base_url = os.environ.get("PUBLIC_BASE_URL", "")
 _publish_to_r2 = os.environ.get("PUBLISH_TO_R2", "false").lower() == "true"
@@ -118,17 +141,62 @@ def _log_request(response):
         target += "?" + scrub_secrets(request.query_string.decode('latin-1'))
 
     # Username only, never the password or Authorization header.
-    auth = request.authorization
-    who = f" user={auth.username}" if auth and auth.username else ""
+    who = f" user={_user()}" if _user() else ""
 
     app.logger.info("%s %s -> %s %.1fms%s", request.method, target,
                     response.status_code, duration_ms, who)
     return response
 
 
+def _tailscale_user() -> str | None:
+    """The allowlisted tailnet login `tailscale serve` vouches for, if any.
+
+    Serve strips client-sent identity headers and sets its own, and sets none for
+    tagged devices. Trusted only from loopback, where gunicorn listens behind serve.
+    """
+    if not _tailscale_users or request.remote_addr not in ("127.0.0.1", "::1"):
+        return None
+    login = (request.headers.get("Tailscale-User-Login") or "").strip().lower()
+    if login not in _tailscale_users:
+        return None
+    devices = _tailscale_users[login]
+    if devices is None:
+        return login
+    # Serve sets X-Forwarded-For to the client's tailnet IP (inbound values are dropped).
+    who = _whois(request.headers.get("X-Forwarded-For", "").strip())
+    if who and who[0] == login and who[1] in devices:
+        return f"{login}/{who[1]}"
+    return None
+
+
+_whois_cache: dict[str, tuple[float, tuple[str, str] | None]] = {}
+
+
+def _whois(ip: str) -> tuple[str, str] | None:
+    """(login, device) for a tailnet IP via the local tailscaled; cached 5 minutes."""
+    try:
+        ip = str(ipaddress.ip_address(ip))
+    except ValueError:
+        return None
+    hit = _whois_cache.get(ip)
+    if hit and time.monotonic() - hit[0] < 300:
+        return hit[1]
+    try:
+        out = subprocess.run(["tailscale", "whois", "--json", ip], capture_output=True,
+                             text=True, timeout=3, check=True).stdout
+        d = json.loads(out)
+        who = (d["UserProfile"]["LoginName"].lower(), d["Node"]["ComputedName"].lower())
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
+        who = None
+    _whois_cache[ip] = (time.monotonic(), who)
+    return who
+
+
 def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if _tailscale_user():
+            return f(*args, **kwargs)
         auth = request.authorization
         if not auth or auth.username != _feed_username or auth.password != _feed_password:
             return Response(
@@ -190,6 +258,21 @@ def episode_page(episode):
     return render_template('episode.html', episode=episode)
 
 
+@app.route('/dashboard/show/<slug>')
+@require_auth
+def show_page(slug):
+    if not labeling.valid_name(slug):
+        return abort(404)
+    return render_template('show.html', slug=slug)
+
+
+@app.route('/api/show/<slug>.json')
+@require_auth
+def show_json(slug):
+    detail = show_detail(data_dir, slug, _public_base_url) if labeling.valid_name(slug) else None
+    return jsonify(detail) if detail else abort(404)
+
+
 @app.route('/api/feed/<slug>/meta.json')
 @require_auth
 def feed_meta_json(slug):
@@ -213,7 +296,13 @@ def episode_meta_json(episode):
 @require_auth
 def episode_json(episode):
     detail = episode_detail(data_dir, episode)
-    return jsonify(detail) if detail else abort(404)
+    if not detail:
+        return abort(404)
+    # The enclosure URL carries the R2 path secret, like /feeds: never cache.
+    detail["playback"] = playback(data_dir, _public_base_url, detail.get("feed"), episode)
+    resp = jsonify(detail)
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 
 @app.route('/feeds')
@@ -246,6 +335,20 @@ def feeds_page():
     return resp
 
 
+@app.route('/api/feeds.json')
+@require_auth
+def feeds_json():
+    """The published feeds as JSON, for the iOS app. Same secrecy as /feeds: never cache."""
+    feeds = [{
+        "slug": f.slug, "title": f.title, "url": f.url, "episodes": f.episodes,
+        "audio_bytes": f.audio_bytes, "last_audio_upload": f.last_audio_upload,
+        "feed_uploaded": f.feed_uploaded, "add_links": f.add_links,
+    } for f in published_feeds(data_dir, _public_base_url)]
+    resp = jsonify(publishing_enabled=_publish_to_r2, feeds=feeds)
+    resp.headers['Cache-Control'] = 'no-store'
+    return resp
+
+
 def _write_refused():
     """None if this looks like a same-origin write from our own page.
 
@@ -261,6 +364,8 @@ def _write_refused():
 
 
 def _user():
+    if login := _tailscale_user():
+        return login
     return request.authorization.username if request.authorization else None
 
 
@@ -459,6 +564,15 @@ def label_episode(episode):
     except ValueError as e:
         return jsonify(error=str(e)), 400
     return jsonify(doc)
+
+
+@app.route('/api/label/<episode>/words.json')
+@require_auth
+def label_words(episode):
+    if not labeling.valid_episode(data_dir, episode):
+        return abort(404)
+    words = labeling.load_words(data_dir, episode)
+    return jsonify(words) if words is not None else abort(404)
 
 
 @app.route('/api/label/<episode>/audio')

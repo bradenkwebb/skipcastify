@@ -25,6 +25,22 @@ Use `uv`; never install into a global Python.
   edited independently of the code
 - `server.py` + `templates/` — feeds, dashboard, labeling UI
 - `tests/llm/` — one file per feed, against committed transcript fixtures
+- `ios/` — the SwiftUI app; `ios/Packages/SkipcastifyKit` holds its models and
+  API client. Plan and progress: `ios/docs/PLAN.md`
+
+## iOS app
+
+- `swift test --package-path ios/Packages/SkipcastifyKit` runs the package tests
+  on macOS; `ios/scripts/build.sh` and `ios/scripts/uitest.sh` drive a simulator.
+- **Never commit an Apple team ID or a personal bundle ID.** They live in
+  `ios/Config/Local.xcconfig` (gitignored; copy the `.example`). The project reads
+  them through `Signing.xcconfig`, so targets must not set `DEVELOPMENT_TEAM`.
+- A server API change and the app change that uses it belong in the same PR.
+- The web app and the iOS app are maintained together and shouldn't drift: a
+  user-facing change to one lands in the other too. Keep logic on the server
+  where possible. Label span-editing rules live in both `templates/label.html`
+  and `SkipcastifyKit/Models/Labeling.swift` and change together; playback
+  captions in both come from the same `playback` fields.
 
 ## Working on ad detection
 

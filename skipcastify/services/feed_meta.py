@@ -12,7 +12,7 @@ from pathlib import Path
 
 import requests
 
-from skipcastify.utils.utils import safe_filename
+from skipcastify.services import episode_files
 
 TTL_S = 24 * 3600
 MISS_REFRESH_S = 600
@@ -127,7 +127,7 @@ def _image(el) -> str | None:
     return _http(img.get("href")) if img is not None else _http(el.findtext("image/url"))
 
 
-def _summarize(raw: bytes, slug: str) -> dict:
+def _summarize(raw: bytes, slug: str, files: dict | None = None, url: str | None = None) -> dict:
     """Keep only what an episode page shows, keyed the way episode files are named.
     ElementTree, not feedparser: 0.3s vs 12s on a 2,000-episode feed."""
     ch = ET.fromstring(raw).find("channel")
@@ -146,7 +146,7 @@ def _summarize(raw: bytes, slug: str) -> dict:
         if not title:
             continue
         notes = _text(item, "content:encoded") or _text(item, "description") or _text(item, "itunes:summary") or ""
-        episodes.setdefault(safe_filename(title, slug)[: -len(".mp3")], {
+        episodes.setdefault(episode_files.name(files or {}, slug, episode_files.item_guid(item, url), title), {
             "title": title,
             "link": _http(item.findtext("link")),
             "episode": _text(item, "itunes:episode"),
@@ -169,7 +169,7 @@ def _fetch(url: str) -> bytes:
     return b"".join(chunks)
 
 
-def feed_summary(url: str, slug: str, max_age: float = TTL_S) -> dict:
+def feed_summary(url: str, slug: str, max_age: float = TTL_S, data_dir=None) -> dict:
     def cached():
         hit = _cache.get(url)
         return hit[1] if hit and time.monotonic() - hit[0] < max_age else None
@@ -181,7 +181,7 @@ def feed_summary(url: str, slug: str, max_age: float = TTL_S) -> dict:
         with _lock:
             if (hit := cached()) is not None:
                 return hit
-        summary = _summarize(_fetch(url), slug)
+        summary = _summarize(_fetch(url), slug, episode_files.load(data_dir) if data_dir else None, url)
         with _lock:
             _cache[url] = (time.monotonic(), summary)
     return summary
@@ -193,7 +193,7 @@ def show_meta(data_dir, slug: str) -> dict:
     if not url:
         return {"show": None, "error": "no upstream feed known for this show"}
     try:
-        return {"show": feed_summary(url, slug)["show"], "error": None}
+        return {"show": feed_summary(url, slug, data_dir=data_dir)["show"], "error": None}
     except Exception as e:
         return {"show": None, "error": f"couldn't load the show's feed ({type(e).__name__})"}
 
@@ -204,9 +204,9 @@ def episode_meta(data_dir, slug: str | None, name: str) -> dict:
     if not url:
         return {"show": None, "episode": None, "error": "no upstream feed known for this show"}
     try:
-        summary = feed_summary(url, slug)
+        summary = feed_summary(url, slug, data_dir=data_dir)
         if name not in summary["episodes"]:
-            summary = feed_summary(url, slug, max_age=MISS_REFRESH_S)  # maybe released since we cached
+            summary = feed_summary(url, slug, max_age=MISS_REFRESH_S, data_dir=data_dir)  # maybe released since we cached
     except Exception as e:  # network, HTTP or parse failure: the page still works without it
         return {"show": None, "episode": None, "error": f"couldn't load the show's feed ({type(e).__name__})"}
     raw = summary["episodes"].get(name)

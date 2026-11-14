@@ -33,7 +33,8 @@ def put(c, spans, reviewed=False, headers=None):
 
 def test_routes_require_auth(data):
     c, _ = data
-    for url in ('/label', f'/label/{EP}', '/api/label/episodes.json', f'/api/label/{EP}.json', f'/api/label/{EP}/audio'):
+    for url in ('/label', f'/label/{EP}', '/api/label/episodes.json', f'/api/label/{EP}.json', f'/api/label/{EP}/audio',
+                f'/api/label/{EP}/words.json'):
         assert c.get(url).status_code == 401, url
 
 
@@ -128,3 +129,14 @@ def test_unknown_release_date_falls_back_to_transcribed(data):
     c, _ = data
     e = c.get('/api/label/episodes.json', headers=AUTH).get_json()[0]
     assert e['released'] is None and e['date'] == e['transcribed']
+
+
+def test_word_timings_are_served_when_saved(data):
+    c, tmp = data
+    assert c.get(f'/api/label/{EP}.json', headers=AUTH).get_json()['has_words'] is False
+    assert c.get(f'/api/label/{EP}/words.json', headers=AUTH).status_code == 404
+    (tmp / 'transcripts' / f'{EP}_words.json').write_text(json.dumps(
+        [[[0, 300, 'This'], [350, 800, 'episode']], [[4000, 4400, 'Use']], []]))
+    assert c.get(f'/api/label/{EP}.json', headers=AUTH).get_json()['has_words'] is True
+    assert c.get(f'/api/label/{EP}/words.json', headers=AUTH).get_json() == {
+        'start': [0, 350, 4000], 'end': [300, 800, 4400], 'word': ['This', 'episode', 'Use']}

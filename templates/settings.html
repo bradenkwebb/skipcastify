@@ -231,7 +231,7 @@ function renderSubs() {
   const el = document.getElementById('subs');
   el.innerHTML = S.subscriptions.length ? S.subscriptions.map(s => `<li><div class="what"><div class="show">` +
     `<img src="/feeds/art/${encodeURIComponent(s.slug)}.jpg" alt="" onerror="this.style.visibility='hidden'">` +
-    `<span title="${esc(s.url)}">${esc(s.title)}</span></div><div class="meta">` +
+    `<a href="/dashboard/show/${encodeURIComponent(s.slug)}" title="${esc(s.url)}">${esc(s.title)}</a></div><div class="meta">` +
     [s.checked ? 'checked ' + ago(s.checked) : 'not checked yet',
      s.last_download ? 'last download ' + ago(s.last_download) : null,
      s.published ? 'on R2' : 'not on R2 yet'].filter(Boolean).join(' · ') +
