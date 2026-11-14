@@ -94,7 +94,7 @@
            border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; opacity: 0; transition: opacity .2s;
            pointer-events: none; }
   #toast.show { opacity: 1; }
-  /* On-screen playback, for touch: space and e do the same from the keyboard. */
+  /* On-screen play/pause, for touch: space does the same from the keyboard. */
   #player { position: fixed; right: 68px; bottom: calc(14px + env(safe-area-inset-bottom)); display: flex; gap: 6px;
             align-items: center; padding: 5px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line);
             box-shadow: 0 2px 10px rgba(0,0,0,.25); }
@@ -147,7 +147,6 @@
 <div id="toast"></div>
 <div id="player" hidden>
   <button id="pPlay" title="Play the selection / pause (space)" aria-label="Play">▶</button>
-  <button id="pEdge" title="Play around the nearest span edge (e)" aria-label="Play around the span edge">⇤⇥</button>
   <span id="pTime" class="muted"></span>
 </div>
 <div id="help"><div>
@@ -171,7 +170,7 @@
   </table>
   <h3>Listen (raw audio, off until you press play)</h3>
   <table>
-    <tr><td><kbd>space</kbd> or ▶</td><td>play selection / pause</td><td><kbd>e</kbd> or ⇤⇥</td><td>play around the nearest span edge</td></tr>
+    <tr><td><kbd>space</kbd> or ▶</td><td>play selection / pause</td><td><kbd>e</kbd></td><td>play around the nearest span edge</td></tr>
     <tr><td>click a timestamp</td><td>play from there</td><td><kbd>p</kbd></td><td>toggle the pipeline-cut stripe</td></tr>
   </table>
   <p class="muted" style="margin:12px 0 0">Saves automatically. Stripe right of the label bar = what the pipeline cut
@@ -724,7 +723,6 @@ function bindEditor() {
   $('bHelp').onclick = () => $('help').classList.add('show');
   // blur, or a later space keypress would also "click" the focused button
   $('pPlay').onclick = e => { e.currentTarget.blur(); togglePlay(); };
-  $('pEdge').onclick = e => { e.currentTarget.blur(); playEdge(); };
   $('help').onclick = () => $('help').classList.remove('show');
   $('find').addEventListener('input', runFind);
   $('find').addEventListener('keydown', e => {
