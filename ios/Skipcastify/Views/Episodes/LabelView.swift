@@ -22,6 +22,13 @@ struct LabelView: View {
     @State private var saving = false
     @State private var confirmLeave = false
     @State private var audio = LineAudio()
+    @State private var zoom: Zoom?
+
+    private struct Zoom: Identifiable {
+        let span: Int
+        let edge: LabelEditor.Edge
+        var id: Int { span }
+    }
 
     private var dirty: Bool { editor != saved || reviewed != savedReviewed }
     private var selection: ClosedRange<Int>? {
@@ -49,6 +56,10 @@ struct LabelView: View {
             Button("Discard Changes", role: .destructive) { dismiss() }
         }
         .safeAreaInset(edge: .bottom) { if editor != nil { bottomBar } }
+        .sheet(item: $zoom) { z in
+            EdgeZoomView(editor: Binding(get: { editor! }, set: { editor = $0 }), span: z.span, edge: z.edge,
+                         name: name, hasWords: doc?.hasWords == true, hasAudio: doc?.hasAudio == true, audio: audio)
+        }
         .task { await load() }
         .onDisappear { audio.stop() }
     }
@@ -150,6 +161,10 @@ struct LabelView: View {
                         }
                     }
                     Spacer()
+                    if let e = editor, let line = cursor, let k = e.span(atLine: line) {
+                        Button("Adjust Edges") { audio.stop(); zoom = Zoom(span: k, edge: e.nearerEdge(ofSpan: k, toLine: line)) }
+                    }
+                    Spacer()
                     Button("Deselect") { anchor = nil; cursor = nil }
                 }
                 .font(.subheadline)
@@ -224,7 +239,7 @@ struct LabelView: View {
     }
 }
 
-private struct LineRow: View {
+struct LineRow: View {
     let line: LabelLine
     let label: String?
     let predicted: Bool
@@ -266,14 +281,31 @@ private struct LineRow: View {
     }
 }
 
-/// Plays the raw episode from a line, for checking where an ad starts or ends.
+/// Plays the raw episode from a line, or a few seconds around an edge, for checking where an ad starts or ends.
 @Observable
 final class LineAudio {
     private(set) var line: Int?
     private var player: AVPlayer?
+    private var stopper: Any?
 
     func toggle(line: Int, at ms: Int, episode: String, client: APIClient) {
         if self.line != nil { stop(); return }
+        start(at: ms, episode: episode, client: client)
+        self.line = line
+    }
+
+    /// Plays fromMs..untilMs, then stops.
+    func play(fromMs: Int, untilMs: Int, episode: String, client: APIClient) {
+        stop()
+        let p = start(at: fromMs, episode: episode, client: client)
+        let end = NSValue(time: CMTime(seconds: Double(untilMs) / 1000, preferredTimescale: 600))
+        stopper = p.addBoundaryTimeObserver(forTimes: [end], queue: .main) { [weak self] in
+            MainActor.assumeIsolated { self?.stop() }
+        }
+    }
+
+    @discardableResult
+    private func start(at ms: Int, episode: String, client: APIClient) -> AVPlayer {
         let asset = AVURLAsset(url: client.episodeAudioURL(episode),
                                options: ["AVURLAssetHTTPHeaderFieldsKey": client.authHeaders])
         let p = AVPlayer(playerItem: AVPlayerItem(asset: asset))
@@ -281,10 +313,12 @@ final class LineAudio {
         try? AVAudioSession.sharedInstance().setCategory(.playback)
         p.play()
         player = p
-        self.line = line
+        return p
     }
 
     func stop() {
+        if let stopper { player?.removeTimeObserver(stopper) }
+        stopper = nil
         player?.pause()
         player = nil
         line = nil
