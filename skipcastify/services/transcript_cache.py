@@ -34,6 +34,17 @@ class TranscriptCache:
         """Get the cache file path for an episode."""
         return self.cache_dir / f"{episode_name}_transcript.json"
 
+    def words_path(self, episode_name: str) -> Path:
+        """Sidecar with Whisper's word timings: one [[start_ms, end_ms, word], ...] list per segment."""
+        return self.cache_dir / f"{episode_name}_words.json"
+
+    def load_words(self, episode_name: str) -> list[list] | None:
+        """Word timings parallel to the transcript's segments, or None if not saved."""
+        try:
+            return json.loads(self.words_path(episode_name).read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return None
+
     def _source_hash_path(self, episode_name: str) -> Path:
         """Sidecar file storing the hash of the audio a transcript was built from."""
         return self.cache_dir / f"{episode_name}_transcript.sha256"
@@ -124,6 +135,15 @@ class TranscriptCache:
             
             with open(cache_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
+
+            # A fresh transcript without words makes any older words file stale.
+            words = [getattr(seg, 'words', None) for seg in segments]
+            if any(words):
+                self.words_path(episode_name).write_text(
+                    json.dumps([w or [] for w in words], ensure_ascii=False, separators=(',', ':')),
+                    encoding='utf-8')
+            else:
+                self.words_path(episode_name).unlink(missing_ok=True)
 
             if source_path is not None:
                 self._save_source_hash(episode_name, source_path)

@@ -15,10 +15,27 @@ public struct EpisodeDetail: Decodable, Sendable {
     public let score: Score?
     public let runs: [ProcessingRun]
     public let latest: ProcessingRun?
+    /// What a podcast app subscribed to the published feed would play; nil when unpublished.
+    public let playback: Playback?
 
     public var displayTitle: String { title ?? Slug.readableEpisode(name, feed: feed ?? "") }
     /// Original length in ms, from the latest run; nil when never processed.
     public var durationMs: Int? { latest?.originalDurationS.map { Int($0 * 1000) } }
+}
+
+/// Where an episode plays from. Both URLs carry the server's path secret.
+public struct Playback: Decodable, Sendable, Hashable {
+    public let url: URL
+    public let feedUrl: URL
+    /// Our cut copy on R2; otherwise the publisher's original audio.
+    public let adFree: Bool
+    /// Processing cut nothing, so the original is already ad-free.
+    public let uncut: Bool
+
+    public var description: String {
+        if adFree { return "Ad-free" }
+        return uncut ? "Original audio · nothing to cut" : "Original audio · ads not removed"
+    }
 }
 
 /// A span that was cut (or, in `kept`, one the policy kept).

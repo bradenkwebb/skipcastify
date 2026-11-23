@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skipcastify · Show</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  {% include '_theme.css' %}
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--accent); text-decoration: none; }
+  header { padding: 20px 24px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  header h1 { margin: 0; font-size: 20px; font-weight: 650; }
+  main { padding: 20px 24px 60px; max-width: 1200px; margin: 0 auto; }
+  .headrow { display: flex; gap: 16px; align-items: flex-start; }
+  #art { width: 96px; height: 96px; border-radius: 12px; object-fit: cover; flex: none; background: var(--panel2); }
+  #title { font-size: 24px; font-weight: 650; margin: 0 0 2px; }
+  #byline { color: var(--muted); font-size: 14px; }
+  #notes p { margin: 0 0 10px; overflow-wrap: anywhere; }
+  #notes.clip p:nth-child(n+4) { display: none; }
+  h2 { font-size: 15px; font-weight: 600; color: var(--muted); text-transform: uppercase;
+       letter-spacing: .04em; margin: 32px 0 12px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card .v { font-size: 24px; font-weight: 650; }
+  .card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .muted { color: var(--muted); }
+  .err { color: var(--ad); }
+  .policy label { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; }
+  .policy .hint { color: var(--muted); font-size: 12px; }
+  .policy input:disabled + span { opacity: .5; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } }
+  .chartnote { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .tbl th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  .tbl tr:last-child td { border-bottom: 0; }
+  .num { white-space: nowrap; font-variant-numeric: tabular-nums; text-align: right; }
+  button { background: var(--panel2); color: var(--fg); border: 1px solid var(--line);
+    border-radius: 7px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  button.danger { color: var(--ad); border-color: var(--ad); }
+  button.txt { background: none; border: 0; padding: 0; color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="/dashboard" style="color:inherit">🎧 Skipcastify</a></h1>
+  <a href="/dashboard">← dashboard</a>
+  <a href="/settings">settings</a>
+</header>
+<main>
+  <div class="headrow">
+    <img id="art" alt="">
+    <div>
+      <div id="title">…</div>
+      <div id="byline"></div>
+      <div id="status" class="muted" style="font-size:13px;margin-top:4px"></div>
+    </div>
+  </div>
+
+  <h2>Cut policy</h2>
+  <div class="panel policy" id="policy"><span class="muted">Loading…</span></div>
+
+  <div class="cards" id="cards" style="margin-top:24px"></div>
+
+  <div id="sigWrap" hidden>
+    <h2>Ad signatures <span class="info" tabindex="0" title="Each bar is an episode, start to end. Click one for its page." aria-label="Each bar is an episode, start to end">ⓘ</span></h2>
+    <div class="panel" id="sig"></div>
+  </div>
+
+  <div id="historyWrap" hidden>
+    <h2>Cadence and processing <span class="info" tabindex="0" title="Waiting: from the episode's release until the pipeline picked it up (the 15-minute schedule, plus any queue). Processing: transcription, the LLM and cutting." aria-label="How often episodes come out and how long they take to process">ⓘ</span></h2>
+    <div class="grid2">
+      <div class="panel"><div class="muted" style="font-size:13px;margin-bottom:6px">New episodes per week</div><canvas id="cadence" height="180"></canvas></div>
+      <div class="panel"><div class="muted" style="font-size:13px;margin-bottom:6px">From release to ad-free</div><canvas id="latency" height="180"></canvas>
+        <div class="chartnote" id="latencyNote"></div></div>
+    </div>
+  </div>
+
+  <div id="epsWrap" hidden>
+    <h2>Recent episodes</h2>
+    <div class="panel"><table class="tbl" id="eps"></table></div>
+  </div>
+
+  <div id="aboutWrap" hidden>
+    <h2>About</h2>
+    <div class="panel"><div id="notes" class="clip"></div><button id="notesMore" class="txt" hidden>Show more</button></div>
+  </div>
+
+  <div id="unsubWrap" hidden style="margin-top:32px">
+    <button id="unsub" class="danger">Unsubscribe</button>
+    <span id="unsubMsg" class="muted" style="font-size:13px;margin-left:8px"></span>
+  </div>
+</main>
+
+{% include '_signature.html' %}
+<script>
+const SLUG = {{ slug|tojson }};
+const $ = id => document.getElementById(id);
+// Same words as the iOS app and /settings.
+const LABELS = [
+  ['ad', 'Cut ads', 'Someone else pays: sponsors, underwriting, other networks’ shows'],
+  ['self_promo', 'Cut self-promo', 'The show, its host or its network: Patreon, merch, subscriptions'],
+  ['intro_outro', 'Cut intro/outro', 'Theme music, credits'],
+];
+let D = null;
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function ago(ts) {
+  if (!ts) return null;
+  const s = (Date.now() - new Date(ts)) / 1000;
+  return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + 'm ago' : s < 86400 ? Math.floor(s / 3600) + 'h ago' : Math.floor(s / 86400) + 'd ago';
+}
+function dur(min) { const m = Math.round(min); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; }
+function mb(b) { return b >= 2 ** 30 ? (b / 2 ** 30).toFixed(1) + ' GB' : Math.round(b / 2 ** 20) + ' MB'; }
+function card(k, v) { return `<div class="card"><div class="v">${v}</div><div class="k">${k}</div></div>`; }
+function epUrl(name) { return '/dashboard/episode/' + encodeURIComponent(name); }
+function readable(name) { return name.startsWith(SLUG + '-') ? name.slice(SLUG.length + 1).replace(/_/g, ' ') : name; }
+// Writes need the custom header: a cross-site page can't send it without a preflight.
+async function write(path, body) {
+  const r = await fetch(path, { method: path.includes('policy') ? 'PUT' : 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-Skipcastify': '1' }, body: JSON.stringify(body) });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
+  return data;
+}
+
+async function load() {
+  const r = await fetch('/api/show/' + encodeURIComponent(SLUG) + '.json', { credentials: 'same-origin' });
+  if (!r.ok) { $('title').innerHTML = `<span class="err">${r.status === 404 ? 'No such show' : 'Failed to load: HTTP ' + r.status}</span>`; return; }
+  D = await r.json();
+  render();
+}
+
+function render() {
+  document.title = 'Skipcastify · ' + (D.title || SLUG);
+  $('title').textContent = D.title || SLUG;
+  $('art').src = '/feeds/art/' + encodeURIComponent(SLUG) + '.jpg';
+  $('art').onerror = () => { $('art').style.visibility = 'hidden'; };
+  const st = D.status;
+  $('status').textContent = [
+    D.subscribed ? (ago(st.checked) ? 'checked ' + ago(st.checked) : 'not checked yet') : 'not subscribed',
+    ago(st.last_download) ? 'last download ' + ago(st.last_download) : null,
+    st.published ? `on R2: ${st.published_episodes} ad-free episodes, ${mb(st.published_bytes)}` : 'not on R2 yet',
+  ].filter(Boolean).join(' · ');
+
+  const s = D.stats;
+  $('cards').innerHTML = s ? [
+    card('Episodes processed', s.episodes),
+    card('Average ads', `${dur(s.avg_ad_minutes)} <span class="muted" style="font-size:14px">${s.avg_ad_pct.toFixed(1)}%</span>`),
+    card('Total removed', dur(s.total_ad_minutes)),
+  ].join('') : '';
+
+  renderPolicy(); renderSignature(); renderHistory(); renderEpisodes();
+  $('unsubWrap').hidden = !D.subscribed;
+}
+
+function renderPolicy() {
+  const p = D.policy;
+  if (p.error) { $('policy').innerHTML = `<span class="err">${esc(p.error)}</span>`; return; }
+  const own = !p.uses_default;
+  $('policy').innerHTML =
+    `<label><input type="checkbox" id="useDefault" ${p.uses_default ? 'checked' : ''}><span>Use the default policy</span></label>` +
+    LABELS.map(([k, name, hint]) => `<label><input type="checkbox" data-label="${k}" ${p.cut.includes(k) ? 'checked' : ''} ${own ? '' : 'disabled'}>
+      <span>${name}<br><span class="hint">${hint}</span></span></label>`).join('') +
+    `<div class="hint" id="policyMsg">Applies to episodes processed from now on.</div>`;
+  $('policy').onchange = savePolicy;
+}
+
+// The full policy and its version come from /api/settings.json, as /settings does.
+async function savePolicy(e) {
+  const msg = $('policyMsg');
+  try {
+    const s = await (await fetch('/api/settings.json', { credentials: 'same-origin' })).json();
+    const policy = s.policy;
+    if (e.target.id === 'useDefault') {
+      if (e.target.checked) delete policy.feeds[SLUG]; else policy.feeds[SLUG] = [...policy.default];
+    } else {
+      const cur = new Set(policy.feeds[SLUG] ?? policy.default);
+      e.target.checked ? cur.add(e.target.dataset.label) : cur.delete(e.target.dataset.label);
+      policy.feeds[SLUG] = LABELS.map(l => l[0]).filter(l => cur.has(l));
+    }
+    await write('/api/settings/policy.json', { policy, version: s.version });
+    msg.textContent = 'Saved. Applies to episodes processed from now on.';
+  } catch (err) {
+    msg.innerHTML = `<span class="err">${esc(err.message)}</span>`;
+  }
+  load();
+}
+
+// The same component as the dashboard's ad signatures.
+function renderSignature() {
+  $('sigWrap').hidden = !D.signature.length;
+  Signatures.render($('sig'), D.signature);
+}
+
+const css = v => getComputedStyle(document.documentElement).getPropertyValue('--' + v).trim();
+const median = xs => { const a = xs.filter(x => x != null).sort((p, q) => p - q); return a.length ? a[Math.floor(a.length / 2)] : null; };
+function hm(sec) { if (sec == null) return '—'; const m = Math.round(sec / 60); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; }
+let charts = [];
+
+function renderHistory() {
+  const H = D.history || [];
+  $('historyWrap').hidden = !H.length;
+  charts.forEach(c => c.destroy());
+  charts = [];
+  if (!H.length) return;
+  const axis = { ticks: { color: css('muted') }, grid: { color: css('line') } };
+
+  // Episodes per week by release date (processing date when the feed gave none), last 12 weeks.
+  const weekStart = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  const weeks = [];
+  for (let i = 11; i >= 0; i--) { const w = weekStart(Date.now()); w.setDate(w.getDate() - 7 * i); weeks.push(w); }
+  const counts = weeks.map(w => H.filter(h => +weekStart(h.released || h.completed) === +w).length);
+  charts.push(new Chart($('cadence'), {
+    type: 'bar',
+    data: { labels: weeks.map(w => w.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })),
+            datasets: [{ label: 'episodes', data: counts, backgroundColor: css('accent') }] },
+    options: { plugins: { legend: { display: false } },
+               scales: { x: axis, y: { ...axis, beginAtZero: true, ticks: { ...axis.ticks, precision: 0 } } } },
+  }));
+
+  // Release to ad-free, per recent episode: waiting for the pipeline, then processing.
+  const recent = H.slice(-20);
+  const label = h => new Date(h.completed).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  charts.push(new Chart($('latency'), {
+    type: 'bar',
+    // Separate axes: waits run from minutes to days (a catch-up), processing is minutes.
+    data: { labels: recent.map(label), datasets: [
+      { type: 'bar', label: 'processing (min)', yAxisID: 'y', order: 2,
+        data: recent.map(h => h.processing_s != null ? h.processing_s / 60 : null), backgroundColor: css('accent') },
+      { type: 'line', label: 'waiting (h)', yAxisID: 'y1', order: 1, showLine: false, pointRadius: 4,
+        data: recent.map(h => h.wait_s != null ? h.wait_s / 3600 : null),
+        borderColor: css('warn'), backgroundColor: css('warn') },
+    ] },
+    options: {
+      plugins: { legend: { labels: { color: css('muted') } },
+                 tooltip: { callbacks: {
+                   title: items => recent[items[0].dataIndex].episode,
+                   label: c => `${c.dataset.yAxisID === 'y1' ? 'waiting' : 'processing'}: ${hm(c.raw * (c.dataset.yAxisID === 'y1' ? 3600 : 60))}` } } },
+      scales: {
+        x: axis,
+        y: { ...axis, beginAtZero: true, title: { display: true, text: 'processing, minutes', color: css('muted') } },
+        y1: { ...axis, position: 'right', beginAtZero: true, grid: { drawOnChartArea: false },
+              title: { display: true, text: 'waiting, hours', color: css('muted') } },
+      },
+      onClick: (_e, els) => { if (els.length) location.href = epUrl(recent[els[0].index].episode); },
+    },
+  }));
+  // Medians over the last 10, so a one-off catch-up (e.g. subscribing) rolls off.
+  const last10 = H.slice(-10);
+  const wait = median(last10.map(h => h.wait_s)), proc = median(last10.map(h => h.processing_s));
+  $('latencyNote').textContent = `Recently: waits ${hm(wait)}, processing takes ${hm(proc)} (medians, last 10)` +
+    (wait == null ? ' (release dates unknown for these episodes)' : '') + '. Click a bar for the episode.';
+}
+
+function renderEpisodes() {
+  const eps = D.recent_episodes;
+  $('epsWrap').hidden = !eps.length;
+  $('eps').innerHTML = '<tr><th>Episode</th><th class="num">Length</th><th class="num">Ads</th></tr>' +
+    eps.map(e => `<tr><td><a href="${epUrl(e.episode)}">${esc(e.title || readable(e.episode))}</a></td>
+      <td class="num">${dur(e.duration_min)}</td>
+      <td class="num">${e.ad_minutes > 0 ? dur(e.ad_minutes) + ` <span class="muted">${e.ad_pct.toFixed(1)}%</span>` : '<span class="muted">none</span>'}</td></tr>`).join('');
+}
+
+// Show notes come from the show's own feed and can be slow, so they load separately.
+async function loadMeta() {
+  try {
+    const r = await fetch('/api/feed/' + encodeURIComponent(SLUG) + '/meta.json', { credentials: 'same-origin' });
+    const M = await r.json();
+    const show = M.show;
+    if (!show) return;
+    $('byline').innerHTML = [esc(show.author), show.website ? `<a href="${esc(show.website)}" rel="noopener noreferrer" target="_blank">${esc(new URL(show.website).host)}</a>` : null]
+      .filter(Boolean).join(' · ');
+    const blocks = show.description || [];
+    if (!blocks.length) return;
+    $('notes').innerHTML = blocks.map(runs => '<p>' + runs.map(r => r.href && /^https?:/.test(r.href)
+      ? `<a href="${esc(r.href)}" rel="noopener noreferrer" target="_blank">${esc(r.text)}</a>` : esc(r.text)).join('') + '</p>').join('');
+    $('aboutWrap').hidden = false;
+    $('notesMore').hidden = blocks.length <= 3;
+    $('notesMore').onclick = () => { $('notes').classList.toggle('clip'); $('notesMore').textContent = $('notes').classList.contains('clip') ? 'Show more' : 'Show less'; };
+  } catch (e) { /* the page works without notes */ }
+}
+
+$('unsub').onclick = async () => {
+  if (!confirm(`Stop processing ${D.title || SLUG}?\n\nIts R2 feed stays up and its audio ages out over 14 days. Unsubscribe in your podcast app too if you no longer want it.`)) return;
+  try {
+    const s = await (await fetch('/api/settings.json', { credentials: 'same-origin' })).json();
+    const sub = s.subscriptions.find(x => x.slug === SLUG);
+    if (!sub) throw new Error('not subscribed');
+    await write('/api/settings/subscriptions/remove.json', { url: sub.url, version: s.subs_version });
+    $('unsubMsg').textContent = 'Unsubscribed.';
+    load();
+  } catch (err) { $('unsubMsg').innerHTML = `<span class="err">${esc(err.message)}</span>`; }
+};
+
+load();
+loadMeta();
+</script>
+</body>
+</html>

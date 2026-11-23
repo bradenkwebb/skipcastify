@@ -178,3 +178,20 @@ def test_process_persists_transcript_even_with_ads(tmp_path):
     on_disk = json.loads(transcript_path.read_text())
     assert len(on_disk) == 2
     assert on_disk[0]["text"] == "buy our sponsor product"
+
+
+def test_word_timings_are_saved_beside_the_transcript(tmp_path):
+    cache = TranscriptCache(str(tmp_path))
+    segments = [Segment(start=0, end=900, text="hello there", words=[[0, 400, "hello"], [450, 900, "there"]]),
+                Segment(start=900, end=1000, text="hm", words=[])]
+    cache.save_transcript("ep", segments)
+    assert cache.load_words("ep") == [[[0, 400, "hello"], [450, 900, "there"]], []]
+    # The transcript itself keeps its old shape, so existing readers are unaffected.
+    assert json.loads((tmp_path / "ep_transcript.json").read_text())[0] == {"start": 0, "end": 900, "text": "hello there"}
+
+
+def test_a_transcript_without_words_drops_stale_word_timings(tmp_path):
+    cache = TranscriptCache(str(tmp_path))
+    cache.save_transcript("ep", [Segment(start=0, end=400, text="hi", words=[[0, 400, "hi"]])])
+    cache.save_transcript("ep", [Segment(start=0, end=500, text="hey")])
+    assert cache.load_words("ep") is None

@@ -6,8 +6,9 @@ import feedparser
 from feedgen.feed import FeedGenerator
 from mutagen.mp3 import MP3
 
+from skipcastify.services import episode_files
 from skipcastify.services.artwork_processor import process_artwork
-from skipcastify.utils.utils import safe_filename, slugify
+from skipcastify.utils.utils import slugify
 
 logger = logging.getLogger(__name__)
 
@@ -137,8 +138,16 @@ class FeedManager:
             if primary:
                 fg.podcast.itunes_category(primary)
 
+        files = episode_files.load(self.data_dir)
+        files_changed = False
         for entry in feed.entries:
-            ep_filename = safe_filename(entry.title, slug)
+            # Same identity rule as EpisodeDownloader._entry_id; see the guid note below.
+            original_url, _original_len = self._original_audio_url(entry)
+            guid = entry.get('id') or entry.get('guid') or original_url
+            ep_filename = episode_files.filename(files, slug, guid, entry.title)
+            # Files that predate the mapping: record them now, so a later retitle still finds them.
+            if self._local_episode_path(slug, ep_filename):
+                files_changed |= episode_files.remember(files, slug, guid, ep_filename)
             decision = self._entry_audio(entry, slug, ep_filename)
             if decision is None:
                 logger.debug("Withholding '%s' from %s feed", entry.title, title)
@@ -161,8 +170,6 @@ class FeedManager:
             # the *original* URL, never ours, because ours is the thing that
             # moves. permalink=False because the string is what establishes
             # identity and many podcast guids are not resolvable URLs.
-            original_url, _original_len = self._original_audio_url(entry)
-            guid = entry.get('id') or entry.get('guid') or original_url
             if guid:
                 fe.guid(guid, permalink=False)
 
@@ -220,6 +227,9 @@ class FeedManager:
                 fe.podcast.itunes_explicit('yes')
             elif ep_explicit_raw in (False, 'no', 'false', 'clean'):
                 fe.podcast.itunes_explicit('no')
+
+        if files_changed:
+            episode_files.save(self.data_dir, files)
 
         feed_path = os.path.join(self.data_dir, self.feeds_subdir, f'{slug}.xml')
         os.makedirs(os.path.dirname(feed_path), exist_ok=True)

@@ -1,4 +1,5 @@
 import SkipcastifyKit
+import SwiftData
 import SwiftUI
 
 /// One processed episode: what was cut and why, how it compares with the labels, and how
@@ -57,6 +58,7 @@ struct EpisodeDetailView: View {
         List {
             Section {
                 header(d)
+                PlayRow(detail: d, preview: preview)
                 if let ms = d.durationMs, ms > 0 {
                     EpisodeTimeline(durationMs: ms, cuts: d.cuts, kept: d.kept ?? [],
                                     labels: d.labels?.reviewed == true ? d.labels?.spans : nil)
@@ -66,6 +68,17 @@ struct EpisodeDetailView: View {
 
             if let run = d.latest {
                 Section("Summary") { SummaryRows(detail: d, run: run) }
+            }
+
+            if d.hasTranscript {
+                Section("Labels") {
+                    NavigationLink {
+                        LabelView(name: d.name) { await load() }
+                    } label: {
+                        Label(labelStatus(d), systemImage: d.labels?.reviewed == true ? "checkmark.seal.fill" : "tag")
+                    }
+                    if let score = d.score, d.labels?.reviewed == true { ScoreRows(score: score) }
+                }
             }
 
             Section {
@@ -89,10 +102,6 @@ struct EpisodeDetailView: View {
                 }
             }
 
-            if let score = d.score, d.labels?.reviewed == true {
-                Section("Against your labels") { ScoreRows(score: score) }
-            }
-
             if let notes = meta?.episode?.notes, !notes.isEmpty {
                 Section("About this episode") {
                     NotesView(paragraphs: notes, lineLimit: 3)
@@ -108,6 +117,12 @@ struct EpisodeDetailView: View {
                 }
             }
         }
+    }
+
+    private func labelStatus(_ d: EpisodeDetail) -> String {
+        guard let labels = d.labels else { return "Label this episode" }
+        let n = labels.spans.count
+        return labels.reviewed ? "Reviewed · \(n) span\(n == 1 ? "" : "s")" : "Labels in progress · \(n) span\(n == 1 ? "" : "s")"
     }
 
     private func header(_ d: EpisodeDetail) -> some View {
@@ -249,5 +264,59 @@ private struct RunRow: View {
         if let cost = run.costUsd { p.append(Format.usd(cost)) }
         if run.originalDurationS == nil { p.append("did not finish") }
         return p
+    }
+}
+
+/// Play this episode in the library player: the version your podcast app would get.
+private struct PlayRow: View {
+    let detail: EpisodeDetail
+    let preview: CutPreviewPlayer
+    @Environment(AudioPlayer.self) private var player
+    @Environment(\.modelContext) private var context
+    @State private var working = false
+    @State private var note: String?
+
+    private var isCurrent: Bool {
+        guard let playback = detail.playback else { return false }
+        return player.current?.audioURL == playback.url
+    }
+
+    var body: some View {
+        if let playback = detail.playback {
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    if isCurrent { player.togglePlayPause() } else { Task { await play(playback) } }
+                } label: {
+                    HStack {
+                        if working { ProgressView().tint(.white) } else {
+                            Image(systemName: isCurrent && player.isPlaying ? "pause.fill" : "play.fill")
+                        }
+                        Text(isCurrent ? (player.isPlaying ? "Pause" : "Resume") : "Play").bold()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(working)
+                Text(note ?? playback.description)
+                    .font(.caption)
+                    .foregroundStyle(playback.adFree || playback.uncut ? Color.secondary : Color.orange)
+            }
+        } else {
+            Label("Not in your published feed yet, so there's nothing to play.", systemImage: "speaker.slash")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func play(_ playback: Playback) async {
+        working = true
+        defer { working = false }
+        preview.stop()
+        do {
+            let result = try await EpisodePlayback.prepare(detail, playback, in: context)
+            player.play(result.episode)
+            note = result.addedShow.map { "Playing · added \($0) to your Library" }
+        } catch {
+            note = "Couldn't play: \(error.localizedDescription)"
+        }
     }
 }

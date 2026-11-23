@@ -111,11 +111,20 @@ public struct SignatureEpisode: Decodable, Sendable, Identifiable {
     public let durationMin: Double
     public let adS: Double
     public let spans: [Span]
+    /// Hand-reviewed episodes only: the cuts scored against the labels.
+    public let reviewed: Bool?
+    public let review: Review?
     public var id: String { episode }
 
     public struct Span: Decodable, Sendable, Hashable {
         public let start: Double
         public let end: Double
+    }
+
+    public struct Review: Decodable, Sendable {
+        public let hit: [Span]
+        public let missed: [Span]
+        public let extra: [Span]
     }
 }
 

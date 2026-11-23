@@ -65,3 +65,9 @@ def test_removed_mirrors_the_cutter_runs_including_pauses():
             {"start": 12_000, "end": 15_000}, {"start": 16_000, "end": 20_000}]
     spans = [{"start_ms": 6_000, "end_ms": 13_000}]
     assert analytics._removed(segs, spans) == [(5_000, 15_000)]   # the 9–12s pause is inside the run
+
+
+def test_signatures_list_newest_first():
+    events = [complete("show-old", []), {**complete("show-new", []), "ts": "2026-11-10T10:00:00"}]
+    (feed,) = analytics.ad_signatures(events)
+    assert [ep["episode"] for ep in feed["episodes"]] == ["show-new", "show-old"]

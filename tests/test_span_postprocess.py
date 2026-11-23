@@ -64,11 +64,11 @@ class TestMergeNearbySpans:
         out = merge_nearby_spans([
             _span(0, 10_000),
             _span(12_000, 18_000),     # 2s gap -> merges with first
-            _span(100_000, 110_000),   # far away -> separate
+            _span(200_000, 210_000),   # far away -> separate
         ])
         assert len(out) == 2
         assert (out[0]["start_ms"], out[0]["end_ms"]) == (0, 18_000)
-        assert (out[1]["start_ms"], out[1]["end_ms"]) == (100_000, 110_000)
+        assert (out[1]["start_ms"], out[1]["end_ms"]) == (200_000, 210_000)
 
     def test_custom_gap_param(self):
         # 20s gap, only merges if gap_ms raised above it
@@ -196,15 +196,25 @@ class TestPostprocessSpans:
         # the extended A would then merge with B into a single span.
         spans = [_span(0, 10_000), _span(31_000, 40_000)]
         segs = [Seg(12_000, 30_000, "go to acme.com")]
-        out = postprocess_spans(spans, segs)
+        out = postprocess_spans(spans, segs, gap_ms=15_000)
         assert len(out) == 2
         assert (out[0]["start_ms"], out[0]["end_ms"]) == (0, 30_000)
         assert (out[1]["start_ms"], out[1]["end_ms"]) == (31_000, 40_000)
 
     def test_no_changes_when_nothing_applies(self):
-        spans = [_span(0, 10_000), _span(100_000, 110_000)]
+        spans = [_span(0, 10_000), _span(200_000, 210_000)]
         segs = [Seg(10_500, 12_000, "ordinary editorial content")]
         out = postprocess_spans(spans, segs)
         assert len(out) == 2
         assert out[0]["end_ms"] == 10_000
-        assert out[1]["end_ms"] == 110_000
+        assert out[1]["end_ms"] == 210_000
+
+    def test_default_gap_bridges_the_rest_of_a_break(self):
+        """The LLM often marks only each spot's CTA; 85s between two is still one break."""
+        out = postprocess_spans([_span(0, 5_000), _span(90_000, 95_000)], [])
+        assert [(s["start_ms"], s["end_ms"]) for s in out] == [(0, 95_000)]
+
+    def test_a_kept_span_between_two_ads_goes_with_the_break(self):
+        """Self-promo nested in an ad break is cut with it, even on a cut: [ad] feed."""
+        out = postprocess_spans([_span(0, 20_000), _span(70_000, 90_000)], [])
+        assert [(s["start_ms"], s["end_ms"]) for s in out] == [(0, 90_000)]

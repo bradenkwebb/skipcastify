@@ -49,7 +49,7 @@ struct ShowDetailView: View {
                 } header: {
                     Text("Where ads fall")
                 } footer: {
-                    Text("Each bar is an episode, start to end; red is what was cut.")
+                    Text("Each bar is an episode, start to end, newest first; red is what was cut.")
                 }
             }
 
