@@ -1,9 +1,20 @@
-# Episodes the ad-detection prompt has been tuned against: each one supplied a
-# prompt example or an LLM test fixture. scripts/eval_ads.py scores these as
-# "tuned" (a regression check) and every other reviewed episode as "held-out"
-# (the honest number). Add an episode here the moment it shapes the prompt.
+# Episodes that have already shaped tuning: a prompt example, an LLM test
+# fixture, or a setting chosen by scoring them. scripts/eval_ads.py scores these
+# as "tuned" (a regression check). Every other reviewed episode is tuned or
+# held-out by a hash of its name, so nobody picks. Add an episode here the
+# moment it shapes a decision; never remove one.
 the-ezra-klein-show-chris_rufo_thinks_the_right_can_control_this_i_dont
 the-ezra-klein-show-elon_musks_endgame
 the-ezra-klein-show-the_end_of_trumpism
 global-news-podcast-trump_celebrates_shock_endorsement_ahead_of_us_midterms
 odd-lots-an_election_day_special_with_nate_silver
+# 2026-11-11: the 90s span merge gap (#74) was chosen by scoring all 12 episodes
+# reviewed at the time, so the rest of them are no longer held-out.
+global-news-podcast-democrats_projected_to_take_control_of_us_congress
+global-news-podcast-ukraine_accuses_russia_of_hitting_school_used_as_aid_centre
+odd-lots-james_bosworth_on_what_comes_after_lula_s_stunning_win
+odd-lots-the_macro_implications_of_the_blue_tsunami
+the-ezra-klein-show-how_the_democrats_did_it
+the-ezra-klein-show-nate_silver_predicts_a_momentous_midterm
+the-ezra-klein-show-what_hundreds_of_focus_groups_with_trump_voters_revealed
+what-s-left-of-philosophy-144_live_show_post-liberalism_is_bad_actually

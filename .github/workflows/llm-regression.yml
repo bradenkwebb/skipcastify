@@ -8,6 +8,8 @@ on:
       - skipcastify/services/section_processor.py
       - skipcastify/services/llm_utils.py
       - tests/llm/**
+      # The tuned/held-out list is eval bookkeeping, not a test: don't pay for an LLM run.
+      - '!tests/llm/tuned_episodes.txt'
       - .github/workflows/llm-regression.yml
   workflow_dispatch:
 concurrency:
