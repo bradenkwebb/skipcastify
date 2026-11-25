@@ -13,13 +13,12 @@ Run with: pytest tests/llm/test_global_news_podcast.py --run-llm
 """
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
 
-from tests.llm.conftest import any_overlap, covered
+from tests.llm.conftest import any_overlap, covered, detect
 
 load_dotenv()
 pytestmark = pytest.mark.llm
@@ -40,10 +39,7 @@ def segments():
 
 @pytest.fixture(scope="module")
 def llm_spans(segments):
-    from skipcastify.services.audio_processor import AudioProcessor
-    processor = AudioProcessor("data")
-    with tempfile.TemporaryDirectory() as tmp:
-        return processor._run_section_llm(segments, tmp, episode_name=_EPISODE)
+    return detect(segments, _EPISODE)
 
 
 # ---------------------------------------------------------------------------
@@ -164,11 +160,7 @@ def preroll_segments():
 
 @pytest.fixture(scope="module")
 def preroll_llm_spans(preroll_segments):
-    from skipcastify.services.audio_processor import AudioProcessor
-    processor = AudioProcessor("data")
-    with tempfile.TemporaryDirectory() as tmp:
-        return processor._run_section_llm(preroll_segments, tmp,
-                                          episode_name=_PREROLL_EPISODE)
+    return detect(preroll_segments, _PREROLL_EPISODE)
 
 
 # Same prompt bytes, same account: on 2026-11-05 the dominant answer flipped
@@ -271,11 +263,9 @@ def _spans_for(fixture: Path, episode: str):
         pytest.skip(f"Fixture not found: {fixture}")
     with open(fixture) as f:
         raw = json.load(f)
-    from skipcastify.services.audio_processor import AudioProcessor, Segment
+    from skipcastify.services.audio_processor import Segment
     segments = [Segment(start=s["start"], end=s["end"], text=s["text"]) for s in raw]
-    processor = AudioProcessor("data")
-    with tempfile.TemporaryDirectory() as tmp:
-        return processor._run_section_llm(segments, tmp, episode_name=episode)
+    return detect(segments, episode)
 
 
 @pytest.fixture(scope="module")

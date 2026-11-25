@@ -23,13 +23,12 @@ Run with: pytest tests/llm/test_ezra_klein_show.py --run-llm
 """
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
 from dotenv import load_dotenv
 
-from tests.llm.conftest import any_overlap, covered
+from tests.llm.conftest import any_overlap, covered, detect
 
 load_dotenv()
 pytestmark = pytest.mark.llm
@@ -47,10 +46,7 @@ def _load_segments(path: Path):
 
 
 def _detect(segments, episode_name):
-    from skipcastify.services.audio_processor import AudioProcessor
-    processor = AudioProcessor("data")
-    with tempfile.TemporaryDirectory() as tmp:
-        return processor._run_section_llm(segments, tmp, episode_name=episode_name)
+    return detect(segments, episode_name)
 
 
 # --- episode 1: the Amaloid pre-roll -------------------------------------
